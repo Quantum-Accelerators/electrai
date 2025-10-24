@@ -4,12 +4,11 @@ This script reads task IDs from `map_sample.json.gz` for any specified key and d
 
 ## Prerequisites
 
-1. Install required dependencies:
+Install required dependencies:
    ```bash
    uv pip install -r requirements.txt
    ```
 
-2. No AWS credentials required! The Materials Project S3 bucket is public and accessible without authentication.
 
 ## Usage
 

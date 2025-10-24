@@ -139,13 +139,13 @@ class S3Downloader:
             logger.info(f"Loading {map_file}...")
             map_data = load_map_sample(map_file)
 
-            print("Available keys in map_sample.json.gz:")
+            logger.info("Available keys in map_sample.json.gz:")
             for key, task_ids in map_data.items():
-                print(f"  {key}: {len(task_ids)} task IDs")
+                logger.info(f"  {key}: {len(task_ids)} task IDs")
                 if len(task_ids) <= 10:
-                    print(f"    Task IDs: {task_ids}")
+                    logger.info(f"    Task IDs: {task_ids}")
                 else:
-                    print(f"    Task IDs: {task_ids[:10]}... (and {len(task_ids) - 10} more)")
+                    logger.info(f"    Task IDs: {task_ids[:10]}... (and {len(task_ids) - 10} more)")
 
         except Exception as e:
             logger.error(f"Failed to list keys: {e}")
