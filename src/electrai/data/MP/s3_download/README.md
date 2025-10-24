@@ -6,7 +6,7 @@ This script reads task IDs from `map_sample.json.gz` for any specified key and d
 
 1. Install required dependencies:
    ```bash
-   pip install -r requirements_s3.txt
+   uv pip install -r requirements.txt
    ```
 
 2. No AWS credentials required! The Materials Project S3 bucket is public and accessible without authentication.
@@ -15,27 +15,27 @@ This script reads task IDs from `map_sample.json.gz` for any specified key and d
 
 ### Basic Usage (downloads GGA data by default)
 ```bash
-python download_from_s3.py
+python download_from_s3.py download
 ```
 
 ### Download specific key
 ```bash
-python download_from_s3.py --key GGA
+python download_from_s3.py download --key=GGA
 ```
 
 ### List available keys
 ```bash
-python download_from_s3.py --list-keys
+python download_from_s3.py list_keys
 ```
 
 ### Custom output directory
 ```bash
-python download_from_s3.py --key GGA --output-dir ./my_data
+python download_from_s3.py download --key=GGA --output_dir=./my_data
 ```
 
 ### Full command line options
 ```bash
-python download_from_s3.py --help
+python download_from_s3.py download --help
 ```
 
 ## What the script does
@@ -54,12 +54,15 @@ The script will:
 
 ## Command Line Options
 
+### download command
 - `--key`: Key to extract from map_sample.json.gz (default: GGA)
-- `--map-file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
-- `--output-dir`: Local directory to save downloaded files (default: ./downloaded_chgcars)
+- `--map_file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
+- `--output_dir`: Local directory to save downloaded files (default: ./downloaded_chgcars)
 - `--bucket`: S3 bucket name (default: materialsproject-parsed)
 - `--prefix`: S3 prefix/folder path (default: chgcars)
-- `--list-keys`: List available keys in map_sample.json.gz and exit
+
+### list_keys command
+- `--map_file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
 
 ## Example GGA Task IDs
 

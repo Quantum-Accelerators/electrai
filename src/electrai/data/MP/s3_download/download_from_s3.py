@@ -16,8 +16,7 @@ import boto3
 from botocore import UNSIGNED
 from botocore.config import Config
 from pathlib import Path
-import os
-import argparse
+import fire
 from typing import List, Dict, Any
 import logging
 
@@ -86,87 +85,72 @@ def download_from_s3(task_ids: List[str], bucket_name: str, s3_prefix: str,
     logger.info(f"Download complete: {downloaded_count} successful, {failed_count} failed")
 
 
-def parse_arguments():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Download Materials Project task files from S3 based on map_sample.json.gz"
-    )
-    parser.add_argument(
-        "--key", 
-        default="GGA",
-        help="Key to extract from map_sample.json.gz (default: GGA)"
-    )
-    parser.add_argument(
-        "--map-file",
-        default="../map/map_sample.json.gz",
-        help="Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)"
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="./downloaded_chgcars",
-        help="Local directory to save downloaded files (default: ./downloaded_chgcars)"
-    )
-    parser.add_argument(
-        "--bucket",
-        default="materialsproject-parsed",
-        help="S3 bucket name (default: materialsproject-parsed)"
-    )
-    parser.add_argument(
-        "--prefix",
-        default="chgcars",
-        help="S3 prefix/folder path (default: chgcars)"
-    )
-    parser.add_argument(
-        "--list-keys",
-        action="store_true",
-        help="List available keys in map_sample.json.gz and exit"
-    )
-    
-    return parser.parse_args()
+class S3Downloader:
+    """Download Materials Project task files from S3 based on map_sample.json.gz."""
 
+    def download(
+        self,
+        key: str = "GGA",
+        map_file: str = "../map/map_sample.json.gz",
+        output_dir: str = "./downloaded_chgcars",
+        bucket: str = "materialsproject-parsed",
+        prefix: str = "chgcars"
+    ):
+        """
+        Download files from S3 for a specified key.
 
-def list_available_keys(map_data: Dict[str, Any]) -> None:
-    """List all available keys in the map data."""
-    print("Available keys in map_sample.json.gz:")
-    for key, task_ids in map_data.items():
-        print(f"  {key}: {len(task_ids)} task IDs")
-        if len(task_ids) <= 10:
-            print(f"    Task IDs: {task_ids}")
-        else:
-            print(f"    Task IDs: {task_ids[:10]}... (and {len(task_ids) - 10} more)")
+        Args:
+            key: Key to extract from map_sample.json.gz (default: GGA)
+            map_file: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
+            output_dir: Local directory to save downloaded files (default: ./downloaded_chgcars)
+            bucket: S3 bucket name (default: materialsproject-parsed)
+            prefix: S3 prefix/folder path (default: chgcars)
+        """
+        try:
+            # Load the map sample data
+            logger.info(f"Loading {map_file}...")
+            map_data = load_map_sample(map_file)
 
+            # Extract task IDs for the specified key
+            logger.info(f"Extracting task IDs for key '{key}'...")
+            task_ids = get_task_ids(map_data, key)
 
-def main():
-    """Main function to orchestrate the download process."""
-    args = parse_arguments()
-    
-    try:
-        # Load the map sample data
-        logger.info(f"Loading {args.map_file}...")
-        map_data = load_map_sample(args.map_file)
-        
-        # List available keys if requested
-        if args.list_keys:
-            list_available_keys(map_data)
-            return
-        
-        # Extract task IDs for the specified key
-        logger.info(f"Extracting task IDs for key '{args.key}'...")
-        task_ids = get_task_ids(map_data, args.key)
-        
-        # Print the task IDs for verification
-        logger.info(f"Task IDs for '{args.key}': {task_ids}")
-        
-        # Download files from S3
-        logger.info(f"Starting download from s3://{args.bucket}/{args.prefix}/...")
-        download_from_s3(task_ids, args.bucket, args.prefix, args.output_dir)
-        
-        logger.info("Script completed successfully!")
-        
-    except Exception as e:
-        logger.error(f"Script failed: {e}")
-        raise
+            # Print the task IDs for verification
+            logger.info(f"Task IDs for '{key}': {task_ids}")
+
+            # Download files from S3
+            logger.info(f"Starting download from s3://{bucket}/{prefix}/...")
+            download_from_s3(task_ids, bucket, prefix, output_dir)
+
+            logger.info("Script completed successfully!")
+
+        except Exception as e:
+            logger.error(f"Script failed: {e}")
+            raise
+
+    def list_keys(self, map_file: str = "../map/map_sample.json.gz"):
+        """
+        List available keys in map_sample.json.gz.
+
+        Args:
+            map_file: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
+        """
+        try:
+            logger.info(f"Loading {map_file}...")
+            map_data = load_map_sample(map_file)
+
+            print("Available keys in map_sample.json.gz:")
+            for key, task_ids in map_data.items():
+                print(f"  {key}: {len(task_ids)} task IDs")
+                if len(task_ids) <= 10:
+                    print(f"    Task IDs: {task_ids}")
+                else:
+                    print(f"    Task IDs: {task_ids[:10]}... (and {len(task_ids) - 10} more)")
+
+        except Exception as e:
+            logger.error(f"Failed to list keys: {e}")
+            raise
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(S3Downloader)
