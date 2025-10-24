@@ -13,6 +13,8 @@ Note: No AWS credentials required - the Materials Project S3 bucket is public.
 import json
 import gzip
 import boto3
+from botocore import UNSIGNED
+from botocore.config import Config
 from pathlib import Path
 import os
 from typing import List, Dict, Any
@@ -60,7 +62,7 @@ def download_from_s3(task_ids: List[str], bucket_name: str, s3_prefix: str,
     Path(local_dir).mkdir(parents=True, exist_ok=True)
     
     # Initialize S3 client with no-sign-request for public bucket
-    s3_client = boto3.client('s3', config=boto3.session.Config(signature_version=boto3.UNSIGNED))
+    s3_client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
     
     downloaded_count = 0
     failed_count = 0
@@ -85,7 +87,7 @@ def download_from_s3(task_ids: List[str], bucket_name: str, s3_prefix: str,
 def main():
     """Main function to orchestrate the download process."""
     # Configuration
-    map_sample_path = "map_sample.json.gz"
+    map_sample_path = "../map/map_sample.json.gz"
     bucket_name = "materialsproject-parsed"
     s3_prefix = "chgcars"
     local_output_dir = "./downloaded_chgcars"
