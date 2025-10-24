@@ -1,6 +1,6 @@
-# S3 GGA Data Download Script
+# S3 Materials Project Data Download Script
 
-This script reads the GGA items from `map_sample.json.gz` and downloads the corresponding files from the Materials Project S3 bucket.
+This script reads task IDs from `map_sample.json.gz` for any specified key and downloads the corresponding files from the Materials Project S3 bucket.
 
 ## Prerequisites
 
@@ -13,16 +13,37 @@ This script reads the GGA items from `map_sample.json.gz` and downloads the corr
 
 ## Usage
 
+### Basic Usage (downloads GGA data by default)
 ```bash
-python read_gga_from_s3.py
+python download_from_s3.py
+```
+
+### Download specific key
+```bash
+python download_from_s3.py --key GGA
+```
+
+### List available keys
+```bash
+python download_from_s3.py --list-keys
+```
+
+### Custom output directory
+```bash
+python download_from_s3.py --key GGA --output-dir ./my_data
+```
+
+### Full command line options
+```bash
+python download_from_s3.py --help
 ```
 
 ## What the script does
 
-1. **Loads map_sample.json.gz**: Reads the compressed JSON file containing the GGA task IDs
-2. **Extracts GGA task IDs**: Gets the list of Materials Project task IDs for GGA calculations
+1. **Loads map_sample.json.gz**: Reads the compressed JSON file containing task IDs for various keys
+2. **Extracts task IDs**: Gets the list of Materials Project task IDs for the specified key
 3. **Downloads from S3**: Fetches the corresponding `.json.gz` files from `s3://materialsproject-parsed/chgcars/`
-4. **Saves locally**: Stores the downloaded files in `./downloaded_chgcars/` directory
+4. **Saves locally**: Stores the downloaded files in the specified directory
 
 ## Output
 
@@ -31,9 +52,18 @@ The script will:
 - Download files like `mp-2355719.json.gz`, `mp-1933176.json.gz`, etc.
 - Provide logging output showing progress and any errors
 
-## Expected GGA Task IDs
+## Command Line Options
 
-Based on the map_sample.json.gz file, the script will download files for these task IDs:
+- `--key`: Key to extract from map_sample.json.gz (default: GGA)
+- `--map-file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
+- `--output-dir`: Local directory to save downloaded files (default: ./downloaded_chgcars)
+- `--bucket`: S3 bucket name (default: materialsproject-parsed)
+- `--prefix`: S3 prefix/folder path (default: chgcars)
+- `--list-keys`: List available keys in map_sample.json.gz and exit
+
+## Example GGA Task IDs
+
+Based on the current map_sample.json.gz file, the GGA key contains these task IDs:
 - mp-2355719
 - mp-1933176
 - mp-2507978
