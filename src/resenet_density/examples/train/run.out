@@ -1,13 +1,13 @@
 Epoch 1
 -------------------------------
 loss: 1.550433e+00  [    0/    2]
-Test Error:  Avg loss: 1.496014e+00 
+Test Error:  Avg loss: 1.496014e+00
 
 Learning Rate:  0.1
 Epoch 2
 -------------------------------
 loss: 1.468319e+00  [    0/    2]
-Test Error:  Avg loss: 1.018469e+00 
+Test Error:  Avg loss: 1.018469e+00
 
 Learning Rate:  0.0
 Done!

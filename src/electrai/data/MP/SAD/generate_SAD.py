@@ -45,12 +45,12 @@ margin = 4
 # atoms = [" ".join(line.split()[:4]) for line in atoms]
 # geom_cen = np.mean(coords, axis=0)
 # box = np.max(coords, axis=0)-np.min(coords, axis=0) + margin
-# box = np.ceil(box * np.sqrt(2 * cut1) / np.pi / lib.param.BOHR) 
+# box = np.ceil(box * np.sqrt(2 * cut1) / np.pi / lib.param.BOHR)
 # box = np.diag(box / np.sqrt(2 * cut1) * np.pi * lib.param.BOHR - 1e-4)
 data = loadfn(data_dir)
 natoms = data['data'].structure.num_sites
 coords = data['data'].structure.cart_coords
-charge = # how to derive/set this? 
+charge = # how to derive/set this?
 atoms = [" ".join(line.split()[:4]) for line in atoms]
 geom_cen = np.mean(coords, axis=0)
 box = data['data'].structure.lattice.matrix

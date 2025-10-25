@@ -9,22 +9,21 @@ normalize_data: True
 train_fraction: 0.8
 random_state: 42
 normalize_label: True
-downsample_data: 2       
-downsample_label: 1    
+downsample_data: 2
+downsample_label: 1
 
 # Model parameters
-device: cuda:0         
-n_channels: 1 #32         
-n_residual_blocks: 1 #32    
-n_upscale_layers: 1     
-kernel_size1: 5        
-kernel_size2: 5        
+device: cuda:0
+n_channels: 1 #32
+n_residual_blocks: 1 #32
+n_upscale_layers: 1
+kernel_size1: 5
+kernel_size2: 5
 model_prefix: chk
 
 # Training parameters
 save_every_epochs: 2
-epochs: 2                
+epochs: 2
 nbatch: 1
 lr: 0.1
 weight_decay: 0.0
-
