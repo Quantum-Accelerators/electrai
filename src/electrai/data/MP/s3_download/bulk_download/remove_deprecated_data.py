@@ -11,7 +11,7 @@ from shutil import move
 from tqdm import tqdm
 
 task_ids = []
-with open("metadata/deprecated_task_ids.csv", "r") as f:
+with open("metadata/deprecated_task_ids.csv") as f:
     reader = csv.reader(f)
     for row in reader:
         task_ids.extend(row)

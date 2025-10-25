@@ -7,7 +7,6 @@ from __future__ import annotations
 import gzip
 import json
 import os
-from pathlib import Path
 from shutil import move
 
 from tqdm import tqdm
@@ -21,7 +20,7 @@ for folder in ("elfcars", "chgcars"):
 
     files_to_remove = []
     for task_id in tqdm(task_ids):
-        if task_id not in map_task_material.keys():
+        if task_id not in map_task_material:
             files_to_remove.append(task_id)
 
     os.makedirs("trash/missing_task_material_mapping/chgcars/", exist_ok=True)
