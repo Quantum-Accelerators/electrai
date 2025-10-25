@@ -12,7 +12,7 @@ from shutil import move
 
 from tqdm import tqdm
 
-for folder in ("elfcars", "chgcars", "aeccar0s", "aeccar2"):
+for folder in ("elfcars", "chgcars"):
     task_ids = [f.split(".")[0] for f in os.listdir(folder)]
 
     map_file = "metadata/task_id_to_material_id.json.gz"

@@ -10,7 +10,7 @@ from shutil import move
 from monty.serialization import loadfn
 from tqdm import tqdm
 
-folders = ("elfcars", "chgcars", "aeccar0s", "aeccar2s")
+folders = ("elfcars", "chgcars")
 task_ids = []
 for folder in folders:
     task_ids.extend([f.split(".")[0] for f in os.listdir(folder)])
@@ -24,7 +24,7 @@ for task_id in tqdm(task_ids):
     if task_doc["input"]["incar"].get("ICHARG", 0) >= 10:
         files_to_remove.append(task_id)
 
-for file_type in ("elfcars", "chgcars", "aeccar0s", "aeccar2s"):
+for file_type in folders:
     os.makedirs(f"trash/nscf/{file_type}", exist_ok=True)
     for file_to_remove in files_to_remove:
         if os.path.exists(f"{file_type}/{file_to_remove}.json.gz"):

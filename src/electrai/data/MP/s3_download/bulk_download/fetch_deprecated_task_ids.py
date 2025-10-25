@@ -2,6 +2,8 @@
 Writes out a CSV file of all deprecated material IDs and task IDs
 """
 
+from __future__ import annotations
+
 import csv
 import os
 

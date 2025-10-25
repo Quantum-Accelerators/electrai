@@ -2,6 +2,8 @@
 Maps material_id to task_id and vice versa
 """
 
+from __future__ import annotations
+
 import os
 
 from monty.serialization import dumpfn

@@ -17,7 +17,7 @@ with open("metadata/deprecated_task_ids.csv", "r") as f:
         task_ids.extend(row)
 
 for task_id in tqdm(task_ids):
-    for folder in ("elfcars", "chgcars", "aeccar0s", "aeccar2s", "dos"):
+    for folder in ("elfcars", "chgcars"):
         os.makedirs(f"trash/deprecated/{folder}", exist_ok=True)
         if os.path.exists(f"{folder}/{task_id}.json.gz"):
             move(
