@@ -1,3 +1,3 @@
 # ElectrAI
 
-Charge density-related models
+Charge density-related models.
