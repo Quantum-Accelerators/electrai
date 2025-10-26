@@ -1,24 +1,27 @@
-from pyscf.pbc import gto, dft, tools
-from pyscf.scf import addons, atom_hf_pp, hf
-from pyscf import lib
+from __future__ import annotations
+
 from sys import argv
+
 import numpy as np
-from pyscf.pbc.dft.multigrid.multigrid_pair import _eval_rhoG
+from pyscf import lib
 from pyscf.data import elements
+from pyscf.pbc import dft, gto, tools
+from pyscf.pbc.dft.multigrid.multigrid_pair import _eval_rhoG
+from pyscf.scf import addons, atom_hf_pp, hf
 
 atomic_configuration = elements.NRSRHF_CONFIGURATION
 
-'''
+"""
 argv[1]: directory to coordinates
 argv[2]: system name (w/o .xyz)
-'''
+"""
 
-basis1 = '/path/to/gth-szv2.dat'
-basis2 = 'gth-tzv2p'
+basis1 = "/path/to/gth-szv2.dat"
+basis2 = "gth-tzv2p"
 cut1 = 50
 cut2 = 200
-xcstr = 'pbe'
-ppstr = 'gth-' + xcstr
+xcstr = "pbe"
+ppstr = "gth-" + xcstr
 conv_tol = 1e-11
 margin = 4
 
@@ -29,7 +32,7 @@ charge = np.round(sum([float(line.split()[4]) for line in atoms])).astype(int)
 atoms = [" ".join(line.split()[:4]) for line in atoms]
 geom_cen = np.mean(coords, axis=0)
 box = np.max(coords, axis=0)-np.min(coords, axis=0) + margin
-box = np.ceil(box * np.sqrt(2 * cut1) / np.pi / lib.param.BOHR) 
+box = np.ceil(box * np.sqrt(2 * cut1) / np.pi / lib.param.BOHR)
 box = np.diag(box / np.sqrt(2 * cut1) * np.pi * lib.param.BOHR - 1e-4)
 shift = np.diag(box) / 2 - geom_cen
 coords = coords + shift
@@ -68,42 +71,41 @@ def make_mf(cell):
     mf.with_df = df
     mf.conv_tol = conv_tol
     mf.xc = xcstr
-    mf.init_guess = 'atom'
+    mf.init_guess = "atom"
     mf.max_cycle = 200
     return mf
 
 mf22 = make_mf(cell22)
 
-mfs = {'22': mf22}
+mfs = {"22": mf22}
 
 def get_init_guess(mf):
     dm_results = dict()
     for a in mf.cell.atom:
         if a[0] in dm_results:
             continue
+        mol = gto.Cell()
+        mol.atom = f"{a[0]} 0  0  0"
+        mol.charge = 0
+        mol.enuc = 0
+        mol.cart = False
+        mol.basis = basis1
+        mol.pseudo = ppstr
+        mol.spin = elements.NUC[a[0]] % 2
+        mol.build()
+        mol.a = None
+        if mol.nelectron == 1:
+            atm_hf = atom_hf_pp.AtomHF1ePP(mol)
+            atm_hf.run()
+            dm0 = hf.make_rdm1(atm_hf.mo_coeff, atm_hf.mo_occ)
         else:
-            mol = gto.Cell()
-            mol.atom = f"{a[0]} 0  0  0"
-            mol.charge = 0
-            mol.enuc = 0
-            mol.cart = False
-            mol.basis = basis1
-            mol.pseudo = ppstr
-            mol.spin = elements.NUC[a[0]] % 2
-            mol.build()
-            mol.a = None
-            if mol.nelectron == 1:
-                atm_hf = atom_hf_pp.AtomHF1ePP(mol)
-                atm_hf.run()
-                dm0 = hf.make_rdm1(atm_hf.mo_coeff, atm_hf.mo_occ)
-            else:
-                atm_hf = atom_hf_pp.AtomSCFPP(mol)
-                atm_hf.atomic_configuration = atomic_configuration
-                dm0 = atm_hf.get_init_guess(key='1e')
-            mol2 = mol.copy()
-            mol2.basis = basis2
-            mol2.build()
-            dm_results[a[0]] = addons.project_dm_nr2nr(mol, dm0, mol2)
+            atm_hf = atom_hf_pp.AtomSCFPP(mol)
+            atm_hf.atomic_configuration = atomic_configuration
+            dm0 = atm_hf.get_init_guess(key="1e")
+        mol2 = mol.copy()
+        mol2.basis = basis2
+        mol2.build()
+        dm_results[a[0]] = addons.project_dm_nr2nr(mol, dm0, mol2)
     slices = mf.cell.aoslice_by_atom()
     dm = np.zeros([mf.cell.nao]*2)
     for i in range(mf.cell.natm):
@@ -136,4 +138,4 @@ def run_mf(mf, suffix):
     np.save(f"rho_{suffix}.npy", rho)
     return dm0
 
-run_mf(mf22, '22')
+run_mf(mf22, "22")

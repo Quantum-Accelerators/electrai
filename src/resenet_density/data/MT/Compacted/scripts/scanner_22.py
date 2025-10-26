@@ -1,22 +1,24 @@
-from pyscf.pbc.dft.multigrid.multigrid_pair import eval_rho, _update_task_list, _eval_rhoG
-from pyscf.pbc import gto, dft, tools
-from pyscf.scf import addons
+from __future__ import annotations
+
+from sys import argv
+
+import numpy as np
 from pyscf import lib
 from pyscf.dft import rks as molrks
+from pyscf.pbc import dft, gto, tools
+from pyscf.pbc.dft.multigrid.multigrid_pair import _eval_rhoG
 from pyscf.pbc.scf.addons import smearing_
-from sys import argv
-import numpy as np
 
-'''
+"""
 argv[1]: input xyz
-'''
+"""
 
-basis1 = 'gth-szv'
-basis2 = 'gth-tzv2p'
+basis1 = "gth-szv"
+basis2 = "gth-tzv2p"
 cut1 = 50
 cut2 = 200
-xcstr = 'pbe'
-ppstr = 'gth-' + xcstr
+xcstr = "pbe"
+ppstr = "gth-" + xcstr
 conv_tol = 1e-7
 conv_tol_grad = 1e-5
 margin = 4
@@ -52,7 +54,7 @@ coords = coords @ rot_matrix
 geom_cen = np.mean(coords, axis=0)
 
 box = np.max(coords, axis=0)-np.min(coords, axis=0) + margin
-box = np.ceil(box * np.sqrt(2 * cut1) / np.pi / lib.param.BOHR) 
+box = np.ceil(box * np.sqrt(2 * cut1) / np.pi / lib.param.BOHR)
 box = np.diag(box / np.sqrt(2 * cut1) * np.pi * lib.param.BOHR - 1e-4)
 shift = np.diag(box) / 2 - geom_cen
 coords = coords + shift
@@ -99,7 +101,7 @@ cell22.basis = basis2
 cell22.ke_cutoff = opt_cut2
 cell22.build()
 
-cells = {'11': cell11, '12': cell12, '21': cell21, '22': cell22}
+cells = {"11": cell11, "12": cell12, "21": cell21, "22": cell22}
 
 def make_mf(cell):
     df = dft.multigrid.MultiGridFFTDF2(cell)
@@ -108,7 +110,7 @@ def make_mf(cell):
     mf.conv_tol = conv_tol
     mf.conv_tol_grad = conv_tol_grad
     mf.xc = xcstr
-    mf.init_guess = 'atom'
+    mf.init_guess = "atom"
     mf.max_cycle = 200
     mf.verbose = 4
     mf = smearing_(mf, sigma=sigma)
@@ -119,7 +121,7 @@ mf12 = make_mf(cell12)
 mf21 = make_mf(cell21)
 mf22 = make_mf(cell22)
 
-mfs = {'11': mf11, '12': mf12, '21': mf21, '22': mf22}
+mfs = {"11": mf11, "12": mf12, "21": mf21, "22": mf22}
 
 def run_mf(mf, suffix):
     assert mf is mfs[suffix]
@@ -128,7 +130,7 @@ def run_mf(mf, suffix):
     dm *= (mf.mol.nelectron / nelec)
     ni = mf._numint
     rho = get_rho(mf, dm)
-    np.save(f"rho_atom.npy", rho)
+    np.save("rho_atom.npy", rho)
     E = mf.kernel(dm0=dm)
     if not mf.converged:
         print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
@@ -142,4 +144,4 @@ def run_mf(mf, suffix):
     np.save(f"rho_{suffix}.npy", rho)
     return dm
 
-run_mf(mf22, '22')
+run_mf(mf22, "22")

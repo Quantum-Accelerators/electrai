@@ -1,5 +1,8 @@
-from .registry import DATASET_REGISTRY, register_dataset, get_dataset
+from __future__ import annotations
+
 import importlib
 
-for module in ["chgcar_read"]:  
+from .registry import DATASET_REGISTRY, get_dataset, register_dataset
+
+for module in ["chgcar_read"]:
     importlib.import_module(f"{__name__}.{module}")
