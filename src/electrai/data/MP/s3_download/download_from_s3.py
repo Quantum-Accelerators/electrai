@@ -56,7 +56,7 @@ def get_task_ids(map_data: dict[str, Any], key: str) -> list[str]:
 
 
 def download_single_file(
-    s3_client, task_id: str, bucket_name: str, s3_prefix: str, local_dir: str
+    s3_client, task_id: str, bucket_name: str, s3_prefix: str, local_dir: Path
 ) -> tuple[str, bool]:
     """
     Download a single file from S3.
@@ -72,7 +72,7 @@ def download_single_file(
         Tuple of (task_id, success_flag)
     """
     s3_key = f"{s3_prefix}/{task_id}.json.gz"
-    local_file_path = Path(local_dir) / f"{task_id}.json.gz"
+    local_file_path = local_dir / f"{task_id}.json.gz"
 
     try:
         logger.info(f"Downloading {s3_key} to {local_file_path}")
@@ -88,7 +88,7 @@ def download_from_s3(
     task_ids: list[str],
     bucket_name: str,
     s3_prefix: str,
-    local_dir: str = "./downloaded_chgcars",
+    local_dir: str,
     max_workers: int = 10,
 ) -> None:
     """
@@ -101,8 +101,10 @@ def download_from_s3(
         local_dir: Local directory to save files
         max_workers: Maximum number of worker threads (default: 10)
     """
+    local_dir_path = Path(local_dir).expanduser()
+
     # Create local directory if it doesn't exist
-    Path(local_dir).mkdir(parents=True, exist_ok=True)
+    local_dir_path.mkdir(parents=True, exist_ok=True)
 
     # Initialize S3 client with no-sign-request for public bucket
     s3_client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
@@ -120,7 +122,7 @@ def download_from_s3(
                 task_id,
                 bucket_name,
                 s3_prefix,
-                local_dir,
+                local_dir_path,
             ): task_id
             for task_id in task_ids
         }
@@ -145,7 +147,7 @@ class S3Downloader:
         self,
         key: str = "GGA",
         map_file: str = "../map/chgcars_functional_to_task_ids.json.gz",
-        output_dir: str = Path("~/data/MP/downloaded_chgcars").expanduser().as_posix(),
+        output_dir: str = "~/data/MP/downloaded_chgcars",
         bucket: str = "materialsproject-parsed",
         prefix: str = "chgcars",
         max_workers: int = 10,
@@ -175,7 +177,9 @@ class S3Downloader:
 
             # Download files from S3
             logger.info(f"Starting download from s3://{bucket}/{prefix}/...")
-            download_from_s3(task_ids, bucket, prefix, output_dir, max_workers)
+            download_from_s3(
+                task_ids, bucket, prefix, f"{output_dir}/{key}", max_workers
+            )
 
             logger.info("Script completed successfully!")
 

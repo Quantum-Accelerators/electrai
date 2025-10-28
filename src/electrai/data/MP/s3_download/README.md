@@ -48,7 +48,7 @@ python download_from_s3.py download --help
 1. **Loads chgcars_functional_to_task_ids.json.gz**: Reads the compressed JSON file containing task IDs for various keys
 2. **Extracts task IDs**: Gets the list of Materials Project task IDs for the specified key
 3. **Downloads from S3**: Fetches the corresponding `.json.gz` files from `s3://materialsproject-parsed/chgcars/` using parallel processing
-4. **Saves locally**: Stores the downloaded files in the specified directory
+4. **Saves locally**: Stores the downloaded files in the specified directory under the corresponding key
 
 ## Output
 
