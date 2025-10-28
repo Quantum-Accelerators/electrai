@@ -144,8 +144,8 @@ class S3Downloader:
     def download(
         self,
         key: str = "GGA",
-        map_file: str = "../map/map_sample.json.gz",
-        output_dir: str = "./downloaded_chgcars",
+        map_file: str = "../map/chgcars_functional_to_task_ids.json.gz",
+        output_dir: str = Path("~/data/MP/downloaded_chgcars").expanduser().as_posix(),
         bucket: str = "materialsproject-parsed",
         prefix: str = "chgcars",
         max_workers: int = 10,
@@ -155,8 +155,8 @@ class S3Downloader:
 
         Args:
             key: Key to extract from map_sample.json.gz (default: GGA)
-            map_file: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
-            output_dir: Local directory to save downloaded files (default: ./downloaded_chgcars)
+            map_file: Path to chgcars_functional_to_task_ids.json.gz (default: ../map/chgcars_functional_to_task_ids.json.gz)
+            output_dir: Local directory to save downloaded files (default: ~/data/MP/downloaded_chgcars)
             bucket: S3 bucket name (default: materialsproject-parsed)
             prefix: S3 prefix/folder path (default: chgcars)
             max_workers: Maximum number of worker threads for parallel downloads (default: 10)
@@ -183,12 +183,14 @@ class S3Downloader:
             logger.error(f"Script failed: {e}")
             raise
 
-    def list_keys(self, map_file: str = "../map/map_sample.json.gz"):
+    def list_keys(
+        self, map_file: str = "../map/chgcars_functional_to_task_ids.json.gz"
+    ):
         """
         List available keys in map_sample.json.gz.
 
         Args:
-            map_file: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
+            map_file: Path to chgcars_functional_to_task_ids.json.gz (default: ../map/chgcars_functional_to_task_ids.json.gz)
         """
         try:
             logger.info(f"Loading {map_file}...")

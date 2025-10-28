@@ -1,6 +1,6 @@
 # S3 Materials Project Data Download Script
 
-This script reads task IDs from `map_sample.json.gz` for any specified key and downloads the corresponding files from the Materials Project S3 bucket.
+This script reads task IDs from `chgcars_functional_to_task_ids.json.gz` for any specified key and downloads the corresponding files from the Materials Project S3 bucket.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ python download_from_s3.py download --help
 
 ## What the script does
 
-1. **Loads map_sample.json.gz**: Reads the compressed JSON file containing task IDs for various keys
+1. **Loads chgcars_functional_to_task_ids.json.gz**: Reads the compressed JSON file containing task IDs for various keys
 2. **Extracts task IDs**: Gets the list of Materials Project task IDs for the specified key
 3. **Downloads from S3**: Fetches the corresponding `.json.gz` files from `s3://materialsproject-parsed/chgcars/` using parallel processing
 4. **Saves locally**: Stores the downloaded files in the specified directory
@@ -60,15 +60,15 @@ The script will:
 ## Command Line Options
 
 ### download command
-- `--key`: Key to extract from map_sample.json.gz (default: GGA)
-- `--map_file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
-- `--output_dir`: Local directory to save downloaded files (default: ./downloaded_chgcars)
+- `--key`: Key to extract from chgcars_functional_to_task_ids.json.gz (default: GGA)
+- `--map_file`: Path to chgcars_functional_to_task_ids.json.gz file (default: ../map/chgcars_functional_to_task_ids.json.gz)
+- `--output_dir`: Local directory to save downloaded files (default: ~/data/MP/downloaded_chgcars)
 - `--bucket`: S3 bucket name (default: materialsproject-parsed)
 - `--prefix`: S3 prefix/folder path (default: chgcars)
 - `--max_workers`: Maximum number of worker threads for parallel downloads (default: 10)
 
 ### list_keys command
-- `--map_file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)
+- `--map_file`: Path to chgcars_functional_to_task_ids.json.gz file (default: ../map/chgcars_functional_to_task_ids.json.gz)
 
 ## Example GGA Task IDs
 
