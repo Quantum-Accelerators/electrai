@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Script to read task IDs from map_sample.json.gz and fetch corresponding files from S3.
 
@@ -10,25 +9,30 @@ This script:
 Note: No AWS credentials required - the Materials Project S3 bucket is public.
 """
 
-import json
+from __future__ import annotations
+
 import gzip
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
 import boto3
+import fire
 from botocore import UNSIGNED
 from botocore.config import Config
-from pathlib import Path
-import fire
-from typing import List, Dict, Any
-import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
-def load_map_sample(file_path: str) -> Dict[str, Any]:
+def load_map_sample(file_path: str) -> dict[str, Any]:
     """Load the map_sample.json.gz file and return the data."""
     try:
-        with gzip.open(file_path, 'rt') as f:
+        with gzip.open(file_path, "rt") as f:
             data = json.load(f)
         logger.info(f"Successfully loaded map_sample.json.gz from {file_path}")
         return data
@@ -37,22 +41,28 @@ def load_map_sample(file_path: str) -> Dict[str, Any]:
         raise
 
 
-def get_task_ids(map_data: Dict[str, Any], key: str) -> List[str]:
+def get_task_ids(map_data: dict[str, Any], key: str) -> list[str]:
     """Extract task IDs from the map data for the specified key."""
     if key not in map_data:
         available_keys = list(map_data.keys())
-        raise KeyError(f"'{key}' key not found in map_sample.json.gz. Available keys: {available_keys}")
-    
+        raise KeyError(
+            f"'{key}' key not found in map_sample.json.gz. Available keys: {available_keys}"
+        )
+
     task_ids = map_data[key]
     logger.info(f"Found {len(task_ids)} task IDs for key '{key}'")
     return task_ids
 
 
-def download_from_s3(task_ids: List[str], bucket_name: str, s3_prefix: str, 
-                    local_dir: str = "./downloaded_chgcars") -> None:
+def download_from_s3(
+    task_ids: list[str],
+    bucket_name: str,
+    s3_prefix: str,
+    local_dir: str = "./downloaded_chgcars",
+) -> None:
     """
     Download files from S3 for the given task IDs.
-    
+
     Args:
         task_ids: List of task IDs to download
         bucket_name: S3 bucket name
@@ -61,28 +71,30 @@ def download_from_s3(task_ids: List[str], bucket_name: str, s3_prefix: str,
     """
     # Create local directory if it doesn't exist
     Path(local_dir).mkdir(parents=True, exist_ok=True)
-    
+
     # Initialize S3 client with no-sign-request for public bucket
-    s3_client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
-    
+    s3_client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+
     downloaded_count = 0
     failed_count = 0
-    
+
     for task_id in task_ids:
         s3_key = f"{s3_prefix}/{task_id}.json.gz"
         local_file_path = Path(local_dir) / f"{task_id}.json.gz"
-        
+
         try:
             logger.info(f"Downloading {s3_key} to {local_file_path}")
             s3_client.download_file(bucket_name, s3_key, str(local_file_path))
             downloaded_count += 1
             logger.info(f"Successfully downloaded {task_id}.json.gz")
-            
+
         except Exception as e:
             logger.error(f"Failed to download {s3_key}: {e}")
             failed_count += 1
-    
-    logger.info(f"Download complete: {downloaded_count} successful, {failed_count} failed")
+
+    logger.info(
+        f"Download complete: {downloaded_count} successful, {failed_count} failed"
+    )
 
 
 class S3Downloader:
@@ -94,7 +106,7 @@ class S3Downloader:
         map_file: str = "../map/map_sample.json.gz",
         output_dir: str = "./downloaded_chgcars",
         bucket: str = "materialsproject-parsed",
-        prefix: str = "chgcars"
+        prefix: str = "chgcars",
     ):
         """
         Download files from S3 for a specified key.
@@ -145,7 +157,9 @@ class S3Downloader:
                 if len(task_ids) <= 10:
                     logger.info(f"    Task IDs: {task_ids}")
                 else:
-                    logger.info(f"    Task IDs: {task_ids[:10]}... (and {len(task_ids) - 10} more)")
+                    logger.info(
+                        f"    Task IDs: {task_ids[:10]}... (and {len(task_ids) - 10} more)"
+                    )
 
         except Exception as e:
             logger.error(f"Failed to list keys: {e}")
