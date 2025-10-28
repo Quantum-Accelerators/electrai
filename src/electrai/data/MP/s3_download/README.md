@@ -32,6 +32,12 @@ python download_from_s3.py list_keys
 python download_from_s3.py download --key=GGA --output_dir=./my_data
 ```
 
+### Parallel downloads with custom worker count
+```bash
+# Use 5 parallel workers (default is 10)
+python download_from_s3.py download --key=GGA --max_workers=5
+```
+
 ### Full command line options
 ```bash
 python download_from_s3.py download --help
@@ -41,7 +47,7 @@ python download_from_s3.py download --help
 
 1. **Loads map_sample.json.gz**: Reads the compressed JSON file containing task IDs for various keys
 2. **Extracts task IDs**: Gets the list of Materials Project task IDs for the specified key
-3. **Downloads from S3**: Fetches the corresponding `.json.gz` files from `s3://materialsproject-parsed/chgcars/`
+3. **Downloads from S3**: Fetches the corresponding `.json.gz` files from `s3://materialsproject-parsed/chgcars/` using parallel processing
 4. **Saves locally**: Stores the downloaded files in the specified directory
 
 ## Output
@@ -59,6 +65,7 @@ The script will:
 - `--output_dir`: Local directory to save downloaded files (default: ./downloaded_chgcars)
 - `--bucket`: S3 bucket name (default: materialsproject-parsed)
 - `--prefix`: S3 prefix/folder path (default: chgcars)
+- `--max_workers`: Maximum number of worker threads for parallel downloads (default: 10)
 
 ### list_keys command
 - `--map_file`: Path to map_sample.json.gz file (default: ../map/map_sample.json.gz)

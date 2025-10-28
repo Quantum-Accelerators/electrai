@@ -14,6 +14,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -54,20 +55,51 @@ def get_task_ids(map_data: dict[str, Any], key: str) -> list[str]:
     return task_ids
 
 
+def download_single_file(
+    s3_client, task_id: str, bucket_name: str, s3_prefix: str, local_dir: str
+) -> tuple[str, bool]:
+    """
+    Download a single file from S3.
+
+    Args:
+        s3_client: Boto3 S3 client
+        task_id: Task ID to download
+        bucket_name: S3 bucket name
+        s3_prefix: S3 prefix (folder path)
+        local_dir: Local directory to save file
+
+    Returns:
+        Tuple of (task_id, success_flag)
+    """
+    s3_key = f"{s3_prefix}/{task_id}.json.gz"
+    local_file_path = Path(local_dir) / f"{task_id}.json.gz"
+
+    try:
+        logger.info(f"Downloading {s3_key} to {local_file_path}")
+        s3_client.download_file(bucket_name, s3_key, str(local_file_path))
+        logger.info(f"Successfully downloaded {task_id}.json.gz")
+        return task_id, True
+    except Exception as e:
+        logger.error(f"Failed to download {s3_key}: {e}")
+        return task_id, False
+
+
 def download_from_s3(
     task_ids: list[str],
     bucket_name: str,
     s3_prefix: str,
     local_dir: str = "./downloaded_chgcars",
+    max_workers: int = 10,
 ) -> None:
     """
-    Download files from S3 for the given task IDs.
+    Download files from S3 for the given task IDs using parallel processing.
 
     Args:
         task_ids: List of task IDs to download
         bucket_name: S3 bucket name
         s3_prefix: S3 prefix (folder path)
         local_dir: Local directory to save files
+        max_workers: Maximum number of worker threads (default: 10)
     """
     # Create local directory if it doesn't exist
     Path(local_dir).mkdir(parents=True, exist_ok=True)
@@ -78,19 +110,28 @@ def download_from_s3(
     downloaded_count = 0
     failed_count = 0
 
-    for task_id in task_ids:
-        s3_key = f"{s3_prefix}/{task_id}.json.gz"
-        local_file_path = Path(local_dir) / f"{task_id}.json.gz"
+    # Use ThreadPoolExecutor for parallel downloads
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all download tasks
+        future_to_task = {
+            executor.submit(
+                download_single_file,
+                s3_client,
+                task_id,
+                bucket_name,
+                s3_prefix,
+                local_dir,
+            ): task_id
+            for task_id in task_ids
+        }
 
-        try:
-            logger.info(f"Downloading {s3_key} to {local_file_path}")
-            s3_client.download_file(bucket_name, s3_key, str(local_file_path))
-            downloaded_count += 1
-            logger.info(f"Successfully downloaded {task_id}.json.gz")
-
-        except Exception as e:
-            logger.error(f"Failed to download {s3_key}: {e}")
-            failed_count += 1
+        # Process completed downloads
+        for future in as_completed(future_to_task):
+            _, success = future.result()
+            if success:
+                downloaded_count += 1
+            else:
+                failed_count += 1
 
     logger.info(
         f"Download complete: {downloaded_count} successful, {failed_count} failed"
@@ -107,6 +148,7 @@ class S3Downloader:
         output_dir: str = "./downloaded_chgcars",
         bucket: str = "materialsproject-parsed",
         prefix: str = "chgcars",
+        max_workers: int = 10,
     ):
         """
         Download files from S3 for a specified key.
@@ -117,6 +159,7 @@ class S3Downloader:
             output_dir: Local directory to save downloaded files (default: ./downloaded_chgcars)
             bucket: S3 bucket name (default: materialsproject-parsed)
             prefix: S3 prefix/folder path (default: chgcars)
+            max_workers: Maximum number of worker threads for parallel downloads (default: 10)
         """
         try:
             # Load the map sample data
@@ -132,7 +175,7 @@ class S3Downloader:
 
             # Download files from S3
             logger.info(f"Starting download from s3://{bucket}/{prefix}/...")
-            download_from_s3(task_ids, bucket, prefix, output_dir)
+            download_from_s3(task_ids, bucket, prefix, output_dir, max_workers)
 
             logger.info("Script completed successfully!")
 
