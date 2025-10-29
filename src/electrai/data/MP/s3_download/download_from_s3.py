@@ -16,6 +16,7 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -94,7 +95,7 @@ def download_from_s3(
     s3_prefix: str,
     local_dir: str,
     max_workers: int = 10,
-) -> None:
+) -> tuple[int, int]:
     """
     Download files from S3 for the given task IDs using parallel processing.
 
@@ -104,6 +105,9 @@ def download_from_s3(
         s3_prefix: S3 prefix (folder path)
         local_dir: Local directory to save files
         max_workers: Maximum number of worker threads (default: 10)
+
+    Returns:
+        Tuple of (downloaded_count, failed_count)
     """
     local_dir_path = Path(local_dir).expanduser()
 
@@ -142,6 +146,7 @@ def download_from_s3(
     logger.info(
         f"Download complete: {downloaded_count} successful, {failed_count} failed"
     )
+    return downloaded_count, failed_count
 
 
 def lookup_mp_version() -> str:
@@ -157,6 +162,48 @@ def lookup_mp_version() -> str:
 
     with MPRester(MP_API_KEY) as mpr:
         return mpr.get_database_version() or DEFAULT_MP_VERSION
+
+
+def write_metadata(
+    local_dir: Path,
+    mp_version: str,
+    key: str,
+    bucket: str,
+    prefix: str,
+    task_ids: list[str],
+    downloaded_count: int,
+    failed_count: int,
+) -> None:
+    """
+    Write metadata about the download to a JSON file.
+
+    Args:
+        local_dir: Directory where files were downloaded
+        mp_version: Materials Project database version
+        key: The functional key (e.g., "GGA")
+        bucket: S3 bucket name
+        prefix: S3 prefix
+        task_ids: List of task IDs that were requested
+        downloaded_count: Number of successfully downloaded files
+        failed_count: Number of failed downloads
+    """
+    metadata = {
+        "mp_version": mp_version,
+        "download_timestamp": datetime.now(timezone.utc).isoformat(),
+        "key": key,
+        "s3_bucket": bucket,
+        "s3_prefix": prefix,
+        "total_task_ids": len(task_ids),
+        "downloaded_count": downloaded_count,
+        "failed_count": failed_count,
+        "task_ids": task_ids,
+    }
+
+    metadata_path = local_dir / "metadata.json"
+    with metadata_path.open("w") as f:
+        json.dump(metadata, f, indent=2)
+
+    logger.info(f"Metadata written to {metadata_path}")
 
 
 class S3Downloader:
@@ -198,9 +245,23 @@ class S3Downloader:
             logger.info(f"Materials Project version: {version}")
 
             # Download files from S3
+            download_dir = f"{output_dir}/{key}/{version}"
             logger.info(f"Starting download from s3://{bucket}/{prefix}/...")
-            download_from_s3(
-                task_ids, bucket, prefix, f"{output_dir}/{key}/{version}", max_workers
+            downloaded_count, failed_count = download_from_s3(
+                task_ids, bucket, prefix, download_dir, max_workers
+            )
+
+            # Write metadata
+            local_dir_path = Path(download_dir).expanduser()
+            write_metadata(
+                local_dir_path,
+                version,
+                key,
+                bucket,
+                prefix,
+                task_ids,
+                downloaded_count,
+                failed_count,
             )
 
             logger.info("Script completed successfully!")
