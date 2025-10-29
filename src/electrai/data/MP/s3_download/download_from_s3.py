@@ -14,6 +14,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -22,12 +23,15 @@ import boto3
 import fire
 from botocore import UNSIGNED
 from botocore.config import Config
+from mp_api.client import MPRester
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+DEFAULT_MP_VERSION = "2025.09.25"
 
 
 def load_map_sample(file_path: str) -> dict[str, Any]:
@@ -140,6 +144,21 @@ def download_from_s3(
     )
 
 
+def lookup_mp_version() -> str:
+    """Lookup the Materials Project version."""
+
+    MP_API_KEY = os.environ.get("MP_API_KEY", None)
+
+    if not MP_API_KEY:
+        logger.warning(
+            f"MP_API_KEY is not set, using default version {DEFAULT_MP_VERSION}"
+        )
+        return DEFAULT_MP_VERSION
+
+    with MPRester(MP_API_KEY) as mpr:
+        return mpr.get_database_version() or DEFAULT_MP_VERSION
+
+
 class S3Downloader:
     """Download Materials Project task files from S3 based on map_sample.json.gz."""
 
@@ -175,10 +194,13 @@ class S3Downloader:
             # Print the task IDs for verification
             logger.info(f"Task IDs for '{key}': {task_ids}")
 
+            version = lookup_mp_version()
+            logger.info(f"Materials Project version: {version}")
+
             # Download files from S3
             logger.info(f"Starting download from s3://{bucket}/{prefix}/...")
             download_from_s3(
-                task_ids, bucket, prefix, f"{output_dir}/{key}", max_workers
+                task_ids, bucket, prefix, f"{output_dir}/{key}/{version}", max_workers
             )
 
             logger.info("Script completed successfully!")
