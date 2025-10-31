@@ -1,0 +1,5 @@
+# Requirements for CHGCAR to Zarr conversion
+zarr>=3.1.3
+numcodecs>=0.16.3
+numpy>=1.24.0
+fire>=0.5.0
