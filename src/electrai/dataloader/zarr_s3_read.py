@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import s3fs
 import zarr
 from sklearn.model_selection import train_test_split
 
@@ -74,8 +75,6 @@ class ZarrS3Reader:
 
         if self.use_s3:
             try:
-                import s3fs
-
                 self.s3fs = s3fs.S3FileSystem(**self.s3_kwargs)
                 logger.info("Initialized S3 filesystem for zarr stores")
             except ImportError as e:
@@ -117,8 +116,6 @@ class ZarrS3Reader:
         """
         if self.use_s3 and zarr_path.startswith("s3://"):
             # Open from S3 using s3fs
-            import s3fs
-
             store = s3fs.S3Map(root=zarr_path, s3=self.s3fs, check=False)
             return zarr.open_group(store=store, mode="r")
         else:
@@ -195,9 +192,9 @@ class ZarrS3Reader:
         """
         Load dataset and split into train/test sets.
 
-        Unlike the original implementation, this version does NOT load all data
-        into memory. Instead, it returns lists of references that can be loaded
-        lazily during training.
+        The returned lists contain actual numpy arrays (loaded into memory) to
+        maintain compatibility with the existing RhoData dataset class. For
+        lazy loading, should be updated touse ZarrDataset class instead.
 
         Parameters
         ----------
@@ -206,12 +203,6 @@ class ZarrS3Reader:
         tuple[tuple[list, list, list, list], tuple[list, list, list, list]]
             (train_sets, test_sets) where each set is:
             (data_list, label_list, gridsize_data_list, gridsize_label_list)
-
-        Notes
-        -----
-        The returned lists contain actual numpy arrays (loaded into memory) to
-        maintain compatibility with the existing RhoData dataset class. For true
-        lazy loading, use ZarrDataset class instead.
         """
         from monty.serialization import loadfn
 
