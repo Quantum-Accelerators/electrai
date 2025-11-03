@@ -190,9 +190,9 @@ class TestZarrPathConstruction:
             train_fraction=0.8,
         )
 
-        path = reader._get_zarr_path(tmp_path / "data", "mp-12345")
-        assert isinstance(path, Path)
-        assert path == tmp_path / "data" / "mp-12345.zarr"
+        path = reader._get_zarr_path(str(tmp_path / "data"), "mp-12345")
+        assert isinstance(path, str)
+        assert path == str(tmp_path / "data" / "mp-12345.zarr")
 
     def test_s3_path_construction(self, mock_mapping_file: Path):
         """Test construction of S3 zarr paths."""
@@ -246,10 +246,11 @@ class TestZarrStoreOperations:
             functional="GGA",
             normalize=False,
             train_fraction=0.8,
+            density_type="total",
         )
 
         store = reader.read_zarr_store(mock_zarr_store)
-        charge, gridsize = reader.read_charge_density(store, density_type="total")
+        charge, gridsize = reader.read_charge_density(store)
 
         assert isinstance(charge, np.ndarray)
         assert charge.dtype == np.float32
@@ -268,16 +269,15 @@ class TestZarrStoreOperations:
             functional="GGA",
             normalize=True,
             train_fraction=0.8,
+            density_type="total",
         )
 
         store = reader.read_zarr_store(mock_zarr_store)
-        charge_normalized, gridsize = reader.read_charge_density(
-            store, density_type="total"
-        )
+        charge_normalized, gridsize = reader.read_charge_density(store)
 
         # Compare with non-normalized
         reader.normalize = False
-        charge_raw, _ = reader.read_charge_density(store, density_type="total")
+        charge_raw, _ = reader.read_charge_density(store)
 
         volume = np.prod(gridsize)
         expected = charge_raw / volume
@@ -318,12 +318,13 @@ class TestErrorHandling:
             functional="GGA",
             normalize=False,
             train_fraction=0.8,
+            density_type="nonexistent",
         )
 
         store = reader.read_zarr_store(mock_zarr_store)
 
         with pytest.raises(ValueError, match="not found in zarr store"):
-            reader.read_charge_density(store, density_type="nonexistent")
+            reader.read_charge_density(store)
 
     def test_nonexistent_zarr_store(self, tmp_path: Path, mock_mapping_file: Path):
         """Test error when zarr store doesn't exist."""
@@ -401,7 +402,7 @@ class TestErrorHandling:
         store = reader.read_zarr_store(corrupted_path)
 
         with pytest.raises(ValueError, match="not found in zarr store"):
-            reader.read_charge_density(store, density_type="total")
+            reader.read_charge_density(store)
 
 
 class TestDataSplit:
@@ -510,9 +511,10 @@ class TestDataSplit:
             normalize=False,
             train_fraction=0.8,
             random_state=42,
+            density_type="diff",
         )
 
-        train_sets, test_sets = reader.data_split(density_type="diff")
+        train_sets, test_sets = reader.data_split()
 
         assert len(train_sets[0]) > 0
 

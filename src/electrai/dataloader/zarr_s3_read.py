@@ -49,6 +49,7 @@ class ZarrS3Reader:
         normalize: bool,
         train_fraction: float,
         random_state: int = 42,
+        density_type: str = "total",
         s3_kwargs: dict[str, Any] | None = None,
     ):
         self.data_dir = (
@@ -65,7 +66,7 @@ class ZarrS3Reader:
         self.tf = train_fraction
         self.rs = random_state
         self.s3_kwargs = s3_kwargs or {}
-
+        self.density_type = density_type
         # Determine if we're using S3
         self.use_s3 = str(data_dir).startswith("s3://") or str(label_dir).startswith(
             "s3://"
@@ -82,36 +83,31 @@ class ZarrS3Reader:
                     "s3fs is required for S3 access. Install with: pip install s3fs"
                 ) from e
 
-    def _get_zarr_path(self, base_dir: str | Path, task_id: str) -> str | Path:
+    def _get_zarr_path(self, base_dir: str, task_id: str) -> str:
         """
         Construct the path to a zarr store for a given task_id.
 
         Parameters
         ----------
-        base_dir : str or Path
+        base_dir : str
             Base directory (local or S3)
         task_id : str
             Materials Project task ID
 
         Returns
         -------
-        str or Path
+        str
             Full path to the zarr store
         """
-        if isinstance(base_dir, str) and base_dir.startswith("s3://"):
-            # S3 path
-            return f"{base_dir}/{task_id}.zarr"
-        else:
-            # Local path
-            return Path(base_dir) / f"{task_id}.zarr"
+        return f"{base_dir}/{task_id}.zarr"
 
-    def read_zarr_store(self, zarr_path: str | Path) -> zarr.Group:
+    def read_zarr_store(self, zarr_path: str) -> zarr.Group:
         """
         Open a zarr store from S3 or local filesystem.
 
         Parameters
         ----------
-        zarr_path : str or Path
+        zarr_path : str
             Path to the zarr store
 
         Returns
@@ -119,7 +115,7 @@ class ZarrS3Reader:
         zarr.Group
             Opened zarr group (lazy - data not loaded into memory)
         """
-        if self.use_s3 and isinstance(zarr_path, str) and zarr_path.startswith("s3://"):
+        if self.use_s3 and zarr_path.startswith("s3://"):
             # Open from S3 using s3fs
             import s3fs
 
@@ -127,10 +123,10 @@ class ZarrS3Reader:
             return zarr.open_group(store=store, mode="r")
         else:
             # Open from local filesystem
-            return zarr.open_group(str(zarr_path), mode="r")
+            return zarr.open_group(zarr_path, mode="r")
 
     def read_charge_density(
-        self, zarr_store: zarr.Group, density_type: str = "total"
+        self, zarr_store: zarr.Group
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
         """
         Extract charge density array from zarr store.
@@ -139,15 +135,13 @@ class ZarrS3Reader:
         ----------
         zarr_store : zarr.Group
             Opened zarr group
-        density_type : str, optional
-            Type of density to read: 'total' or 'diff' (default: 'total')
 
         Returns
         -------
         tuple[np.ndarray, tuple[int, int, int]]
             Flattened charge density array and gridsize tuple
         """
-        array_name = f"charge_density_{density_type}"
+        array_name = f"charge_density_{self.density_type}"
 
         if array_name not in zarr_store:
             raise ValueError(
@@ -196,7 +190,7 @@ class ZarrS3Reader:
         return metadata
 
     def data_split(
-        self, density_type: str = "total"
+        self,
     ) -> tuple[tuple[list, list, list, list], tuple[list, list, list, list]]:
         """
         Load dataset and split into train/test sets.
@@ -207,9 +201,6 @@ class ZarrS3Reader:
 
         Parameters
         ----------
-        density_type : str, optional
-            Type of density to read: 'total' or 'diff' (default: 'total')
-
         Returns
         -------
         tuple[tuple[list, list, list, list], tuple[list, list, list, list]]
@@ -234,7 +225,8 @@ class ZarrS3Reader:
             )
 
         task_ids = mapping[self.functional]
-        logger.info(f"Found {len(task_ids)} task_ids for functional {self.functional}")
+        num_tasks = len(task_ids)
+        logger.info(f"Found {num_tasks} task_ids for functional {self.functional}")
 
         data_list = []
         label_list = []
@@ -245,16 +237,16 @@ class ZarrS3Reader:
         for i, task_id in enumerate(task_ids):
             try:
                 # Construct paths
-                data_path = self._get_zarr_path(self.data_dir, task_id)
-                label_path = self._get_zarr_path(self.label_dir, task_id)
+                data_path = self._get_zarr_path(str(self.data_dir), task_id)
+                label_path = self._get_zarr_path(str(self.label_dir), task_id)
 
                 # Open zarr stores and read data
                 data_store = self.read_zarr_store(data_path)
                 label_store = self.read_zarr_store(label_path)
 
                 # Extract charge densities
-                data, gs_data = self.read_charge_density(data_store, density_type)
-                label, gs_label = self.read_charge_density(label_store, density_type)
+                data, gs_data = self.read_charge_density(data_store)
+                label, gs_label = self.read_charge_density(label_store)
 
                 data_list.append(data)
                 label_list.append(label)
@@ -262,7 +254,7 @@ class ZarrS3Reader:
                 gs_label_list.append(gs_label)
 
                 if (i + 1) % 100 == 0:
-                    logger.info(f"Loaded {i + 1}/{len(task_ids)} samples")
+                    logger.info(f"Loaded {i + 1}/{num_tasks} samples")
 
             except Exception as e:
                 logger.warning(f"Failed to load task_id {task_id}: {e}")
@@ -318,8 +310,8 @@ def load_data(cfg):
         normalize=cfg.normalize_data,
         train_fraction=cfg.train_fraction,
         random_state=cfg.random_state,
+        density_type=getattr(cfg, "density_type", "total"),
         s3_kwargs=getattr(cfg, "s3_kwargs", None),
     )
 
-    density_type = getattr(cfg, "density_type", "total")
-    return reader.data_split(density_type=density_type)
+    return reader.data_split()
