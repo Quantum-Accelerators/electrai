@@ -10,6 +10,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +18,7 @@ import numpy as np
 import zarr
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +81,7 @@ def convert_chgcar_to_zarr(json_gz_path: Path, zarr_path: Path) -> None:
     root.create(name="charge_density_total", data=total_density, chunks=(16, 16, 16))
     logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
-    # Store diff charge density (for spin-polarized calculations)
+    # Store diff charge density
     if chgcar_data["diff"] is not None:
         diff_density = np.array(chgcar_data["diff"]["data"], dtype=np.float32)
         root.create(name="charge_density_diff", data=diff_density, chunks=(16, 16, 16))
@@ -105,7 +104,10 @@ def convert_chgcar_to_zarr(json_gz_path: Path, zarr_path: Path) -> None:
 
 
 def convert_directory_to_zarr(
-    input_dir: Path, output_dir: Path, pattern: str = "*.json.gz"
+    input_dir: Path,
+    output_dir: Path,
+    pattern: str = "*.json.gz",
+    max_workers: int | None = None,
 ) -> tuple[int, int]:
     """
     Convert all CHGCAR JSON.gz files in a directory to Zarr format.
@@ -118,6 +120,8 @@ def convert_directory_to_zarr(
         Directory where .zarr directories will be created
     pattern : str, optional
         Glob pattern to match input files (default: "*.json.gz")
+    max_workers : int | None, optional
+        Maximum number of parallel workers. If None, uses the number of CPU cores.
 
     Returns
     -------
@@ -134,22 +138,35 @@ def convert_directory_to_zarr(
     input_files = list(input_dir.glob(pattern))
     logger.info(f"Found {len(input_files)} files to convert in {input_dir}")
 
+    if not input_files:
+        return 0, 0
+
     success_count = 0
     failed_count = 0
 
-    for input_file in input_files:
-        try:
-            # Create output path with .zarr extension
-            output_name = input_file.stem.replace(".json", "") + ".zarr"
-            output_path = output_dir / output_name
+    # Prepare arguments for parallel processing
+    conversion_args = [
+        (input_file, output_dir / (input_file.stem.replace(".json", "") + ".zarr"))
+        for input_file in input_files
+    ]
 
-            # Convert the file
-            convert_chgcar_to_zarr(input_file, output_path)
-            success_count += 1
+    # Process files in parallel
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_file = {
+            executor.submit(convert_chgcar_to_zarr, input_file, output_path): input_file
+            for input_file, output_path in conversion_args
+        }
 
-        except Exception as e:
-            logger.error(f"Failed to convert {input_file}: {e}")
-            failed_count += 1
+        # Process completed tasks
+        for future in as_completed(future_to_file):
+            try:
+                future.result()
+                success_count += 1
+            except Exception as e:
+                input_file = future_to_file[future]
+                logger.error(f"Failed to convert {input_file}: {e}")
+                failed_count += 1
 
     logger.info(
         f"Conversion complete: {success_count} successful, {failed_count} failed"

@@ -4,13 +4,7 @@ This module provides tools to convert Materials Project CHGCAR charge density da
 
 ## Installation
 
-Install the required dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Or with uv:
+Install the required dependencies with uv:
 
 ```bash
 uv pip install -r requirements.txt
@@ -46,6 +40,18 @@ uv run python convert_to_zarr.py convert_dir ../chgcars ./zarr_output
 uv run python convert_to_zarr.py convert_dir <input_dir> <output_dir> --pattern "mp-*.json.gz"
 ```
 
+### Parallel Processing
+
+The directory conversion uses parallel processing by default. You can control the number of workers:
+
+```bash
+# Use 8 parallel workers
+uv run python convert_to_zarr.py convert_dir ../chgcars ./zarr_output --max_workers=8
+
+# Use all available CPU cores (default)
+uv run python convert_to_zarr.py convert_dir ../chgcars ./zarr_output
+```
+
 ## Zarr Structure
 
 Each converted Zarr store contains:
@@ -55,19 +61,3 @@ Each converted Zarr store contains:
 - Metadata attributes:
   - `structure` - JSON string containing pymatgen structure information
   - `metadata` - JSON string with task_id, fs_id, and version information
-
-## Benefits of Zarr Format
-
-1. **Efficient Compression**: ~45% size reduction compared to JSON.gz
-2. **Chunked Access**: Read specific regions without loading entire array
-3. **Parallel I/O**: Multiple processes can read simultaneously
-4. **Cloud-Ready**: Works with cloud storage backends (S3, GCS, etc.)
-5. **Interoperability**: Compatible with Dask, Xarray, and other scientific Python tools
-
-## Performance
-
-Tested on 10 CHGCAR files:
-- Original JSON.gz: 92M
-- Zarr output: 51M
-- Compression improvement: ~45% reduction
-- All conversions completed successfully
