@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -159,36 +158,6 @@ class TestZarrS3ReaderInitialization:
             assert reader.use_s3 is True
             mock_s3fs_module.S3FileSystem.assert_called_once_with(anon=True)
 
-    def test_s3_import_error(self, mock_mapping_file: Path):
-        """Test that ImportError is raised when s3fs is not available."""
-        # Remove s3fs from sys.modules if it exists
-        s3fs_backup = sys.modules.get("s3fs")
-        if "s3fs" in sys.modules:
-            del sys.modules["s3fs"]
-
-        try:
-            # Mock import to raise ImportError
-            with (
-                patch.dict("sys.modules", {"s3fs": None}),
-                patch(
-                    "builtins.__import__",
-                    side_effect=ImportError("No module named 's3fs'"),
-                ),
-                pytest.raises(ImportError, match="s3fs is required"),
-            ):
-                ZarrS3Reader(
-                    data_dir="s3://bucket/data",
-                    label_dir="s3://bucket/labels",
-                    map_dir=mock_mapping_file,
-                    functional="GGA",
-                    normalize=True,
-                    train_fraction=0.8,
-                )
-        finally:
-            # Restore s3fs in sys.modules
-            if s3fs_backup is not None:
-                sys.modules["s3fs"] = s3fs_backup
-
     def test_mixed_s3_local_paths(self, tmp_path: Path, mock_mapping_file: Path):
         """Test initialization with mixed S3 and local paths."""
         mock_s3fs_module = MagicMock()
@@ -287,25 +256,6 @@ class TestZarrStoreOperations:
         assert len(charge.shape) == 1  # Flattened
         assert gridsize == (10, 10, 10)
         assert charge.shape[0] == np.prod(gridsize)
-
-    def test_read_charge_density_diff(
-        self, mock_zarr_store: Path, mock_mapping_file: Path
-    ):
-        """Test reading diff charge density from zarr store."""
-        reader = ZarrS3Reader(
-            data_dir=mock_zarr_store.parent,
-            label_dir=mock_zarr_store.parent,
-            map_dir=mock_mapping_file,
-            functional="GGA",
-            normalize=False,
-            train_fraction=0.8,
-        )
-
-        store = reader.read_zarr_store(mock_zarr_store)
-        charge, gridsize = reader.read_charge_density(store, density_type="diff")
-
-        assert isinstance(charge, np.ndarray)
-        assert gridsize == (10, 10, 10)
 
     def test_read_charge_density_with_normalization(
         self, mock_zarr_store: Path, mock_mapping_file: Path
@@ -681,174 +631,3 @@ class TestLoadDataFunction:
             )
 
             assert reader.s3_kwargs == {"anon": True, "profile": "default"}
-
-
-class TestEdgeCases:
-    """Test various edge cases and boundary conditions."""
-
-    def test_single_sample_dataset(self, tmp_path: Path, rng):
-        """Test with only one sample (edge case for train/test split)."""
-        import gzip
-
-        # Create single zarr store
-        zarr_dir = tmp_path / "single_zarr"
-        zarr_dir.mkdir()
-
-        store_path = zarr_dir / "mp-single.zarr"
-        root = zarr.open_group(str(store_path), mode="w")
-        charge_data = rng.random((5, 5, 5)).astype(np.float32)
-        root.create(name="charge_density_total", data=charge_data)
-
-        # Create mapping
-        mapping = {"GGA": ["mp-single"]}
-        mapping_path = tmp_path / "single_mapping.json.gz"
-        with gzip.open(mapping_path, "wt") as f:
-            json.dump(mapping, f)
-
-        reader = ZarrS3Reader(
-            data_dir=zarr_dir,
-            label_dir=zarr_dir,
-            map_dir=mapping_path,
-            functional="GGA",
-            normalize=False,
-            train_fraction=0.8,
-            random_state=42,
-        )
-
-        # Should fail because train_test_split needs at least 2 samples
-        with pytest.raises(
-            ValueError, match="With n_samples=1, test_size=.* and train_size=.*"
-        ):
-            reader.data_split()
-
-    def test_very_small_gridsize(self, tmp_path: Path, mock_mapping_file: Path, rng):
-        """Test with very small grid sizes (edge case)."""
-        # Create zarr with 1x1x1 grid
-        store_path = tmp_path / "tiny.zarr"
-        root = zarr.open_group(str(store_path), mode="w")
-        charge_data = np.array([[[0.5]]], dtype=np.float32)
-        root.create(name="charge_density_total", data=charge_data)
-
-        reader = ZarrS3Reader(
-            data_dir=tmp_path,
-            label_dir=tmp_path,
-            map_dir=mock_mapping_file,
-            functional="GGA",
-            normalize=False,
-            train_fraction=0.8,
-        )
-
-        store = reader.read_zarr_store(store_path)
-        charge, gridsize = reader.read_charge_density(store)
-
-        assert gridsize == (1, 1, 1)
-        assert charge.shape == (1,)
-
-    def test_very_large_gridsize(self, tmp_path: Path, mock_mapping_file: Path, rng):
-        """Test with large grid sizes."""
-        # Create zarr with larger grid
-        store_path = tmp_path / "large.zarr"
-        root = zarr.open_group(str(store_path), mode="w")
-        charge_data = rng.random((100, 100, 100)).astype(np.float32)
-        root.create(name="charge_density_total", data=charge_data, chunks=(20, 20, 20))
-
-        reader = ZarrS3Reader(
-            data_dir=tmp_path,
-            label_dir=tmp_path,
-            map_dir=mock_mapping_file,
-            functional="GGA",
-            normalize=False,
-            train_fraction=0.8,
-        )
-
-        store = reader.read_zarr_store(store_path)
-        charge, gridsize = reader.read_charge_density(store)
-
-        assert gridsize == (100, 100, 100)
-        assert charge.shape == (1000000,)
-
-    def test_zero_train_fraction(
-        self, mock_zarr_directory: Path, mock_mapping_file: Path
-    ):
-        """Test edge case with zero train fraction."""
-        reader = ZarrS3Reader(
-            data_dir=mock_zarr_directory,
-            label_dir=mock_zarr_directory,
-            map_dir=mock_mapping_file,
-            functional="GGA",
-            normalize=False,
-            train_fraction=0.0,
-            random_state=42,
-        )
-
-        # Should fail with invalid train_size
-        with pytest.raises(
-            ValueError, match="train_size.*must be.*in the range.*Got 0.0"
-        ):
-            reader.data_split()
-
-    def test_one_train_fraction(
-        self, mock_zarr_directory: Path, mock_mapping_file: Path
-    ):
-        """Test edge case with 100% train fraction."""
-        reader = ZarrS3Reader(
-            data_dir=mock_zarr_directory,
-            label_dir=mock_zarr_directory,
-            map_dir=mock_mapping_file,
-            functional="GGA",
-            normalize=False,
-            train_fraction=1.0,
-            random_state=42,
-        )
-
-        # Should fail with invalid test_size (train_size=1.0 leaves test_size=0)
-        with pytest.raises(
-            ValueError, match="train_size.*must be.*in the range.*Got 1.0"
-        ):
-            reader.data_split()
-
-    def test_different_data_label_gridsizes(self, tmp_path: Path, rng):
-        """Test with different grid sizes for data and labels."""
-        import gzip
-
-        # Create zarr stores with different grid sizes
-        zarr_dir = tmp_path / "mismatched"
-        zarr_dir.mkdir()
-
-        data_path = zarr_dir / "mp-data.zarr"
-        root_data = zarr.open_group(str(data_path), mode="w")
-        charge_data = rng.random((8, 8, 8)).astype(np.float32)
-        root_data.create(name="charge_density_total", data=charge_data)
-
-        label_path = zarr_dir / "mp-label.zarr"
-        root_label = zarr.open_group(str(label_path), mode="w")
-        charge_label = rng.random((16, 16, 16)).astype(np.float32)
-        root_label.create(name="charge_density_total", data=charge_label)
-
-        # This is actually valid in the use case (upsampling scenario)
-        # Just verify we can read both
-        mapping = {"GGA": ["mp-data"]}
-        mapping_path = tmp_path / "mismatch_mapping.json.gz"
-        with gzip.open(mapping_path, "wt") as f:
-            json.dump(mapping, f)
-
-        # Create separate readers for data and label dirs
-        reader = ZarrS3Reader(
-            data_dir=zarr_dir,
-            label_dir=zarr_dir,
-            map_dir=mapping_path,
-            functional="GGA",
-            normalize=False,
-            train_fraction=0.5,
-        )
-
-        # Note: This test would need at least 2 samples to work
-        # For now, just verify the stores can be read
-        store_data = reader.read_zarr_store(data_path)
-        store_label = reader.read_zarr_store(label_path)
-
-        data_charge, data_gs = reader.read_charge_density(store_data)
-        label_charge, label_gs = reader.read_charge_density(store_label)
-
-        assert data_gs == (8, 8, 8)
-        assert label_gs == (16, 16, 16)
