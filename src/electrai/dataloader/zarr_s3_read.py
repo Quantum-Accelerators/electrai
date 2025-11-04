@@ -9,7 +9,7 @@ import s3fs
 import zarr
 from sklearn.model_selection import train_test_split
 
-from .registry import register_dataset
+from .registry import register_data
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,7 @@ class ZarrS3Reader:
         return train_sets, test_sets
 
 
-@register_dataset("zarr_s3_data")
+@register_data("zarr_s3_data")
 def load_data(cfg):
     """
     Load CHGCAR data from Zarr format (S3 or local).
