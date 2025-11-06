@@ -147,6 +147,7 @@ skip-magic-trailing-comma = true
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**" = ["ANN", "ARG", "D", "E402", "PTH", "S101"]
+"src/resenet_density/**" = ["E722", "E741", "F403", "F405", "F841", "E741", "PD901", "PLW2901", "PTH123", "SIM115", "T201"]
 
 [tool.docformatter]
 pre-summary-newline = true
