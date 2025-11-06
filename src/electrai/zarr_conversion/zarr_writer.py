@@ -25,6 +25,7 @@ def write_chgcar_to_zarr(
     zarr_path: str | Path,
     s3_kwargs: dict[str, Any] | None = None,
     chunks: tuple[int, int, int] = (16, 16, 16),
+    write_diff: bool = True,
 ) -> None:
     """
     Write CHGCAR data to Zarr format (S3 or local filesystem).
@@ -57,12 +58,15 @@ def write_chgcar_to_zarr(
         Only used if zarr_path is an S3 path. Default: None
     chunks : tuple[int, int, int], optional
         Chunk size for zarr arrays. Default: (16, 16, 16)
+    write_diff : bool, optional
+        Whether to write diff charge density data. If False, only total charge
+        density will be written. Default: True
 
     Notes
     -----
     The Zarr store will contain:
     - /charge_density_total : 3D array of total charge density (float32)
-    - /charge_density_diff : 3D array of charge density difference (float32, if present)
+    - /charge_density_diff : 3D array of charge density difference (float32, if present and write_diff=True)
     - /attrs/structure : JSON string containing structure information
     - /attrs/metadata : JSON string with task_id, fs_id, and version information
 
@@ -75,6 +79,9 @@ def write_chgcar_to_zarr(
     >>> write_chgcar_to_zarr(
     ...     data, "s3://bucket/prefix/output.zarr", s3_kwargs={"anon": True}
     ... )
+    >>>
+    >>> # Write only total charge density (skip diff)
+    >>> write_chgcar_to_zarr(data, "/path/to/output.zarr", write_diff=False)
     """
     zarr_path_str = str(zarr_path)
     use_s3 = zarr_path_str.startswith("s3://")
@@ -107,8 +114,8 @@ def write_chgcar_to_zarr(
         root.create(name="charge_density_total", data=total_density, chunks=chunks)
         logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
-        # Store diff charge density (if present)
-        if chgcar_data_inner.get("diff") is not None:
+        # Store diff charge density (if present and write_diff is True)
+        if write_diff and chgcar_data_inner.get("diff") is not None:
             diff_density = np.array(chgcar_data_inner["diff"]["data"], dtype=np.float32)
             root.create(name="charge_density_diff", data=diff_density, chunks=chunks)
             logger.debug(f"Stored diff charge density with shape {diff_density.shape}")
