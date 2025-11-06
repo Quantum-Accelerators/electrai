@@ -14,8 +14,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import zarr
+from .zarr_writer import write_chgcar_to_zarr
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -55,7 +54,7 @@ def convert_chgcar_to_zarr(json_gz_path: Path, zarr_path: Path) -> None:
     json_gz_path : Path
         Path to the input .json.gz file
     zarr_path : Path
-        Path to the output .zarr directory
+        Path to the output .zarr directory (local filesystem only)
 
     Notes
     -----
@@ -64,43 +63,16 @@ def convert_chgcar_to_zarr(json_gz_path: Path, zarr_path: Path) -> None:
     - /charge_density/diff : 3D array of charge density difference (spin polarized)
     - /structure : JSON metadata containing structure information
     - /metadata : Additional metadata (task_id, fs_id, etc.)
+
+    For S3 support, use write_chgcar_to_zarr() directly from zarr_writer module.
     """
     logger.info(f"Converting {json_gz_path} to {zarr_path}")
 
     # Load the JSON data
     data = load_chgcar_from_json(json_gz_path)
 
-    # Create zarr group (zarr v3 API)
-    root = zarr.open_group(str(zarr_path), mode="w")
-
-    # Extract and store charge density data
-    chgcar_data = data["data"]["data"]
-
-    # Store total charge density
-    total_density = np.array(chgcar_data["total"]["data"], dtype=np.float32)
-    root.create(name="charge_density_total", data=total_density, chunks=(16, 16, 16))
-    logger.debug(f"Stored total charge density with shape {total_density.shape}")
-
-    # Store diff charge density
-    if chgcar_data["diff"] is not None:
-        diff_density = np.array(chgcar_data["diff"]["data"], dtype=np.float32)
-        root.create(name="charge_density_diff", data=diff_density, chunks=(16, 16, 16))
-        logger.debug(f"Stored diff charge density with shape {diff_density.shape}")
-
-    # Store structure information as JSON
-    structure_data = data["data"]["poscar"]["structure"]
-    root.attrs["structure"] = json.dumps(structure_data)
-
-    # Store metadata
-    metadata = {
-        "task_id": data.get("task_id", ""),
-        "fs_id": data.get("fs_id", ""),
-        "maggma_store_type": data.get("maggma_store_type", ""),
-        "pymatgen_version": data["data"].get("@version", ""),
-    }
-    root.attrs["metadata"] = json.dumps(metadata)
-
-    logger.info(f"Successfully converted to {zarr_path}")
+    # Write to zarr using the writer module
+    write_chgcar_to_zarr(data, zarr_path)
 
 
 def convert_directory_to_zarr(
