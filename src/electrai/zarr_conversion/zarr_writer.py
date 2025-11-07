@@ -17,11 +17,13 @@ import zarr
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pymatgen.io.vasp.outputs import Chgcar
+
 logger = logging.getLogger(__name__)
 
 
 def write_chgcar_to_zarr(
-    chgcar_data: dict[str, Any],
+    chgcar_data: Chgcar,
     zarr_path: str | Path,
     s3_kwargs: dict[str, Any] | None = None,
     chunks: tuple[int, int, int] = (16, 16, 16),
@@ -32,23 +34,8 @@ def write_chgcar_to_zarr(
 
     Parameters
     ----------
-    chgcar_data : dict[str, Any]
-        Dictionary containing CHGCAR data structure. Expected format:
-        {
-            "data": {
-                "data": {
-                    "total": {"data": [...]},
-                    "diff": {"data": [...]} or None
-                },
-                "poscar": {
-                    "structure": {...}
-                },
-                "@version": str
-            },
-            "task_id": str,
-            "fs_id": str,
-            "maggma_store_type": str
-        }
+    chgcar_data : Chgcar
+        Pymatgen Chgcar object containing CHGCAR data.
     zarr_path : str | Path
         Path to the output zarr store. Can be:
         - Local path: "/path/to/output.zarr" or Path("/path/to/output.zarr")
@@ -106,30 +93,30 @@ def write_chgcar_to_zarr(
         root = zarr.open_group(str(zarr_path), mode="w")
 
     try:
-        # Extract charge density data
-        chgcar_data_inner = chgcar_data["data"]["data"]
+        charge_data = chgcar_data.data
 
         # Store total charge density
-        total_density = np.array(chgcar_data_inner["total"]["data"], dtype=np.float32)
+        total_density = np.array(charge_data["total"], dtype=np.float32)
         root.create(name="charge_density_total", data=total_density, chunks=chunks)
         logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
         # Store diff charge density (if present and write_diff is True)
-        if write_diff and chgcar_data_inner.get("diff") is not None:
-            diff_density = np.array(chgcar_data_inner["diff"]["data"], dtype=np.float32)
+        diff_density_raw = charge_data.get("diff")
+        if write_diff and diff_density_raw is not None:
+            diff_density = np.array(diff_density_raw, dtype=np.float32)
             root.create(name="charge_density_diff", data=diff_density, chunks=chunks)
             logger.debug(f"Stored diff charge density with shape {diff_density.shape}")
 
         # Store structure information as JSON
-        structure_data = chgcar_data["data"]["poscar"]["structure"]
+        structure_data = chgcar_data.structure.as_dict()
         root.attrs["structure"] = json.dumps(structure_data)
 
         # Store metadata
         metadata = {
-            "task_id": chgcar_data.get("task_id", ""),
-            "fs_id": chgcar_data.get("fs_id", ""),
-            "maggma_store_type": chgcar_data.get("maggma_store_type", ""),
-            "pymatgen_version": chgcar_data["data"].get("@version", ""),
+            "task_id": getattr(chgcar_data, "task_id", ""),
+            "fs_id": getattr(chgcar_data, "fs_id", ""),
+            "maggma_store_type": getattr(chgcar_data, "maggma_store_type", ""),
+            "pymatgen_version": getattr(chgcar_data, "source_version", ""),
         }
         root.attrs["metadata"] = json.dumps(metadata)
 
