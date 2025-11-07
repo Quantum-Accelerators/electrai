@@ -46,7 +46,7 @@ def load_chgcar_from_json(json_gz_path: Path) -> dict[str, Any]:
 
 
 def convert_chgcar_to_zarr(
-    json_gz_path: Path, zarr_path: Path, write_diff: bool = True
+    json_gz_path: Path, zarr_path: Path, write_diff: bool = False
 ) -> None:
     """
     Convert a single CHGCAR JSON.gz file to Zarr format.
@@ -59,7 +59,7 @@ def convert_chgcar_to_zarr(
         Path to the output .zarr directory (local filesystem only)
     write_diff : bool, optional
         Whether to write diff charge density data. If False, only total charge
-        density will be written. Default: True
+        density will be written. Default: False
 
     Notes
     -----
@@ -85,7 +85,7 @@ def convert_directory_to_zarr(
     output_dir: Path,
     pattern: str = "*.json.gz",
     max_workers: int | None = None,
-    write_diff: bool = True,
+    write_diff: bool = False,
 ) -> tuple[int, int]:
     """
     Convert all CHGCAR JSON.gz files in a directory to Zarr format.
@@ -102,7 +102,7 @@ def convert_directory_to_zarr(
         Maximum number of parallel workers. If None, uses the number of CPU cores.
     write_diff : bool, optional
         Whether to write diff charge density data. If False, only total charge
-        density will be written. Default: True
+        density will be written. Default: False
 
     Returns
     -------
