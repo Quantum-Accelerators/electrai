@@ -13,26 +13,15 @@ import json
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from pymatgen.io.vasp.outputs import Chgcar
+from pymatgen.io.vasp.outputs import Chgcar
 
 from .zarr_writer import write_chgcar_to_zarr
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def _import_chgcar() -> type[Chgcar]:
-    try:
-        from pymatgen.io.vasp.outputs import Chgcar
-    except ImportError as exc:
-        raise ImportError(
-            "pymatgen is required for CHGCAR conversions. Install with `pip install pymatgen`."
-        ) from exc
-    return Chgcar
 
 
 def _derive_task_id(path: Path) -> str:
@@ -65,8 +54,6 @@ def load_chgcar_from_json(json_gz_path: Path) -> Chgcar:
     Chgcar
         Pymatgen Chgcar object reconstructed from the JSON payload.
     """
-    chgcar_cls = _import_chgcar()
-
     try:
         with gzip.open(json_gz_path, "rt") as f:
             payload = json.load(f)
@@ -83,7 +70,7 @@ def load_chgcar_from_json(json_gz_path: Path) -> Chgcar:
     else:
         raise ValueError(f"Unexpected JSON structure in {json_gz_path}")
 
-    chgcar = chgcar_cls.from_dict(chgcar_dict)
+    chgcar = Chgcar.from_dict(chgcar_dict)
     _apply_default_ids(chgcar, json_gz_path)
     return chgcar
 
@@ -98,8 +85,7 @@ def load_chgcar(chgcar_path: Path) -> Chgcar:
     if suffixes[-2:] == [".json", ".gz"]:
         chgcar = load_chgcar_from_json(chgcar_path)
     elif chgcar_path.suffix.lower() == ".chgcar":
-        chgcar_cls = _import_chgcar()
-        chgcar = chgcar_cls.from_file(str(chgcar_path))
+        chgcar = Chgcar.from_file(str(chgcar_path))
         _apply_default_ids(chgcar, chgcar_path)
     else:
         raise ValueError(
