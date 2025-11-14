@@ -4,8 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from monty.serialization import loadfn
-from pyrho.charge_density import ChargeDensity
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
@@ -19,8 +17,6 @@ class RhoRead:
         self,
         data_path: Path,
         label_path: Path,
-        map_path: Path,
-        functional: str,
         train_fraction: float,
         random_state: int = 42,
     ):
@@ -29,25 +25,22 @@ class RhoRead:
         ----------
         data_path: path of input chgcar or elfcar files.
         label_path: path of label chgcar or elfcar files.
-        map_path: path of json file mapping functional to list of task_ids.
-        functional: 'GGA', 'GG+U', 'PBEsol', 'SCAN', 'r2SCAN'.
         train_fraction: fraction of the data used for training (0 to 1).
         """
         self.data_path = Path(data_path)
         self.label_path = Path(label_path)
-        self.map_path = Path(map_path)
-        self.functional = functional
         self.tf = train_fraction
         self.rs = random_state
 
     def data_split(self):
-        mapping = loadfn(self.map_path)
         data_list = []
 
-        for task_id in mapping[self.functional]:
+        for mol_id in range(1, 200):
             data = (
-                self.data_path / f"{task_id}.CHGCAR",
-                self.label_path / f"{task_id}.CHGCAR",
+                self.data_path / f"dsgdb9nsd_{mol_id:06d}" / "rho_22.npy",
+                self.label_path / f"dsgdb9nsd_{mol_id:06d}" / "rho_22.npy",
+                self.data_path / f"dsgdb9nsd_{mol_id:06d}" / "grid_sizes_22.dat",
+                self.label_path / f"dsgdb9nsd_{mol_id:06d}" / "grid_sizes_22.dat",
             )
             data_list.append(data)
         train_data, test_data = train_test_split(
@@ -59,26 +52,22 @@ class RhoRead:
 class RhoData(Dataset):
     def __init__(
         self,
-        data: list[tuple[Path, Path]],
+        data: list[tuple[Path, Path, Path, Path]],
         data_precision: str,
-        rho_type: str,
-        data_augmentation: bool = True,
-        random_state: int = 42,
+        data_augmentation=True,
+        downsample_data=1,
+        downsample_label=1,
     ):
         """
         Parameters
         ----------
-        data: list of voxel data of length batch_size.
-        rho_type: chgcar or elfcar.
-        data_size: target size of data.
-        label_size: target size of label.
-        pyrho_uf: pyrho upsampling factor
+        data: list of (input voxel data, label voxel data, input gridsize, label gridsize) of length batch_size.
         """
+        self.ds_data = downsample_data
+        self.ds_label = downsample_label
+        self.da = data_augmentation
         self.data = data
         self.data_precision = data_precision
-        self.rho_type = rho_type
-        self.da = data_augmentation
-        self.rng = np.random.default_rng(random_state)
 
     def __len__(self):
         return len(self.data)
@@ -120,48 +109,43 @@ class RhoData(Dataset):
         else:
             return [rotate(rotate(rotate(d))) for d in data_lst]
 
-    def __getitem__(self, idx: int):
-        data = self.read_data(self.data[idx][0])
-        label = self.read_data(self.data[idx][1])
+    def __getitem__(self, idx):
+        rho1 = torch.tensor(
+            np.load(self.data[idx][0]), dtype=dtype_map[self.data_precision]
+        )
+        size = np.loadtxt(self.data[idx][2], dtype=int)
+        rho1 = rho1.reshape(1, *size)
 
-        if self.rho_type == "chgcar":
-            data = data.pgrids["total"].grid_data / np.prod(data.grid_shape)
-            label = label.pgrids["total"].grid_data / np.prod(label.grid_shape)
-        else:
-            data = data.pgrids["total"].grid_data
-            label = label.pgrids["total"].grid_data
-
-        data = torch.tensor(data, dtype=dtype_map[self.data_precision]).unsqueeze(0)
-        label = torch.tensor(label, dtype=dtype_map[self.data_precision]).unsqueeze(0)
+        rho2 = torch.tensor(
+            np.load(self.data[idx][1]), dtype=dtype_map[self.data_precision]
+        )
+        size = np.loadtxt(self.data[idx][3], dtype=int)
+        rho2 = rho2.reshape(1, *size)
 
         if self.da:
-            data, label = self.rand_rotate([data, label])
-        return data, label
+            rho1, rho2 = self.rand_rotate([rho1, rho2])
 
-    def read_data(self, data_path: Path) -> np.ndarray:
-        """
-        Parameters
-        ----------
-        data_dir: directory of chg or elfcar data.
+        ds1 = self.ds_data
+        ds2 = self.ds_label
+        nx, ny, nz = rho1.size()[-3:]
+        nx = nx // ds1 * ds1
+        ny = ny // ds1 * ds1
+        nz = nz // ds1 * ds1
+        rho1 = rho1[..., :nx:ds1, :ny:ds1, :nz:ds1]
+        nx, ny, nz = rho2.size()[-3:]
+        nx = nx // ds1 * ds1
+        ny = ny // ds1 * ds1
+        nz = nz // ds1 * ds1
+        rho2 = rho2[..., :nx:ds2, :ny:ds2, :nz:ds2]
 
-        Returns
-        ----------
-        charge density array
-        """
-        if data_path.name.endswith(".CHGCAR"):
-            cden = ChargeDensity.from_file(data_path)
-        else:
-            raise ValueError(f"Voxel data format not supported: {data_path}")
-        return cden
+        return (rho1, rho2)
 
 
-@register_data("mp")
+@register_data("qm9")
 def load_data(cfg):
     train_set, test_set = RhoRead(
         data_path=cfg.data_path,
         label_path=cfg.label_path,
-        map_path=cfg.map_path,
-        functional=cfg.functional,
         train_fraction=cfg.train_fraction,
         random_state=cfg.random_state,
     ).data_split()
@@ -169,16 +153,16 @@ def load_data(cfg):
     train_data = RhoData(
         train_set,
         cfg.data_precision,
-        cfg.rho_type,
         cfg.data_augmentation,
-        cfg.random_state,
+        cfg.downsample_data,
+        cfg.downsample_label,
     )
 
     test_data = RhoData(
         test_set,
         cfg.data_precision,
-        cfg.rho_type,
         cfg.data_augmentation,
-        cfg.random_state,
+        cfg.downsample_data,
+        cfg.downsample_label,
     )
     return train_data, test_data

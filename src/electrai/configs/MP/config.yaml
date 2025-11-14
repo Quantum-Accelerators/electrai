@@ -1,0 +1,39 @@
+# Dataset / loader parameters
+dataset_name: "mp"
+data_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/grid_half/
+label_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/label/grid_half/
+map_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/map_sample_half.json.gz
+rho_type: chgcar
+functional: GGA
+train_fraction: 0.9
+num_workers: 1
+downsample_label: 1
+downsample_data: 1
+data_augmentation: False
+random_state: 42
+normalize: True
+data_precision: f32
+
+# Model parameters
+n_channels: 32
+n_residual_blocks: 32
+n_upscale_layers: 0
+kernel_size1: 5
+kernel_size2: 5
+model_prefix: chk
+model_precision: 32 # means bfloat16
+
+# Training parameters
+save_every_epochs: 2
+epochs: 2
+nbatch: 1
+lr: 0.01
+weight_decay: 0.0
+
+# Weights and biases
+wb_pname: "electrai-test"
+wb_ename: "mp-no-upscaling"
+entity: "hanaoli"
+
+#Profiler
+profile_dir: /scratch/gpfs/ROSENGROUP/ho0950/electrai/profiles
