@@ -114,8 +114,6 @@ def write_chgcar_to_zarr(
         # Store metadata
         metadata = {
             "task_id": getattr(chgcar_data, "task_id", ""),
-            "fs_id": getattr(chgcar_data, "fs_id", ""),
-            "maggma_store_type": getattr(chgcar_data, "maggma_store_type", ""),
             "pymatgen_version": getattr(chgcar_data, "source_version", ""),
         }
         root.attrs["metadata"] = json.dumps(metadata)
