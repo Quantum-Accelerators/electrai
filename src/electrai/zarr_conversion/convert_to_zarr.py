@@ -1,8 +1,9 @@
 """
-Convert Materials Project CHGCAR data from JSON.gz format to Zarr format.
+Convert Materials Project CHGCAR data from JSON.gz or native CHGCAR files to Zarr.
 
 This module provides functions to convert CHGCAR charge density data stored in
-compressed JSON files to the Zarr format for efficient storage and access.
+compressed JSON exports or raw .CHGCAR files to the Zarr format for efficient
+storage and access.
 """
 
 from __future__ import annotations
@@ -12,7 +13,10 @@ import json
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pymatgen.io.vasp.outputs import Chgcar
 
 from .zarr_writer import write_chgcar_to_zarr
 
@@ -21,7 +25,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def load_chgcar_from_json(json_gz_path: Path) -> dict[str, Any]:
+def _import_chgcar() -> type[Chgcar]:
+    try:
+        from pymatgen.io.vasp.outputs import Chgcar
+    except ImportError as exc:
+        raise ImportError(
+            "pymatgen is required for CHGCAR conversions. Install with `pip install pymatgen`."
+        ) from exc
+    return Chgcar
+
+
+def _derive_task_id(path: Path) -> str:
+    name = path.name
+    if name.endswith(".json.gz"):
+        return name[: -len(".json.gz")]
+    if name.lower().endswith(".chgcar"):
+        return name[: -len(".chgcar")]
+    return path.stem
+
+
+def _apply_default_ids(chgcar: Chgcar, source_path: Path) -> None:
+    derived_id = _derive_task_id(source_path)
+    for attr in ("task_id", "fs_id"):
+        if not getattr(chgcar, attr, None):
+            setattr(chgcar, attr, derived_id)
+
+
+def load_chgcar_from_json(json_gz_path: Path) -> Chgcar:
     """
     Load CHGCAR data from a compressed JSON file.
 
@@ -32,29 +62,63 @@ def load_chgcar_from_json(json_gz_path: Path) -> dict[str, Any]:
 
     Returns
     -------
-    dict[str, Any]
-        Dictionary containing the CHGCAR data structure
+    Chgcar
+        Pymatgen Chgcar object reconstructed from the JSON payload.
     """
+    chgcar_cls = _import_chgcar()
+
     try:
         with gzip.open(json_gz_path, "rt") as f:
-            data = json.load(f)
+            payload = json.load(f)
         logger.debug(f"Successfully loaded {json_gz_path}")
-        return data
-    except Exception as e:
-        logger.error(f"Error loading {json_gz_path}: {e}")
+    except Exception as exc:
+        logger.error(f"Error loading {json_gz_path}: {exc}")
         raise
+
+    chgcar_dict: dict[str, Any]
+    if isinstance(payload, dict) and "chgcar" in payload:
+        chgcar_dict = payload["chgcar"]
+    elif isinstance(payload, dict):
+        chgcar_dict = payload
+    else:
+        raise ValueError(f"Unexpected JSON structure in {json_gz_path}")
+
+    chgcar = chgcar_cls.from_dict(chgcar_dict)
+    _apply_default_ids(chgcar, json_gz_path)
+    return chgcar
+
+
+def load_chgcar(chgcar_path: Path) -> Chgcar:
+    """
+    Load CHGCAR data from either a native .CHGCAR file or a .json.gz export.
+    """
+    chgcar_path = Path(chgcar_path).expanduser()
+    suffixes = chgcar_path.suffixes
+
+    if suffixes[-2:] == [".json", ".gz"]:
+        chgcar = load_chgcar_from_json(chgcar_path)
+    elif chgcar_path.suffix.lower() == ".chgcar":
+        chgcar_cls = _import_chgcar()
+        chgcar = chgcar_cls.from_file(str(chgcar_path))
+        _apply_default_ids(chgcar, chgcar_path)
+    else:
+        raise ValueError(
+            f"Unsupported file extension for {chgcar_path}. Expected '.json.gz' or '.CHGCAR'."
+        )
+
+    return chgcar
 
 
 def convert_chgcar_to_zarr(
-    json_gz_path: Path, zarr_path: Path, write_diff: bool = False
+    input_path: Path, zarr_path: Path, write_diff: bool = False
 ) -> None:
     """
-    Convert a single CHGCAR JSON.gz file to Zarr format.
+    Convert a single CHGCAR file (JSON.gz export or native CHGCAR) to Zarr format.
 
     Parameters
     ----------
-    json_gz_path : Path
-        Path to the input .json.gz file
+    input_path : Path
+        Path to the input .json.gz or .CHGCAR file
     zarr_path : Path
         Path to the output .zarr directory (local filesystem only)
     write_diff : bool, optional
@@ -71,13 +135,13 @@ def convert_chgcar_to_zarr(
 
     For S3 support, use write_chgcar_to_zarr() directly from zarr_writer module.
     """
-    logger.info(f"Converting {json_gz_path} to {zarr_path}")
+    logger.info(f"Converting {input_path} to {zarr_path}")
 
-    # Load the JSON data
-    data = load_chgcar_from_json(json_gz_path)
+    # Load the CHGCAR data
+    chgcar = load_chgcar(input_path)
 
     # Write to zarr using the writer module
-    write_chgcar_to_zarr(data, zarr_path, write_diff=write_diff)
+    write_chgcar_to_zarr(chgcar, zarr_path, write_diff=write_diff)
 
 
 def convert_directory_to_zarr(
@@ -88,12 +152,12 @@ def convert_directory_to_zarr(
     write_diff: bool = False,
 ) -> tuple[int, int]:
     """
-    Convert all CHGCAR JSON.gz files in a directory to Zarr format.
+    Convert all CHGCAR files in a directory to Zarr format.
 
     Parameters
     ----------
     input_dir : Path
-        Directory containing .json.gz files
+        Directory containing .json.gz or .CHGCAR files
     output_dir : Path
         Directory where .zarr directories will be created
     pattern : str, optional
@@ -127,11 +191,7 @@ def convert_directory_to_zarr(
 
     # Prepare arguments for parallel processing
     conversion_args = [
-        (
-            input_file,
-            output_dir / (input_file.stem.replace(".json", "") + ".zarr"),
-            write_diff,
-        )
+        (input_file, output_dir / f"{_derive_task_id(input_file)}.zarr", write_diff)
         for input_file in input_files
     ]
 
