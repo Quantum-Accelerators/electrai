@@ -4,10 +4,10 @@ This module provides tools to convert Materials Project CHGCAR charge density da
 
 ## Installation
 
-Install the required dependencies with uv:
+Install the optional `zarr_conversion` extra that is defined in `pyproject.toml`:
 
 ```bash
-uv pip install -r requirements.txt
+uv pip install -e ".[zarr_conversion]"
 ```
 
 ## Usage
