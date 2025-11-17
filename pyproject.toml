@@ -40,7 +40,7 @@ docs = [
 zarr_conversion = [
     "fire>=0.5.0",
     "numcodecs>=0.16.3",
-    "pymatgen>=2024.7.18",
+    "pymatgen>=2025.10.7",
     "s3fs>=2024.5.0",
     "zarr>=3.1.3",
 ]

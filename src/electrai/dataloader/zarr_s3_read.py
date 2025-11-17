@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import s3fs
 import zarr
 from sklearn.model_selection import train_test_split
 
@@ -75,12 +74,14 @@ class ZarrS3Reader:
 
         if self.use_s3:
             try:
-                self.s3fs = s3fs.S3FileSystem(**self.s3_kwargs)
-                logger.info("Initialized S3 filesystem for zarr stores")
+                import s3fs
             except ImportError as e:
                 raise ImportError(
                     "s3fs is required for S3 access. Install with: pip install s3fs"
                 ) from e
+
+            self.s3fs = s3fs.S3FileSystem(**self.s3_kwargs)
+            logger.info("Initialized S3 filesystem for zarr stores")
 
     def _get_zarr_path(self, base_dir: str, task_id: str) -> str:
         """
@@ -116,6 +117,8 @@ class ZarrS3Reader:
         """
         if self.use_s3 and zarr_path.startswith("s3://"):
             # Open from S3 using s3fs
+            import s3fs
+
             store = s3fs.S3Map(root=zarr_path, s3=self.s3fs, check=False)
             return zarr.open_group(store=store, mode="r")
         else:
@@ -194,7 +197,7 @@ class ZarrS3Reader:
 
         The returned lists contain actual numpy arrays (loaded into memory) to
         maintain compatibility with the existing RhoData dataset class. For
-        lazy loading, should be updated touse ZarrDataset class instead.
+        lazy loading, should be updated to use ZarrDataset class instead.
 
         Parameters
         ----------

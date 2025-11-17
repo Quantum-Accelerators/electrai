@@ -19,8 +19,6 @@ from pymatgen.io.vasp.outputs import Chgcar
 
 from .zarr_writer import write_chgcar_to_zarr
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +80,7 @@ def load_chgcar(chgcar_path: Path) -> Chgcar:
     chgcar_path = Path(chgcar_path).expanduser()
     suffixes = chgcar_path.suffixes
 
-    if suffixes[-2:] == [".json", ".gz"]:
+    if len(suffixes) >= 2 and suffixes[-2:] == [".json", ".gz"]:
         chgcar = load_chgcar_from_json(chgcar_path)
     elif chgcar_path.suffix.lower() == ".chgcar":
         chgcar = Chgcar.from_file(str(chgcar_path))
@@ -114,8 +112,8 @@ def convert_chgcar_to_zarr(
     Notes
     -----
     The Zarr store will contain:
-    - /charge_density/total : 3D array of total charge density
-    - /charge_density/diff : 3D array of charge density difference (spin polarized, if write_diff=True)
+    - /charge_density_total : 3D array of total charge density
+    - /charge_density_diff : 3D array of charge density difference (spin polarized, if write_diff=True)
     - /structure : JSON metadata containing structure information
     - /metadata : Additional metadata (task_id, fs_id, etc.)
 

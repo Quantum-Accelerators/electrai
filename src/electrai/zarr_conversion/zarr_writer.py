@@ -27,7 +27,7 @@ def write_chgcar_to_zarr(
     zarr_path: str | Path,
     s3_kwargs: dict[str, Any] | None = None,
     chunks: tuple[int, int, int] = (16, 16, 16),
-    write_diff: bool = True,
+    write_diff: bool = False,
 ) -> None:
     """
     Write CHGCAR data to Zarr format (S3 or local filesystem).
@@ -55,7 +55,7 @@ def write_chgcar_to_zarr(
     - /charge_density_total : 3D array of total charge density (float32)
     - /charge_density_diff : 3D array of charge density difference (float32, if present and write_diff=True)
     - /attrs/structure : JSON string containing structure information
-    - /attrs/metadata : JSON string with task_id, fs_id, and version information
+    - /attrs/metadata : JSON string with task_id and version information
 
     Examples
     --------
