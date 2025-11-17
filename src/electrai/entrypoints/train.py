@@ -18,7 +18,7 @@ logger = get_logger("train", log_file="logs/train.log")
 
 def loss_fn_sum(loss_fn, output, target, t):
     total_loss = 0
-    for loss, weight in zip(loss_fn["loss"], loss_fn["weight"]):
+    for loss, weight in zip(loss_fn["loss"], loss_fn["weight"], strict=False):
         w = weight(t) if isinstance(weight, Callable) else weight
         total_loss += w * loss(output, target)
     return total_loss
