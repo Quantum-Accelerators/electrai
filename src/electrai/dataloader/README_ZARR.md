@@ -82,7 +82,7 @@ mp-12345.zarr/
 ├── charge_density_diff     # 3D array (optional, for spin-polarized)
 └── .zattrs                 # JSON attributes
     ├── structure           # Crystal structure data
-    └── metadata            # Task metadata (task_id, fs_id, etc.)
+    └── metadata            # Task metadata (task_id, version, etc.)
 ```
 
 This structure is created by the `convert_to_zarr.py` utility.

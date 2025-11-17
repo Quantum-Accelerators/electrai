@@ -60,4 +60,4 @@ Each converted Zarr store contains:
 - `charge_density_diff/` - 3D array of charge density difference for spin-polarized calculations (float32)
 - Metadata attributes:
   - `structure` - JSON string containing pymatgen structure information
-  - `metadata` - JSON string with task_id, fs_id, and version information
+  - `metadata` - JSON string with task_id and version information

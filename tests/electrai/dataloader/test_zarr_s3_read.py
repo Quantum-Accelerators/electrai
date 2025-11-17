@@ -41,12 +41,7 @@ def mock_zarr_store(tmp_path: Path, rng) -> Path:
     root.create(name="charge_density_diff", data=diff_data, chunks=(5, 5, 5))
 
     # Add metadata
-    metadata = {
-        "task_id": "mp-12345",
-        "fs_id": "fs-67890",
-        "maggma_store_type": "GridFSStore",
-        "pymatgen_version": "2024.1.1",
-    }
+    metadata = {"task_id": "mp-12345", "pymatgen_version": "2024.1.1"}
     root.attrs["metadata"] = json.dumps(metadata)
 
     # Add structure data
@@ -379,7 +374,7 @@ class TestErrorHandling:
         )
 
         with pytest.raises(
-            ValueError, match="With n_samples=0, test_size=.* and train_size=.*"
+            ValueError, match=r"With n_samples=0, test_size=.* and train_size=.*"
         ):
             reader.data_split()
 
@@ -514,7 +509,7 @@ class TestDataSplit:
             density_type="diff",
         )
 
-        train_sets, test_sets = reader.data_split()
+        train_sets, _test_sets = reader.data_split()
 
         assert len(train_sets[0]) > 0
 
@@ -598,7 +593,7 @@ class TestLoadDataFunction:
             density_type="diff",
         )
 
-        train_sets, test_sets = load_data(cfg)
+        train_sets, _test_sets = load_data(cfg)
         assert len(train_sets[0]) > 0
 
     def test_load_data_with_s3_kwargs(self, mock_mapping_file: Path):

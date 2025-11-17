@@ -33,9 +33,8 @@ def _derive_task_id(path: Path) -> str:
 
 def _apply_default_ids(chgcar: Chgcar, source_path: Path) -> None:
     derived_id = _derive_task_id(source_path)
-    for attr in ("task_id", "fs_id"):
-        if not getattr(chgcar, attr, None):
-            setattr(chgcar, attr, derived_id)
+    if not getattr(chgcar, "task_id", None):
+        chgcar.task_id = derived_id
 
 
 def load_chgcar_from_json(json_gz_path: Path) -> Chgcar:
@@ -115,7 +114,7 @@ def convert_chgcar_to_zarr(
     - /charge_density_total : 3D array of total charge density
     - /charge_density_diff : 3D array of charge density difference (spin polarized, if write_diff=True)
     - /structure : JSON metadata containing structure information
-    - /metadata : Additional metadata (task_id, fs_id, etc.)
+    - /metadata : Additional metadata (task_id, version, etc.)
 
     For S3 support, use write_chgcar_to_zarr() directly from zarr_writer module.
     """
