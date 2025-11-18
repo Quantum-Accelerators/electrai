@@ -15,7 +15,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: end-of-file-fixer
+        exclude: (^data/.*\.CHGCAR$)|(^label/.*\.CHGCAR$)
       - id: trailing-whitespace
+        exclude: (^data/.*\.CHGCAR$)|(^label/.*\.CHGCAR$)
 
   - repo: https://github.com/adamchainz/blacken-docs
     rev: 1.19.1
