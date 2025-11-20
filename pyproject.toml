@@ -25,7 +25,19 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 requires-python = ">=3.11"
-dependencies = ["numpy"]
+dependencies = [
+    numpy==2.3.3,
+    scikit-learn==1.7.2,
+    torch==2.9.1,
+    torchvision==0.24.0,
+    pyscf==2.10.0,
+    lightning== 2.5.6,
+    wandb==0.12.10,
+    pyyaml==6.0.3,
+    monty==2025.3.3,
+    mp-pyrho==0.5.1,
+    pymatgen==2025.10.7,
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4.0", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
