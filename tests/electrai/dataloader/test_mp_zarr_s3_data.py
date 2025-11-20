@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import zarr
 
-from electrai.dataloader.zarr_s3_read import ZarrS3Reader, load_data
+from electrai.dataloader.mp_zarr_s3_data import ZarrS3Reader, load_data
 
 
 @pytest.fixture

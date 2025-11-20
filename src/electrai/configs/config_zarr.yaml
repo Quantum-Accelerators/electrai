@@ -1,5 +1,5 @@
 # Dataset / loader parameters for Zarr format
-dataset_name: "zarr_s3_data"
+dataset_name: "mp_zarr_s3_data"
 
 # Paths (can be local or S3)
 # For local: ./data/MP/zarr_output

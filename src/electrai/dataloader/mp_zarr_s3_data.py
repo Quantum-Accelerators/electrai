@@ -272,7 +272,7 @@ class ZarrS3Reader:
         return train_sets, test_sets
 
 
-@register_data("zarr_s3_data")
+@register_data("mp_zarr_s3_data")
 def load_data(cfg):
     """
     Load CHGCAR data from Zarr format (S3 or local).
