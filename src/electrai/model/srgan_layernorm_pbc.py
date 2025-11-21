@@ -146,9 +146,7 @@ class GeneratorResNet(nn.Module):
         out = self.conv3(out)
         if self.normalize:
             upscale_factor = 8 ** (self.n_upscale_layers)
-            # Use .view() instead of [..., None, None, None] to avoid creating slice operations
-            out = out / torch.sum(out, axis=(-3, -2, -1)).view(-1, 1, 1, 1)
-            out = (
-                out * torch.sum(x, axis=(-3, -2, -1)).view(-1, 1, 1, 1) * upscale_factor
-            )
+            # Use keepdim=True to avoid view/reshape operations that create SliceBackward0 nodes
+            out = out / torch.sum(out, dim=(-3, -2, -1), keepdim=True)
+            out = out * torch.sum(x, dim=(-3, -2, -1), keepdim=True) * upscale_factor
         return out
