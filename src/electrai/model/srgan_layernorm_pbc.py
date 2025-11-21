@@ -156,7 +156,11 @@ class GeneratorResNet(nn.Module):
         out = self.res_blocks(out1)
         out2 = self.conv2(out)
         out = torch.add(out1, out2)
-        out = self.upsampling(out)
+        # Checkpoint upsampling layers to save memory during training
+        if self.use_checkpoint and self.training:
+            out = checkpoint(self.upsampling, out, use_reentrant=False)
+        else:
+            out = self.upsampling(out)
         out = self.conv3(out)
         if self.normalize:
             upscale_factor = 8 ** (self.n_upscale_layers)
