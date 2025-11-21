@@ -51,9 +51,11 @@ class PixelShuffle3d(nn.Module):
         assert X.shape[1] == self.Cin
         u = self.u
         Cout = self.Cin // u**3
-        out = X.reshape(-1, Cout, u, u, u, *X.shape[-3:])
+        # Cache shape values as Python integers to prevent gradient tracking
+        H, W, D = X.shape[-3], X.shape[-2], X.shape[-1]
+        out = X.reshape(-1, Cout, u, u, u, H, W, D)
         out = out.permute((0, 1, 5, 2, 6, 3, 7, 4))
-        return out.reshape(-1, Cout, u * X.shape[-3], u * X.shape[-2], u * X.shape[-1])
+        return out.reshape(-1, Cout, u * H, u * W, u * D)
 
 
 class GeneratorResNet(nn.Module):
