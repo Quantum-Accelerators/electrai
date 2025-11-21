@@ -55,6 +55,8 @@ class PixelShuffle3d(nn.Module):
         H, W, D = X.shape[-3], X.shape[-2], X.shape[-1]
         out = X.reshape(-1, Cout, u, u, u, H, W, D)
         out = out.permute((0, 1, 5, 2, 6, 3, 7, 4))
+        # Materialize the permuted tensor to avoid SliceBackward0 operations in backprop
+        out = out.contiguous()
         return out.reshape(-1, Cout, u * H, u * W, u * D)
 
 
