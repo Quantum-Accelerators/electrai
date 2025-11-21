@@ -11,5 +11,6 @@ class NormMAE(torch.nn.Module):
     def forward(self, output, target):
         mae = self.mae(output, target)
         nelec = torch.sum(target, axis=(-3, -2, -1))
-        mae = mae / nelec[..., None, None, None]
+        # Use .view() instead of [..., None, None, None] to avoid creating slice operations
+        mae = mae / nelec.view(-1, 1, 1, 1)
         return torch.sum(mae)
