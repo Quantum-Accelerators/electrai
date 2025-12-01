@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint, checkpoint_sequential
 
 
 class ResidualBlock(nn.Module):
@@ -78,6 +78,7 @@ class GeneratorResNet(nn.Module):
         K2=3,
         normalize=True,
         use_checkpoint=True,
+        checkpoint_segments=None,
     ):
         """
         This net upscales each axis by 2**n_upscale_layers
@@ -85,11 +86,20 @@ class GeneratorResNet(nn.Module):
         K1 = kernel size in the first and last layers
         K2 = kernel size in Res blocks
         use_checkpoint = enable gradient checkpointing to save memory
+        checkpoint_segments = number of segments for residual block checkpointing
+                              (None = use per-block checkpointing, int = use checkpoint_sequential)
         """
         super().__init__()
         self.n_upscale_layers = n_upscale_layers
         self.normalize = normalize
         self.use_checkpoint = use_checkpoint
+        self.n_residual_blocks = n_residual_blocks
+        # Default to n_residual_blocks segments (checkpoint every block) for max memory savings
+        self.checkpoint_segments = (
+            checkpoint_segments
+            if checkpoint_segments is not None
+            else n_residual_blocks
+        )
 
         # First layer
         self.conv1 = nn.Sequential(
@@ -104,9 +114,9 @@ class GeneratorResNet(nn.Module):
             nn.PReLU(),
         )
 
-        # Residual blocks
+        # Residual blocks (checkpointing handled at sequential level, not per-block)
         res_blocks = [
-            ResidualBlock(C, K=K2, use_checkpoint=use_checkpoint)
+            ResidualBlock(C, K=K2, use_checkpoint=False)
             for _ in range(n_residual_blocks)
         ]
         self.res_blocks = nn.Sequential(*res_blocks)
@@ -152,16 +162,40 @@ class GeneratorResNet(nn.Module):
         )
 
     def forward(self, x):
-        out1 = self.conv1(x)
-        out = self.res_blocks(out1)
-        out2 = self.conv2(out)
+        # Checkpoint conv1
+        if self.use_checkpoint and self.training:
+            out1 = checkpoint(self.conv1, x, use_reentrant=False)
+        else:
+            out1 = self.conv1(x)
+
+        # Checkpoint residual blocks using checkpoint_sequential for configurable granularity
+        if self.use_checkpoint and self.training:
+            out = checkpoint_sequential(
+                self.res_blocks, self.checkpoint_segments, out1, use_reentrant=False
+            )
+        else:
+            out = self.res_blocks(out1)
+
+        # Checkpoint conv2
+        if self.use_checkpoint and self.training:
+            out2 = checkpoint(self.conv2, out, use_reentrant=False)
+        else:
+            out2 = self.conv2(out)
+
         out = torch.add(out1, out2)
-        # Checkpoint upsampling layers to save memory during training
+
+        # Checkpoint upsampling layers
         if self.use_checkpoint and self.training:
             out = checkpoint(self.upsampling, out, use_reentrant=False)
         else:
             out = self.upsampling(out)
-        out = self.conv3(out)
+
+        # Checkpoint conv3
+        if self.use_checkpoint and self.training:
+            out = checkpoint(self.conv3, out, use_reentrant=False)
+        else:
+            out = self.conv3(out)
+
         if self.normalize:
             upscale_factor = 8 ** (self.n_upscale_layers)
             # Use keepdim=True to avoid view/reshape operations that create SliceBackward0 nodes

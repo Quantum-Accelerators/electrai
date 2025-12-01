@@ -20,6 +20,7 @@ class LightningGenerator(pl.LightningModule):
             K2=int(cfg.kernel_size2),
             normalize=cfg.normalize,
             use_checkpoint=getattr(cfg, "use_checkpoint", True),
+            checkpoint_segments=getattr(cfg, "checkpoint_segments", None),
         )
         self.loss_fn = NormMAE()
 
