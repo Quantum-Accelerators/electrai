@@ -64,21 +64,23 @@ class RhoData(Dataset):
         rho_type: str,
         data_augmentation: bool = True,
         random_state: int = 42,
+        patch_size: int | None = None,
     ):
         """
         Parameters
         ----------
         data: list of voxel data of length batch_size.
         rho_type: chgcar or elfcar.
-        data_size: target size of data.
-        label_size: target size of label.
-        pyrho_uf: pyrho upsampling factor
+        data_augmentation: whether to apply random rotations.
+        random_state: seed for reproducibility.
+        patch_size: spatial patch size for training (None = full volume).
         """
         self.data = data
         self.data_precision = data_precision
         self.rho_type = rho_type
         self.da = data_augmentation
         self.rng = np.random.default_rng(random_state)
+        self.patch_size = patch_size
 
     def __len__(self):
         return len(self.data)
@@ -120,6 +122,35 @@ class RhoData(Dataset):
         else:
             return [rotate(rotate(rotate(d))) for d in data_lst]
 
+    def extract_patch(
+        self, data: torch.Tensor, label: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Extract random patch with periodic wrapping.
+
+        Uses torch.roll to shift the volume by a random offset (which wraps
+        around due to periodicity), then extracts a fixed-size patch from
+        the origin. This correctly handles periodic boundary conditions.
+        """
+        if self.patch_size is None:
+            return data, label
+
+        D, H, W = data.shape[-3:]
+        ps = self.patch_size
+
+        # Random shift (handles periodicity via roll)
+        shift_d = int(self.rng.integers(0, D))
+        shift_h = int(self.rng.integers(0, H))
+        shift_w = int(self.rng.integers(0, W))
+
+        data = torch.roll(data, shifts=(shift_d, shift_h, shift_w), dims=(-3, -2, -1))
+        label = torch.roll(label, shifts=(shift_d, shift_h, shift_w), dims=(-3, -2, -1))
+
+        # Extract patch from origin
+        data = data[..., :ps, :ps, :ps]
+        label = label[..., :ps, :ps, :ps]
+
+        return data, label
+
     def __getitem__(self, idx: int):
         data = self.read_data(self.data[idx][0])
         label = self.read_data(self.data[idx][1])
@@ -133,6 +164,9 @@ class RhoData(Dataset):
 
         data = torch.tensor(data, dtype=dtype_map[self.data_precision]).unsqueeze(0)
         label = torch.tensor(label, dtype=dtype_map[self.data_precision]).unsqueeze(0)
+
+        # Extract patch before augmentation (for memory efficiency)
+        data, label = self.extract_patch(data, label)
 
         if self.da:
             data, label = self.rand_rotate([data, label])
@@ -166,19 +200,24 @@ def load_data(cfg):
         random_state=cfg.random_state,
     ).data_split()
 
+    patch_size = getattr(cfg, "patch_size", None)
+
     train_data = RhoData(
         train_set,
         cfg.data_precision,
         cfg.rho_type,
         cfg.data_augmentation,
         cfg.random_state,
+        patch_size=patch_size,  # Patches for training
     )
 
     test_data = RhoData(
         test_set,
         cfg.data_precision,
         cfg.rho_type,
-        cfg.data_augmentation,
-        cfg.random_state,
+        data_augmentation=False,
+        random_state=cfg.random_state,
+        patch_size=None,  # Full volume for validation
     )
+
     return train_data, test_data

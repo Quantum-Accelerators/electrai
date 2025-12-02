@@ -38,11 +38,21 @@ class LightningGenerator(pl.LightningModule):
 
     def validation_step(self, batch):
         X, y = batch
-        pred = self(X)
+
+        # Move to CPU for full-volume inference to avoid OOM
+        # (validation uses full volume while training uses patches)
+        device = self.device
+        self.model.cpu()
+        X, y = X.cpu(), y.cpu()
+
+        with torch.no_grad():
+            pred = self(X)
         loss = self.loss_fn(pred, y)
+
+        # Move model back to original device for training
+        self.model.to(device)
+
         self.log("val_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        # release GPU cache for next batch
-        torch.cuda.empty_cache()
         return loss
 
     def configure_optimizers(self):
