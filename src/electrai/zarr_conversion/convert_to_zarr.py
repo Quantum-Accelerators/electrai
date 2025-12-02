@@ -60,10 +60,20 @@ def load_chgcar_from_json(json_gz_path: Path) -> Chgcar:
         raise
 
     chgcar_dict: dict[str, Any]
-    if isinstance(payload, dict) and "chgcar" in payload:
-        chgcar_dict = payload["chgcar"]
-    elif isinstance(payload, dict):
-        chgcar_dict = payload
+    if isinstance(payload, dict):
+        # Check for 'data' field first (common in Materials Project exports)
+        if "data" in payload and isinstance(payload["data"], dict):
+            chgcar_dict = payload["data"]
+        # Check for 'chgcar' field (alternative structure)
+        elif "chgcar" in payload:
+            chgcar_dict = payload["chgcar"]
+        # If neither exists, assume the payload itself is the chgcar dict
+        # but filter out non-Chgcar fields that might cause errors
+        else:
+            # Filter out metadata fields that are not part of Chgcar serialization
+            # Chgcar serialization typically has @module, @class, @version, poscar, data, data_aug
+            excluded_fields = {"fs_id", "maggma_store_type", "compression", "task_id"}
+            chgcar_dict = {k: v for k, v in payload.items() if k not in excluded_fields}
     else:
         raise ValueError(f"Unexpected JSON structure in {json_gz_path}")
 
