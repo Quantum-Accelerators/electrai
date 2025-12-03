@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytorch_lightning as pl
 import torch
-
 from src.electrai.model.loss.charge import NormMAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
 
