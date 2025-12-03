@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Callable
+from collections.abc import Callable
 
 from resnet.rho_data import *
 from resnet.srgan_layernorm_pbc import *

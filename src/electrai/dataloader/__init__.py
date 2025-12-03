@@ -4,5 +4,5 @@ import importlib
 
 from .registry import DATASET_REGISTRY, get_data, register_data
 
-for module in ["mp"]:
+for module in ["mp", "mp_zarr_s3_data"]:
     importlib.import_module(f"{__name__}.{module}")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Callable
+from collections.abc import Callable
 
 from resnet.rho_data import *
 from resnet.srgan_layernorm_pbc import *
@@ -53,7 +53,7 @@ def train(dataloader, model, loss_fn, optimizer, t, accum_iter=1):
 
         def loss_fn_sum(output, target):
             loss = 0
-            for l, w in zip(loss_fn["loss"], loss_fn["weight"]):
+            for l, w in zip(loss_fn["loss"], loss_fn["weight"], strict=False):
                 if isinstance(w, Callable):
                     w = w(t)
                 loss += w * l(output, target)

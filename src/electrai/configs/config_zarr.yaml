@@ -1,0 +1,44 @@
+# Dataset / loader parameters for Zarr format
+dataset_name: "mp_zarr_s3_data"
+
+# Paths (can be local or S3)
+# For local: ./data/MP/zarr_output
+# For S3: s3://bucket-name/prefix/zarr_output
+data_dir: ./data/MP/zarr_output
+label_dir: ./data/MP/zarr_output
+map_dir: ./data/MP/map/map_sample.json.gz
+
+# Data parameters
+rho_type: chgcar
+functional: GGA
+density_type: total  # 'total' or 'diff' for spin-polarized
+normalize_data: True
+train_fraction: 0.8
+random_state: 42
+normalize_label: True
+downsample_data: 2
+downsample_label: 1
+
+# S3 parameters (optional, only needed if using S3 paths)
+# s3_kwargs:
+#   anon: False
+#   profile: default
+#   # Or use explicit credentials:
+#   # key: YOUR_ACCESS_KEY
+#   # secret: YOUR_SECRET_KEY
+
+# Model parameters
+device: cuda:0
+n_channels: 1 #32
+n_residual_blocks: 1 #32
+n_upscale_layers: 1
+kernel_size1: 5
+kernel_size2: 5
+model_prefix: chk_zarr
+
+# Training parameters
+save_every_epochs: 2
+epochs: 2
+nbatch: 1
+lr: 0.1
+weight_decay: 0.0

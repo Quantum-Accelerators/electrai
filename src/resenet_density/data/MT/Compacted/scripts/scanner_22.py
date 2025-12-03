@@ -69,7 +69,7 @@ coords = coords + shift
 fp = open("centered.xyz", "w")
 print(natom, file=fp)
 print("", file=fp)
-for line, c in zip(atoms, coords):
+for line, c in zip(atoms, coords, strict=False):
     print(line.split()[0], *c, file=fp)
 fp.close()
 fp = open("centered.xyz")

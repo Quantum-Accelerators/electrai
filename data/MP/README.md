@@ -73,16 +73,19 @@ The script will:
 ## Example GGA Task IDs
 
 Based on the current map_sample.json.gz file, the GGA key contains these task IDs:
-- mp-2355719
-- mp-1933176
-- mp-2507978
-- mp-2255579
-- mp-1800415
-- mp-1923722
-- mp-2452291
-- mp-1790998
-- mp-2632472
-- mp-1802556
+- mp-1775579
+- mp-1828106
+- mp-1828986
+- mp-1887555
+- mp-1924667
+- mp-2367080
+- mp-2411562
+- mp-2493198
+- mp-2680643
+- mp-2709708
+
+The `.json.gz` files for these task IDs are available in `data/MP/jsongz`, and the corresponding VASP CHGCAR files can be found in `data/MP/chgcars`.
+The label charge densities where obtained from the Material Project database.
 
 ## Error Handling
 
