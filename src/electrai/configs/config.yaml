@@ -12,7 +12,7 @@ normalize_data: False
 data_augmentation: True
 label_size: [64, 64, 64]
 data_size: [32, 32, 32]
-pyrho_uf: 1
+data_precision: f32
 
 # Model parameters
 device: cuda:0
