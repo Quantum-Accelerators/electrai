@@ -5,11 +5,13 @@ from pathlib import Path
 import numpy as np
 import torch
 from monty.serialization import loadfn
-from pyrho.charge_density import ChargeDensity
+from pymatgen.io.vasp.outputs import Chgcar
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from .registry import register_data
+
+dtype_map = {"f32": torch.float32, "f16": torch.float16, "bf16": torch.bfloat16}
 
 
 class RhoRead:
@@ -18,9 +20,7 @@ class RhoRead:
         data_path: Path,
         label_path: Path,
         map_path: Path,
-        rho_type: str,
         functional: str,
-        normalize: bool,
         train_fraction: float,
         random_state: int = 42,
     ):
@@ -30,17 +30,13 @@ class RhoRead:
         data_path: path of input chgcar or elfcar files.
         label_path: path of label chgcar or elfcar files.
         map_path: path of json file mapping functional to list of task_ids.
-        rho_type: chgcar or elfcar.
         functional: 'GGA', 'GG+U', 'PBEsol', 'SCAN', 'r2SCAN'.
-        normalize: whether to normalize the CHGCAR data so that its integral over the grid equals NELECT.
         train_fraction: fraction of the data used for training (0 to 1).
         """
         self.data_path = Path(data_path)
         self.label_path = Path(label_path)
         self.map_path = Path(map_path)
-        self.rho_type = rho_type
         self.functional = functional
-        self.normalize = normalize
         self.tf = train_fraction
         self.rs = random_state
 
@@ -51,7 +47,7 @@ class RhoRead:
         for task_id in mapping[self.functional]:
             data = (
                 self.data_path / f"{task_id}.CHGCAR",
-                self.label_path / f"{task_id}.json.gz",
+                self.label_path / f"{task_id}.CHGCAR",
             )
             data_list.append(data)
         train_data, test_data = train_test_split(
@@ -64,29 +60,24 @@ class RhoData(Dataset):
     def __init__(
         self,
         data: list[tuple[Path, Path]],
+        data_precision: str,
+        rho_type: str,
         data_augmentation: bool = True,
-        data_size: list[int] | None = None,
-        label_size: list[int] | None = None,
-        pyrho_uf: int = 8,
         random_state: int = 42,
     ):
         """
         Parameters
         ----------
-        data_list: list of voxel data of length batch_size.
+        data: list of voxel data of length batch_size.
+        rho_type: chgcar or elfcar.
         data_size: target size of data.
         label_size: target size of label.
         pyrho_uf: pyrho upsampling factor
         """
-        if label_size is None:
-            label_size = [64, 64, 64]
-        if data_size is None:
-            data_size = [32, 32, 32]
         self.data = data
+        self.data_precision = data_precision
+        self.rho_type = rho_type
         self.da = data_augmentation
-        self.data_size = data_size
-        self.label_size = label_size
-        self.pyrho_uf = pyrho_uf
         self.rng = np.random.default_rng(random_state)
 
     def __len__(self):
@@ -119,7 +110,7 @@ class RhoData(Dataset):
             def rotate(d):
                 return self.rotate_z(d)
 
-        r = self.rng.random()  # this may need a new seed
+        r = self.rng.random()
         if r < 0.1:
             return data_lst
         elif r < 0.4:
@@ -132,23 +123,16 @@ class RhoData(Dataset):
     def __getitem__(self, idx: int):
         data = self.read_data(self.data[idx][0])
         label = self.read_data(self.data[idx][1])
-        data = (
-            data.get_transformed(
-                np.eye(3), grid_out=self.data_size, up_sample=self.pyrho_uf
-            )
-            .pgrids["total"]
-            .grid_data
-        )
-        label = (
-            label.get_transformed(
-                np.eye(3), grid_out=self.label_size, up_sample=self.pyrho_uf
-            )
-            .pgrids["total"]
-            .grid_data
-        )
 
-        data = torch.tensor(data, dtype=torch.float32).unsqueeze(0)
-        label = torch.tensor(label, dtype=torch.float32).unsqueeze(0)
+        if self.rho_type == "chgcar":
+            data = data.data["total"] / np.prod(data.data["total"].shape)
+            label = label.data["total"] / np.prod(label.data["total"].shape)
+        else:
+            data = data.data["total"]
+            label = label.data["total"]
+
+        data = torch.tensor(data, dtype=dtype_map[self.data_precision]).unsqueeze(0)
+        label = torch.tensor(label, dtype=dtype_map[self.data_precision]).unsqueeze(0)
 
         if self.da:
             data, label = self.rand_rotate([data, label])
@@ -164,16 +148,10 @@ class RhoData(Dataset):
         ----------
         charge density array
         """
-        if data_path.name.endswith(".json.gz"):
-            data = loadfn(data_path)["data"]
-            cden = ChargeDensity.from_pmg(data, normalization=None)
-        elif data_path.name.endswith(".CHGCAR"):
-            cden = ChargeDensity.from_file(data_path)
+        if data_path.name.endswith(".CHGCAR"):
+            cden = Chgcar.from_file(data_path)
         else:
             raise ValueError(f"Voxel data format not supported: {data_path}")
-
-        # if self.rho_type == "chgcar" and self.normalize:
-        #     cden /= np.prod(cden.shape)
         return cden
 
 
@@ -183,28 +161,24 @@ def load_data(cfg):
         data_path=cfg.data_path,
         label_path=cfg.label_path,
         map_path=cfg.map_path,
-        rho_type=cfg.rho_type,
         functional=cfg.functional,
-        normalize=cfg.normalize_data,
         train_fraction=cfg.train_fraction,
         random_state=cfg.random_state,
     ).data_split()
 
     train_data = RhoData(
         train_set,
+        cfg.data_precision,
+        cfg.rho_type,
         cfg.data_augmentation,
-        cfg.data_size,
-        cfg.label_size,
-        cfg.pyrho_uf,
         cfg.random_state,
     )
 
     test_data = RhoData(
         test_set,
+        cfg.data_precision,
+        cfg.rho_type,
         cfg.data_augmentation,
-        cfg.data_size,
-        cfg.label_size,
-        cfg.pyrho_uf,
         cfg.random_state,
     )
     return train_data, test_data
