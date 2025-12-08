@@ -42,18 +42,9 @@ class LightningGenerator(LightningModule):
     def validation_step(self, batch):
         x, y = batch
 
-        # Move to CPU for full-volume inference to avoid OOM
-        # (validation uses full volume while training uses patches)
-        device = self.device
-        self.model.cpu()
-        x, y = x.cpu(), y.cpu()
-
         with torch.no_grad():
             pred = self(x)
         loss = self.loss_fn(pred, y)
-
-        # Move model back to original device for training
-        self.model.to(device)
 
         self.log(
             "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
