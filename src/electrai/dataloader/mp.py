@@ -210,7 +210,7 @@ def load_data(cfg):
         cfg.rho_type,
         cfg.data_augmentation,
         cfg.random_state,
-        tile_size=tile_size,  # Tiles for training
+        tile_size=tile_size,
     )
 
     test_data = RhoData(
