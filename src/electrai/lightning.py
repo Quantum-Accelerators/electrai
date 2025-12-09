@@ -42,8 +42,7 @@ class LightningGenerator(LightningModule):
     def validation_step(self, batch):
         x, y = batch
 
-        with torch.no_grad():
-            pred = self(x)
+        pred = self(x)
         loss = self.loss_fn(pred, y)
 
         self.log(
