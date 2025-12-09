@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_features, K=3):
+    def __init__(self, in_features, K=3, use_checkpoint=True):
         super().__init__()
+        self.use_checkpoint = use_checkpoint
         self.conv_block = nn.Sequential(
             nn.Conv3d(
                 in_features,
@@ -34,7 +36,11 @@ class ResidualBlock(nn.Module):
         )
 
     def forward(self, x):
-        return x + self.conv_block(x)
+        if self.use_checkpoint and self.training:
+            # Use gradient checkpointing to save memory during training
+            return x + checkpoint(self.conv_block, x, use_reentrant=False)
+        else:
+            return x + self.conv_block(x)
 
 
 class PixelShuffle3d(nn.Module):
@@ -67,16 +73,19 @@ class GeneratorResNet(nn.Module):
         K1=5,
         K2=3,
         normalize=True,
+        use_checkpoint=True,
     ):
         """
         This net upscales each axis by 2**n_upscale_layers
         C = channel size in most of layers
         K1 = kernel size in the first and last layers
         K2 = kernel size in Res blocks
+        use_checkpoint = enable gradient checkpointing to save memory
         """
         super().__init__()
         self.n_upscale_layers = n_upscale_layers
         self.normalize = normalize
+        self.use_checkpoint = use_checkpoint
 
         # First layer
         self.conv1 = nn.Sequential(
@@ -92,7 +101,10 @@ class GeneratorResNet(nn.Module):
         )
 
         # Residual blocks
-        res_blocks = [ResidualBlock(C, K=K2) for _ in range(n_residual_blocks)]
+        res_blocks = [
+            ResidualBlock(C, K=K2, use_checkpoint=use_checkpoint)
+            for _ in range(n_residual_blocks)
+        ]
         self.res_blocks = nn.Sequential(*res_blocks)
 
         # Second conv layer post residual blocks
