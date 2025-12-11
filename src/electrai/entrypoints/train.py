@@ -6,16 +6,13 @@ from types import SimpleNamespace
 
 import torch
 import yaml
-from lightning.pytorch.profilers import PyTorchProfiler
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
 from torch.utils.data import DataLoader
 
-os.environ["WANDB_MODE"] = "online"
-torch.set_float32_matmul_precision("medium")
+torch.backends.cudnn.conv.fp32_precision = "tf32"
 
 
 def train(args):
@@ -54,9 +51,18 @@ def train(args):
     # -----------------------------
     # Logging and callbacks
     # -----------------------------
-    wandb_logger = WandbLogger(
-        project=cfg.wb_pname, name=cfg.wb_ename, entity=cfg.entity, config=vars(cfg)
-    )
+    wandb_mode = getattr(cfg, "wandb_mode", "disabled").lower()
+    if wandb_mode not in ("online", "offline"):
+        wandb_mode = "disabled"
+    os.environ["WANDB_MODE"] = wandb_mode
+    if wandb_mode != "disabled":
+        from lightning.pytorch.loggers import WandbLogger
+
+        wandb_logger = WandbLogger(
+            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg)
+        )
+    else:
+        wandb_logger = None
 
     checkpoint_cb = ModelCheckpoint(
         monitor="val_loss",
@@ -69,19 +75,6 @@ def train(args):
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     # -----------------------------
-    # Profiler
-    # -----------------------------
-    profiler = PyTorchProfiler(
-        dirpath=cfg.profile_dir,
-        filename="pytorch_profile",
-        schedule=torch.profiler.schedule(wait=0, warmup=0, active=float("inf")),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(cfg.profile_dir),
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True,
-    )
-
-    # -----------------------------
     # Trainer
     # -----------------------------
     trainer = Trainer(
@@ -91,8 +84,7 @@ def train(args):
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
         precision=cfg.model_precision,
-        log_every_n_steps=10,
-        profiler=profiler,
+        log_every_n_steps=1,
     )
 
     # -----------------------------

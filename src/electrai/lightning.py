@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import pytorch_lightning as pl
 import torch
+from lightning.pytorch import LightningModule
 from src.electrai.model.loss.charge import NormMAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
 
 
-class LightningGenerator(pl.LightningModule):
+class LightningGenerator(LightningModule):
     def __init__(self, cfg):
         super().__init__()
         self.save_hyperparameters()
@@ -26,21 +26,26 @@ class LightningGenerator(pl.LightningModule):
         return self.model(x)
 
     def training_step(self, batch):
-        X, y = batch
-        pred = self(X)
+        x, y = batch
+        pred = self(x)
         loss = self.loss_fn(pred, y)
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        # release GPU cache for next batch
-        torch.cuda.empty_cache()
+        self.log(
+            "train_loss",
+            loss,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
         return loss
 
     def validation_step(self, batch):
-        X, y = batch
-        pred = self(X)
+        x, y = batch
+        pred = self(x)
         loss = self.loss_fn(pred, y)
-        self.log("val_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        # release GPU cache for next batch
-        torch.cuda.empty_cache()
+        self.log(
+            "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
+        )
         return loss
 
     def configure_optimizers(self):
