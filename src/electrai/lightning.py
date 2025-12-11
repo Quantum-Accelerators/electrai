@@ -35,7 +35,7 @@ class LightningGenerator(LightningModule):
             prog_bar=True,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
         )
         return loss
 
