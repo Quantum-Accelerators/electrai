@@ -16,13 +16,13 @@ repos:
     hooks:
       - id: end-of-file-fixer
         exclude: |
-          (^data/MP/chgcars)|
+          'data/MP/chgcars'|
           (^data/.*\.CHGCAR$)|
           (^label/.*\.CHGCAR$)
 
       - id: trailing-whitespace
         exclude: |
-          (^data/MP/chgcars)|
+          'data/MP/chgcars'|
           (^data/.*\.CHGCAR$)|
           (^label/.*\.CHGCAR$)
 
