@@ -56,12 +56,15 @@ class LightningGenerator(LightningModule):
         )
 
         linsch = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1e-5, end_factor=1, total_iters=1
+            optimizer,
+            start_factor=1e-5,
+            end_factor=1,
+            total_iters=self.cfg.warmup_length,
         )
         cossch = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=int(self.cfg.epochs) - 1
+            optimizer, T_max=int(self.cfg.epochs) - self.cfg.warmup_length
         )
         scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer, [linsch, cossch], milestones=[1]
+            optimizer, [linsch, cossch], milestones=[self.cfg.warmup_length]
         )
         return [optimizer], [scheduler]

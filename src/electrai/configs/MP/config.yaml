@@ -30,8 +30,9 @@ epochs: 10
 nbatch: 1
 lr: 0.01
 weight_decay: 0.0
+warmup_length: 1
 
 # Weights and biases
-wandb_mode: ${env:WANDB_MODE}
+self.cfg.warmup_length: ${env:WANDB_MODE}
 wb_pname: ${env:WB_PNAME}
 entity: ${env:ENTITY}
