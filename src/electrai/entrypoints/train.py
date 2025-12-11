@@ -83,6 +83,7 @@ def train(args):
         devices=1,
         precision=cfg.model_precision,
         log_every_n_steps=1,
+        gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
     )
 
     # -----------------------------
