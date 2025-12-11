@@ -27,7 +27,7 @@ model_precision: 32
 use_checkpoint: True
 save_every_epochs: 2
 epochs: 10
-nbatch: 1
+nbatch: 4
 lr: 0.01
 weight_decay: 0.0
 warmup_length: 1
@@ -35,4 +35,4 @@ warmup_length: 1
 # Weights and biases
 wandb_mode: offline
 wb_pname: uniform-data-training
-entity: PrinceOA
+entity: hanaoli

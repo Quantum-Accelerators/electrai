@@ -27,8 +27,16 @@ class LightningGenerator(LightningModule):
 
     def training_step(self, batch):
         x, y = batch
-        pred = self(x)
-        loss = self.loss_fn(pred, y)
+        if isinstance(x, list):
+            losses = []
+            for x_i, y_i in zip(x, y, strict=False):
+                pred = self(x_i.unsqueeze(0))
+                loss = self.loss_fn(pred, y_i.unsqueeze(0))
+                losses.append(loss)
+            loss = torch.stack(losses).mean()
+        else:
+            pred = self(x)
+            loss = self.loss_fn(pred, y)
         self.log(
             "train_loss",
             loss,
@@ -41,8 +49,16 @@ class LightningGenerator(LightningModule):
 
     def validation_step(self, batch):
         x, y = batch
-        pred = self(x)
-        loss = self.loss_fn(pred, y)
+        if isinstance(x, list):
+            losses = []
+            for x_i, y_i in zip(x, y, strict=False):
+                pred = self(x_i.unsqueeze(0))
+                loss = self.loss_fn(pred, y_i.unsqueeze(0))
+                losses.append(loss)
+            loss = torch.stack(losses).mean()
+        else:
+            pred = self(x)
+            loss = self.loss_fn(pred, y)
         self.log(
             "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
         )

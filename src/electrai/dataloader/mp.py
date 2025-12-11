@@ -123,8 +123,11 @@ class RhoData(Dataset):
             return [rotate(rotate(rotate(d))) for d in data_lst]
 
     def __getitem__(self, idx: int):
-        data = self.read_data(self.data[idx][0])
-        label = self.read_data(self.data[idx][1])
+        data_path = self.data[idx][0]
+        label_path = self.data[idx][1]
+
+        data = self.read_data(data_path)
+        label = self.read_data(label_path)
 
         if self.rho_type == "chgcar":
             data = data.data["total"] / np.prod(data.data["total"].shape)

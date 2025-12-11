@@ -11,8 +11,18 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
 from torch.utils.data import DataLoader
+from torch.utils.data._utils.collate import default_collate
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
+
+
+def collate_fn(batch):
+    try:
+        return default_collate(batch)
+    except Exception:
+        # Separate and return as lists of tensors
+        x, y = zip(*batch, strict=False)
+        return list(x), list(y)
 
 
 def train(args):
@@ -35,12 +45,14 @@ def train(args):
         batch_size=int(cfg.nbatch),
         shuffle=True,
         num_workers=cfg.num_workers,
+        collate_fn=collate_fn,
     )
     test_loader = DataLoader(
         test_data,
         batch_size=int(cfg.nbatch),
         shuffle=False,
         num_workers=cfg.num_workers,
+        collate_fn=collate_fn,
     )
 
     # -----------------------------
