@@ -52,8 +52,6 @@ def train(args):
     # Logging and callbacks
     # -----------------------------
     wandb_mode = getattr(cfg, "wandb_mode", "disabled").lower()
-    if wandb_mode not in ("online", "offline"):
-        wandb_mode = "disabled"
     os.environ["WANDB_MODE"] = wandb_mode
     if wandb_mode != "disabled":
         from lightning.pytorch.loggers import WandbLogger
