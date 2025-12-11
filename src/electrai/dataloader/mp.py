@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import gzip
 from pathlib import Path
 
 import numpy as np
 import torch
-from monty.serialization import loadfn
+import yaml
 from pymatgen.io.vasp.outputs import Chgcar
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
@@ -41,7 +42,8 @@ class RhoRead:
         self.rs = random_state
 
     def data_split(self):
-        mapping = loadfn(self.map_path)
+        with gzip.open(self.map_path, "rt") as f:
+            mapping = yaml.safe_load(f)
         data_list = []
 
         for task_id in mapping[self.functional]:
