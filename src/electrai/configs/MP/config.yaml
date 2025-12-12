@@ -31,6 +31,7 @@ nbatch: 1
 lr: 0.01
 weight_decay: 0.0
 warmup_length: 1
+gradient_clip_value: 20.0
 
 # Weights and biases
 wandb_mode: offline
