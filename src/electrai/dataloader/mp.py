@@ -129,15 +129,29 @@ class RhoData(Dataset):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Extract random tile with periodic wrapping.
 
-        Uses torch.roll to shift the volume by a random offset, which wraps
-        around due to periodicity, then extracts a fixed-size tile from
-        the origin.
+        Uses torch.tile to replicate unit cells smaller than tile_size, and create a supercell.
+        Then, uses torch.roll to shift by a random offset. Finally extracts a fixed-size tile
+        from the origin.
         """
         if self.tile_size is None:
             return data, label
 
         D, H, W = data.shape[-3:]
         size = self.tile_size
+
+        # Replicate if any dimension is smaller than tile_size
+        if size > D or size > H or size > W:
+            reps_d = (size + D - 1) // D
+            reps_h = (size + H - 1) // H
+            reps_w = (size + W - 1) // W
+
+            # Data shape is (1, D, H, W) after unsqueeze
+            reps = (1, reps_d, reps_h, reps_w)
+
+            data = torch.tile(data, reps)
+            label = torch.tile(label, reps)
+
+            D, H, W = data.shape[-3:]
 
         # Random shift (handles periodicity via roll)
         shift_d = int(self.rng.integers(0, D))
