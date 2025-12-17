@@ -155,7 +155,7 @@ class GeneratorResNet(nn.Module):
         out1 = self.conv1(x)
         out = self.res_blocks(out1)
         out2 = self.conv2(out)
-        out = out1 + out2
+        out = torch.add(out1, out2)
         out = self.upsampling(out)
         out = self.conv3(out)
 
