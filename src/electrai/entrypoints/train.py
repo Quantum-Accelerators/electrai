@@ -62,11 +62,13 @@ def train(args):
     else:
         wandb_logger = None
 
+    ckpt_path = Path(getattr(cfg, "ckpt_path", "./checkpoints"))
     checkpoint_cb = ModelCheckpoint(
+        dirpath=ckpt_path,
         monitor="val_loss",
         save_top_k=2,
         mode="min",
-        filename=f"{cfg.model_prefix}" + "_{epoch:02d}_{val_loss:.6f}",
+        filename="ckpt_{epoch:02d}_{val_loss:.6f}",
         save_last=True,
     )
 
@@ -88,4 +90,7 @@ def train(args):
     # -----------------------------
     # Train
     # -----------------------------
-    trainer.fit(lit_model, train_loader, test_loader)
+    ckpt = ckpt_path / "last.ckpt"
+    trainer.fit(
+        lit_model, train_loader, test_loader, ckpt_path=ckpt if ckpt.exists() else None
+    )
