@@ -10,8 +10,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
-from torch.utils.data import DataLoader
-from torch.utils.data._utils.collate import default_collate
+from torch.utils.data import DataLoader, default_collate
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
 
@@ -20,7 +19,6 @@ def collate_fn(batch):
     try:
         return default_collate(batch)
     except Exception:
-        # Separate and return as lists of tensors
         x, y = zip(*batch, strict=False)
         return list(x), list(y)
 
