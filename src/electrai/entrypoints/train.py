@@ -19,7 +19,7 @@ def collate_fn(batch):
     try:
         return default_collate(batch)
     except Exception:
-        x, y = zip(*batch, strict=False)
+        x, y = zip(*batch, strict=True)
         return list(x), list(y)
 
 
