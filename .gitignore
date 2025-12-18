@@ -1,5 +1,8 @@
 # Docs
 .cache/
+examples/QM9/*
+examples/MP/experiments
+src/electrai/walltime_checkpointer.py
 docs/reference/*
 *doctrees*
 /site
