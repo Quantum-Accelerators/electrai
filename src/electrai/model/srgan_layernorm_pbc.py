@@ -148,12 +148,14 @@ class GeneratorResNet(nn.Module):
         )
 
     def forward(self, x):
+        #TODO: variable names could be improved
         out1 = self.conv1(x)
         out = self.res_blocks(out1)
         out2 = self.conv2(out)
         out = torch.add(out1, out2)
         out = self.upsampling(out)
         out = self.conv3(out)
+        #TODO: Understand better -- is this the right normalization we want to do? What are the units?
         if self.normalize:
             upscale_factor = 8 ** (self.n_upscale_layers)
             out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]

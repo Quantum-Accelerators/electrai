@@ -15,8 +15,8 @@ class LightningGenerator(LightningModule):
             n_residual_blocks=int(cfg.n_residual_blocks),
             n_upscale_layers=int(cfg.n_upscale_layers),
             C=int(cfg.n_channels),
-            K1=int(cfg.kernel_size1),
-            K2=int(cfg.kernel_size2),
+            K1=int(cfg.kernel_size1), #TODO: Understand better
+            K2=int(cfg.kernel_size2), #TODO: Understand better
             normalize=cfg.normalize,
             use_checkpoint=getattr(cfg, "use_checkpoint", True),
         )

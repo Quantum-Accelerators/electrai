@@ -62,6 +62,7 @@ def train(args):
     else:
         wandb_logger = None
 
+    #TODO: make checkpoints optional but default to True
     checkpoint_cb = ModelCheckpoint(
         monitor="val_loss",
         save_top_k=2,
@@ -80,10 +81,10 @@ def train(args):
         logger=wandb_logger,
         callbacks=[checkpoint_cb, lr_monitor],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=1,
+        devices=1, #TODO: multiple GPUs and put it in the config
         precision=cfg.model_precision,
-        log_every_n_steps=1,
-        gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
+        log_every_n_steps=1, #TODO: put it in the config
+        gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0), 
     )
 
     # -----------------------------

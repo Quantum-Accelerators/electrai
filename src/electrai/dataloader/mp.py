@@ -31,7 +31,7 @@ class RhoRead:
         data_path: path of input chgcar or elfcar files.
         label_path: path of label chgcar or elfcar files.
         map_path: path of json file mapping functional to list of task_ids.
-        functional: 'GGA', 'GG+U', 'PBEsol', 'SCAN', 'r2SCAN'.
+        functional: 'GGA', 'GG+U', 'PBEsol', 'SCAN', 'r2SCAN'. #TODO: Understand better
         train_fraction: fraction of the data used for training (0 to 1).
         """
         self.data_path = Path(data_path)
@@ -70,10 +70,11 @@ class RhoData(Dataset):
         """
         Parameters
         ----------
+        #TODO: These paremeters are not actually used in the code. Update these.
         data: list of voxel data of length batch_size.
-        rho_type: chgcar or elfcar.
-        data_size: target size of data.
-        label_size: target size of label.
+        rho_type: chgcar or elfcar. #TODO: elfcar not actually supported yet
+        data_size: target size of data. #TODO: Is this the input grid size? (independent variables)
+        label_size: target size of label. #TODO: Is this the input grid size? (dependent variables)
         pyrho_uf: pyrho upsampling factor
         """
         self.data = data
@@ -85,6 +86,8 @@ class RhoData(Dataset):
     def __len__(self):
         return len(self.data)
 
+    #TODO: These seem to only rotate by 90 degrees.  Can we do partial rotations?
+    #TODO: Can we do this in Pymatgen? (Via a library)
     def rotate_x(self, data_in):
         """
         rotate 90 by x axis
@@ -126,6 +129,7 @@ class RhoData(Dataset):
         data = self.read_data(self.data[idx][0])
         label = self.read_data(self.data[idx][1])
 
+        #TODO: Need to normalize by volume (maybe via pymatgen?) There is a PR for this.
         if self.rho_type == "chgcar":
             data = data.data["total"] / np.prod(data.data["total"].shape)
             label = label.data["total"] / np.prod(label.data["total"].shape)
