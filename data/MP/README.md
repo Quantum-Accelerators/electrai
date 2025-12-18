@@ -6,7 +6,7 @@ This script reads task IDs from `chgcars_functional_to_task_ids.json.gz` for any
 
 Install required dependencies:
    ```bash
-   uv pip install -r requirements.txt
+   uv sync
    ```
 
 
