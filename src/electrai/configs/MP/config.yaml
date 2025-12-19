@@ -10,7 +10,7 @@ num_workers: 1
 downsample_label: 1
 downsample_data: 0
 data_augmentation: False
-random_state: 42
+seed: 42
 normalize: True
 data_precision: f32
 

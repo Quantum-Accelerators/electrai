@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import torch
 import yaml
-from lightning.pytorch import Trainer
+from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
@@ -23,6 +23,8 @@ def train(args):
     with Path.open(config_path) as f:
         cfg_dict = yaml.safe_load(f)
     cfg = SimpleNamespace(**cfg_dict)
+
+    seed_everything(cfg.seed, workers=True)
 
     assert 0 < cfg.train_fraction < 1, "train_fraction must be between 0 and 1."
 

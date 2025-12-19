@@ -165,22 +165,14 @@ def load_data(cfg):
         map_path=cfg.map_path,
         functional=cfg.functional,
         train_fraction=cfg.train_fraction,
-        random_state=cfg.random_state,
+        random_state=cfg.seed,
     ).data_split()
 
     train_data = RhoData(
-        train_set,
-        cfg.data_precision,
-        cfg.rho_type,
-        cfg.data_augmentation,
-        cfg.random_state,
+        train_set, cfg.data_precision, cfg.rho_type, cfg.data_augmentation, cfg.seed
     )
 
     test_data = RhoData(
-        test_set,
-        cfg.data_precision,
-        cfg.rho_type,
-        cfg.data_augmentation,
-        cfg.random_state,
+        test_set, cfg.data_precision, cfg.rho_type, cfg.data_augmentation, cfg.seed
     )
     return train_data, test_data
