@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import torch
 import yaml
 from lightning.pytorch import Trainer, seed_everything
@@ -11,6 +12,20 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
 from torch.utils.data import DataLoader
+
+
+def make_worker_init_fn(base_seed: int):
+    """Create a worker_init_fn that gives each worker a unique RNG seed."""
+
+    def worker_init_fn(worker_id: int):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is not None:
+            dataset = worker_info.dataset
+            if hasattr(dataset, "rng"):
+                dataset.rng = np.random.default_rng(base_seed + worker_id)
+
+    return worker_init_fn
+
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
 
@@ -32,17 +47,20 @@ def train(args):
     # Data
     # -----------------------------
     train_data, test_data = get_data(cfg)
+    worker_init_fn = make_worker_init_fn(cfg.random_seed)
     train_loader = DataLoader(
         train_data,
         batch_size=int(cfg.nbatch),
         shuffle=True,
         num_workers=cfg.num_workers,
+        worker_init_fn=worker_init_fn,
     )
     test_loader = DataLoader(
         test_data,
         batch_size=int(cfg.nbatch),
         shuffle=False,
         num_workers=cfg.num_workers,
+        worker_init_fn=worker_init_fn,
     )
 
     # -----------------------------
