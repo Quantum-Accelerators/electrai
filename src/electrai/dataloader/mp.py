@@ -65,7 +65,6 @@ class RhoData(Dataset):
         data_precision: str,
         rho_type: str,
         data_augmentation: bool = True,
-        random_seed: int = 42,
     ):
         """
         Parameters
@@ -80,15 +79,6 @@ class RhoData(Dataset):
         self.data_precision = data_precision
         self.rho_type = rho_type
         self.da = data_augmentation
-        self.base_seed = random_seed
-        self.worker_id = 0
-        self.epoch = 0
-        self.rng = np.random.default_rng(random_seed)
-
-    def set_epoch(self, epoch: int):
-        """Re-seed RNG for new epoch to get different augmentations each epoch."""
-        self.epoch = epoch
-        self.rng = np.random.default_rng(self.base_seed + epoch * 1000 + self.worker_id)
 
     def __len__(self):
         return len(self.data)
@@ -106,7 +96,7 @@ class RhoData(Dataset):
         return data_in.transpose(-2, -3).flip(-2)
 
     def rand_rotate(self, data_lst):
-        rint = self.rng.integers(0, 3)
+        rint = torch.randint(0, 3, ()).item()
         if rint == 0:
 
             def rotate(d):
@@ -120,7 +110,7 @@ class RhoData(Dataset):
             def rotate(d):
                 return self.rotate_z(d)
 
-        r = self.rng.random()
+        r = torch.rand(()).item()
         if r < 0.1:
             return data_lst
         elif r < 0.4:
@@ -177,18 +167,10 @@ def load_data(cfg):
     ).data_split()
 
     train_data = RhoData(
-        train_set,
-        cfg.data_precision,
-        cfg.rho_type,
-        cfg.data_augmentation,
-        cfg.random_seed,
+        train_set, cfg.data_precision, cfg.rho_type, cfg.data_augmentation
     )
 
     test_data = RhoData(
-        test_set,
-        cfg.data_precision,
-        cfg.rho_type,
-        cfg.data_augmentation,
-        cfg.random_seed,
+        test_set, cfg.data_precision, cfg.rho_type, cfg.data_augmentation
     )
     return train_data, test_data

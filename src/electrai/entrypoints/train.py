@@ -6,33 +6,11 @@ from types import SimpleNamespace
 
 import torch
 import yaml
-from lightning.pytorch import Callback, Trainer, seed_everything
+from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
 from torch.utils.data import DataLoader
-
-
-def worker_init_fn(worker_id: int):
-    """Set DataLoader worker to be used for random seeding."""
-    worker_info = torch.utils.data.get_worker_info()
-    if worker_info is not None:
-        dataset = worker_info.dataset
-        dataset.worker_id = worker_id
-        dataset.set_epoch(getattr(dataset, "epoch", 0))
-
-
-class EpochCallback(Callback):
-    """Update dataset epoch at the start of each training epoch. Used for random seeding."""
-
-    def on_train_epoch_start(self, trainer, pl_module):  # noqa: ARG002
-        train_dataloader = trainer.train_dataloader
-        if train_dataloader is None:
-            return
-        dataset = getattr(train_dataloader, "dataset", None)
-        if dataset is not None and hasattr(dataset, "set_epoch"):
-            dataset.set_epoch(trainer.current_epoch)
-
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
 
@@ -59,7 +37,7 @@ def train(args):
         batch_size=int(cfg.nbatch),
         shuffle=True,
         num_workers=cfg.num_workers,
-        worker_init_fn=worker_init_fn,
+        persistent_workers=True,  # required for random seeding not to reset each epoch
     )
     test_loader = DataLoader(
         test_data,
@@ -96,7 +74,6 @@ def train(args):
     )
 
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
-    epoch_cb = EpochCallback()
 
     # -----------------------------
     # Trainer
@@ -104,7 +81,7 @@ def train(args):
     trainer = Trainer(
         max_epochs=int(cfg.epochs),
         logger=wandb_logger,
-        callbacks=[checkpoint_cb, lr_monitor, epoch_cb],
+        callbacks=[checkpoint_cb, lr_monitor],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
         precision=cfg.model_precision,
