@@ -24,7 +24,7 @@ def train(args):
         cfg_dict = yaml.safe_load(f)
     cfg = SimpleNamespace(**cfg_dict)
 
-    seed_everything(cfg.seed, workers=True)
+    seed_everything(cfg.random_seed, workers=True)
 
     assert 0 < cfg.train_fraction < 1, "train_fraction must be between 0 and 1."
 
