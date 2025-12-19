@@ -80,7 +80,15 @@ class RhoData(Dataset):
         self.data_precision = data_precision
         self.rho_type = rho_type
         self.da = data_augmentation
+        self.base_seed = random_seed
+        self.worker_id = 0
+        self.epoch = 0
         self.rng = np.random.default_rng(random_seed)
+
+    def set_epoch(self, epoch: int):
+        """Re-seed RNG for new epoch to get different augmentations each epoch."""
+        self.epoch = epoch
+        self.rng = np.random.default_rng(self.base_seed + epoch * 1000 + self.worker_id)
 
     def __len__(self):
         return len(self.data)
