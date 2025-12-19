@@ -14,17 +14,21 @@ from src.electrai.lightning import LightningGenerator
 from torch.utils.data import DataLoader
 
 
-def make_worker_init_fn(base_seed: int):
-    """Create a worker_init_fn that gives each worker a unique RNG seed."""
+class WorkerInitFn:
+    """Callable that gives each DataLoader worker a unique RNG seed.
 
-    def worker_init_fn(worker_id: int):
+    Uses a class instead of a closure so it can be pickled for multiprocessing.
+    """
+
+    def __init__(self, base_seed: int):
+        self.base_seed = base_seed
+
+    def __call__(self, worker_id: int):
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is not None:
             dataset = worker_info.dataset
             if hasattr(dataset, "rng"):
-                dataset.rng = np.random.default_rng(base_seed + worker_id)
-
-    return worker_init_fn
+                dataset.rng = np.random.default_rng(self.base_seed + worker_id)
 
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
@@ -47,7 +51,7 @@ def train(args):
     # Data
     # -----------------------------
     train_data, test_data = get_data(cfg)
-    worker_init_fn = make_worker_init_fn(cfg.random_seed)
+    worker_init_fn = WorkerInitFn(cfg.random_seed)
     train_loader = DataLoader(
         train_data,
         batch_size=int(cfg.nbatch),
