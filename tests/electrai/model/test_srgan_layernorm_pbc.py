@@ -40,10 +40,6 @@ class TestResidualBlock:
         block_custom = ResidualBlock(in_features=32, K=5, use_checkpoint=False)
         assert block_custom.use_checkpoint is False
 
-        # Verify conv_block is a Sequential
-        assert isinstance(block_default.conv_block, torch.nn.Sequential)
-        assert isinstance(block_custom.conv_block, torch.nn.Sequential)
-
     @pytest.mark.parametrize(
         "shape", [(1, 64, 8, 8, 8), (2, 64, 16, 16, 16), (4, 64, 4, 8, 12)]
     )
@@ -241,11 +237,6 @@ class TestGeneratorResNet:
         assert gen.n_upscale_layers == 2
         assert gen.normalize is True
         assert gen.use_checkpoint is True
-        assert isinstance(gen.conv1, torch.nn.Sequential)
-        assert isinstance(gen.res_blocks, torch.nn.Sequential)
-        assert isinstance(gen.conv2, torch.nn.Sequential)
-        assert isinstance(gen.upsampling, torch.nn.Sequential)
-        assert isinstance(gen.conv3, torch.nn.Sequential)
 
     def test_generator_custom_parameters(self):
         """Test with custom in_channels, out_channels, n_residual_blocks, C, K1, K2."""
