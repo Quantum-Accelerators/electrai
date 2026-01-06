@@ -31,14 +31,3 @@ Run a specific test:
 ```bash
 uv run pytest tests/electrai/model/test_srgan_layernorm_pbc.py::TestGeneratorResNet::test_generator_output_shape_default
 ```
-
-## Test Structure
-
-```
-tests/
-├── electrai/
-│   ├── dataloader/          # Dataloader tests
-│   ├── model/               # Model tests
-│   └── zarr_conversion/     # Zarr conversion tests
-└── README.md
-```
