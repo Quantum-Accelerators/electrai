@@ -44,19 +44,17 @@ class TestResidualBlock:
         assert isinstance(block_default.conv_block, torch.nn.Sequential)
         assert isinstance(block_custom.conv_block, torch.nn.Sequential)
 
-    def test_residual_block_output_shape(self):
+    @pytest.mark.parametrize(
+        "shape", [(1, 64, 8, 8, 8), (2, 64, 16, 16, 16), (4, 64, 4, 8, 12)]
+    )
+    def test_residual_block_output_shape(self, shape):
         """Input shape (B, C, H, W, D) → output shape unchanged."""
-        in_features = 64
-        block = ResidualBlock(in_features=in_features, use_checkpoint=False)
+        block = ResidualBlock(in_features=64, use_checkpoint=False)
         block.eval()
 
-        # Test various input shapes
-        test_shapes = [(1, 64, 8, 8, 8), (2, 64, 16, 16, 16), (4, 64, 4, 8, 12)]
-
-        for shape in test_shapes:
-            x = torch.randn(*shape)
-            output = block(x)
-            assert output.shape == x.shape, f"Shape mismatch for input {shape}"
+        x = torch.randn(*shape)
+        output = block(x)
+        assert output.shape == x.shape
 
     def test_residual_block_residual_connection(self):
         """Verify output ≈ input + conv_block(input) (residual addition works)."""
@@ -235,22 +233,21 @@ class TestPixelShuffle3d:
         expected_shape = (1, 1, 8, 8, 8)
         assert output.shape == expected_shape
 
-    def test_pixel_shuffle_3d_multiple_channels(self):
-        """Test with in_channels=64, upscale_factor=2: (B, 64, H, W, D) → (B, 8, 2H, 2W, 2D)."""
-        ps = PixelShuffle3d(in_channels=64, upscale_factor=2)
-
-        test_cases = [
+    @pytest.mark.parametrize(
+        ("input_shape", "expected_shape"),
+        [
             ((1, 64, 4, 4, 4), (1, 8, 8, 8, 8)),
             ((2, 64, 8, 8, 8), (2, 8, 16, 16, 16)),
             ((1, 64, 2, 4, 6), (1, 8, 4, 8, 12)),
-        ]
+        ],
+    )
+    def test_pixel_shuffle_3d_multiple_channels(self, input_shape, expected_shape):
+        """Test with in_channels=64, upscale_factor=2: (B, 64, H, W, D) → (B, 8, 2H, 2W, 2D)."""
+        ps = PixelShuffle3d(in_channels=64, upscale_factor=2)
 
-        for input_shape, expected_shape in test_cases:
-            x = torch.randn(*input_shape)
-            output = ps(x)
-            assert output.shape == expected_shape, (
-                f"Expected {expected_shape}, got {output.shape}"
-            )
+        x = torch.randn(*input_shape)
+        output = ps(x)
+        assert output.shape == expected_shape
 
     def test_pixel_shuffle_3d_value_mapping(self):
         """Verify values are correctly rearranged (not just shape, but actual shuffling)."""
@@ -420,20 +417,18 @@ class TestGeneratorResNet:
         expected_shape = (1, 1, 16, 16, 16)
         assert output.shape == expected_shape
 
-    def test_generator_various_input_sizes(self):
+    @pytest.mark.parametrize("size", [8, 16, 32])
+    def test_generator_various_input_sizes(self, size):
         """Test with different spatial dimensions (8³, 16³, 32³)."""
         gen = GeneratorResNet(n_upscale_layers=1, use_checkpoint=False)
         gen.eval()
 
-        test_sizes = [8, 16, 32]
+        x = torch.randn(1, 1, size, size, size)
+        output = gen(x)
 
-        for size in test_sizes:
-            x = torch.randn(1, 1, size, size, size)
-            output = gen(x)
-
-            expected_size = size * 2  # n_upscale_layers=1 means 2x upscaling
-            expected_shape = (1, 1, expected_size, expected_size, expected_size)
-            assert output.shape == expected_shape, f"Failed for input size {size}³"
+        expected_size = size * 2  # n_upscale_layers=1 means 2x upscaling
+        expected_shape = (1, 1, expected_size, expected_size, expected_size)
+        assert output.shape == expected_shape
 
     def test_generator_output_shape_multichannel(self):
         """Test with in_channels=3, out_channels=2."""
@@ -674,7 +669,15 @@ class TestGeneratorResNet:
     # Integration Tests
     # -------------------------------------------------------------------------
 
-    def test_generator_output_non_negative(self):
+    @pytest.mark.parametrize(
+        ("input_type", "bias"),
+        [
+            ("mixed", 0),  # Mixed positive/negative
+            ("mostly_negative", -2),  # Mostly negative
+            ("mostly_positive", 2),  # Mostly positive
+        ],
+    )
+    def test_generator_output_non_negative(self, input_type, bias):
         """Final ReLU ensures output ≥ 0."""
         gen = GeneratorResNet(
             n_residual_blocks=4,
@@ -684,18 +687,14 @@ class TestGeneratorResNet:
         )
         gen.eval()
 
-        # Test with various inputs including negative values
-        test_inputs = [
-            torch.randn(1, 1, 8, 8, 8),  # Mixed positive/negative
-            torch.randn(1, 1, 8, 8, 8) - 2,  # Mostly negative
-            torch.randn(1, 1, 8, 8, 8) + 2,  # Mostly positive
-        ]
+        x = torch.randn(1, 1, 8, 8, 8) + bias
 
-        for x in test_inputs:
-            with torch.no_grad():
-                output = gen(x)
+        with torch.no_grad():
+            output = gen(x)
 
-            assert torch.all(output >= 0), "Output contains negative values"
+        assert torch.all(output >= 0), (
+            f"Output contains negative values for {input_type} input"
+        )
 
     def test_generator_with_real_like_data(self):
         """Test with realistic charge density data (positive values, normalized)."""
