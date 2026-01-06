@@ -147,26 +147,16 @@ class TestPixelShuffle3d:
         with pytest.raises(AssertionError):
             PixelShuffle3d(in_channels=63, upscale_factor=4)  # 63 % 64 != 0
 
-    def test_pixel_shuffle_3d_output_shape(self):
-        """Input (B, C*u³, H, W, D) → output (B, C, H*u, W*u, D*u)."""
-        # upscale_factor=2: channels reduce by 8, spatial dims double
-        ps = PixelShuffle3d(in_channels=64, upscale_factor=2)
-        x = torch.randn(2, 64, 4, 4, 4)
-        output = ps(x)
-
-        expected_shape = (2, 8, 8, 8, 8)  # 64/8=8 channels, 4*2=8 spatial
-        assert output.shape == expected_shape
-
     @pytest.mark.parametrize(
         ("input_shape", "expected_shape"),
         [
             ((1, 64, 4, 4, 4), (1, 8, 8, 8, 8)),
             ((2, 64, 8, 8, 8), (2, 8, 16, 16, 16)),
-            ((1, 64, 2, 4, 6), (1, 8, 4, 8, 12)),
+            ((1, 64, 2, 4, 6), (1, 8, 4, 8, 12)),  # Non-cubic spatial dims
         ],
     )
-    def test_pixel_shuffle_3d_multiple_channels(self, input_shape, expected_shape):
-        """Test with in_channels=64, upscale_factor=2: (B, 64, H, W, D) → (B, 8, 2H, 2W, 2D)."""
+    def test_pixel_shuffle_3d_output_shape(self, input_shape, expected_shape):
+        """Input (B, C*u³, H, W, D) → output (B, C, H*u, W*u, D*u)."""
         ps = PixelShuffle3d(in_channels=64, upscale_factor=2)
 
         x = torch.randn(*input_shape)
