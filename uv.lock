@@ -751,6 +751,8 @@ zarr-conversion = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -767,7 +769,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'docs'", specifier = ">=10.0.0" },
     { name = "pymatgen", specifier = ">=2025.10.7" },
     { name = "pymatgen", marker = "extra == 'zarr-conversion'", specifier = ">=2025.10.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.2" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.0.285" },
@@ -782,7 +784,11 @@ requires-dist = [
 provides-extras = ["dev", "docs", "zarr-conversion"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.4.2" }]
+dev = [
+    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-cov", specifier = ">=3.0.0" },
+    { name = "ruff", specifier = ">=0.0.285" },
+]
 
 [[package]]
 name = "filelock"

@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4.0", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
+dev = ["pytest>=8.4.2", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
 docs = [
     "mkdocs-material>=9.4.0",
     "mkdocstrings[python]>=0.22.0",
@@ -180,4 +180,6 @@ disable_error_code = "annotation-unchecked"
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    "pytest-cov>=3.0.0",
+    "ruff>=0.0.285",
 ]
