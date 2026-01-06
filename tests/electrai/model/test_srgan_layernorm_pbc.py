@@ -620,6 +620,7 @@ class TestGeneratorResNet:
             n_residual_blocks=2,  # Fewer blocks for speed
             n_upscale_layers=1,
             use_checkpoint=False,
+            normalize=False,  # Avoid gradient attenuation from normalization
         )
         gen.train()
 
