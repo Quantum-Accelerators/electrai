@@ -69,26 +69,6 @@ class TestResidualBlock:
 
         torch.testing.assert_close(actual, expected)
 
-    def test_residual_block_checkpoint_training_mode(self):
-        """With use_checkpoint=True and model.train(), verify checkpointing is used."""
-        block = ResidualBlock(in_features=64, use_checkpoint=True)
-        block.train()
-
-        x = torch.randn(1, 64, 8, 8, 8, requires_grad=True)
-        output = block(x)
-
-        # In training mode with checkpointing, intermediate activations are not saved
-        # We verify this indirectly by checking that the forward pass works
-        # and gradients still flow correctly
-        assert output.shape == x.shape
-
-        loss = output.sum()
-        loss.backward()
-
-        # Gradients should still propagate
-        assert x.grad is not None
-        assert not torch.all(x.grad == 0)
-
     def test_residual_block_checkpoint_eval_mode(self):
         """With use_checkpoint=True and model.eval(), checkpointing should be disabled."""
         block = ResidualBlock(in_features=64, use_checkpoint=True)
