@@ -22,24 +22,6 @@ def sample_input_small():
     return torch.randn(2, 1, 8, 8, 8)
 
 
-@pytest.fixture
-def sample_input_medium():
-    """Medium 3D input tensor."""
-    return torch.randn(1, 1, 16, 16, 16)
-
-
-@pytest.fixture
-def generator_default():
-    """Default GeneratorResNet instance."""
-    return GeneratorResNet()
-
-
-@pytest.fixture
-def generator_no_normalize():
-    """GeneratorResNet with normalize=False."""
-    return GeneratorResNet(normalize=False)
-
-
 # =============================================================================
 # ResidualBlock Tests
 # =============================================================================
