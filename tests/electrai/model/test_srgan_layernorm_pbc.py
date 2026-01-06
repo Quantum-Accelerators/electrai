@@ -487,3 +487,33 @@ class TestGeneratorResNet:
             torch.testing.assert_close(
                 output_sum, input_sum * upscale_factor, rtol=1e-4, atol=1e-4
             )
+
+    # -------------------------------------------------------------------------
+    # Gradient Flow Tests
+    # -------------------------------------------------------------------------
+
+    def test_generator_gradient_flow(self):
+        """Verify gradients flow through all layers without vanishing."""
+        gen = GeneratorResNet(
+            n_residual_blocks=4, normalize=False, use_checkpoint=False
+        )
+        gen.train()
+
+        x = torch.randn(1, 1, 8, 8, 8, requires_grad=True)
+        output = gen(x)
+        loss = output.sum()
+        loss.backward()
+
+        # Verify input gradient exists and is non-zero
+        assert x.grad is not None, "Input gradient should exist"
+        assert torch.any(x.grad != 0), "Gradients should flow to input"
+
+        # Verify gradients exist for key layers
+        assert gen.conv1[0].weight.grad is not None, "conv1 gradient should exist"
+        assert gen.conv3[0].weight.grad is not None, "conv3 gradient should exist"
+        assert torch.any(gen.conv1[0].weight.grad != 0), (
+            "conv1 gradient should be non-zero"
+        )
+        assert torch.any(gen.conv3[0].weight.grad != 0), (
+            "conv3 gradient should be non-zero"
+        )
