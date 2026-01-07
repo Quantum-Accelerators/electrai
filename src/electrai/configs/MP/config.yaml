@@ -36,4 +36,5 @@ wandb_mode: offline
 wb_pname: uniform-data-training
 entity: PrinceOA
 
+# checkpoints
 ckpt_path: ./checkpoints
