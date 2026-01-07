@@ -48,7 +48,7 @@ class LightningGenerator(LightningModule):
         x, y = batch
         if isinstance(x, list):
             losses = []
-            for x_i, y_i in zip(x, y, strict=False):
+            for x_i, y_i in zip(x, y, strict=True):
                 pred = self(x_i.unsqueeze(0))
                 loss = self.loss_fn(pred, y_i.unsqueeze(0))
                 losses.append(loss)
