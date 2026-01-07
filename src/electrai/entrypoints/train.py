@@ -18,7 +18,7 @@ torch.backends.cudnn.conv.fp32_precision = "tf32"
 def collate_fn(batch):
     try:
         return default_collate(batch)
-    except Exception:
+    except RuntimeError:
         x, y = zip(*batch, strict=True)
         return list(x), list(y)
 
