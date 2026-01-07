@@ -17,6 +17,7 @@ class RhoRead:
         self,
         data_path: Path,
         label_path: Path,
+        exclude_path: Path,
         train_fraction: float,
         random_state: int = 42,
     ):
@@ -29,14 +30,15 @@ class RhoRead:
         """
         self.data_path = Path(data_path)
         self.label_path = Path(label_path)
+        self.exclude_path = Path(exclude_path)
         self.tf = train_fraction
         self.rs = random_state
 
     def data_split(self):
         data_list = []
-
+        exclude_inds = np.loadtxt(self.exclude_path)
         for mol_id in range(1, 133886):
-            if mol_id in [14562, 14633, 52464, 52465, 97470]:
+            if mol_id in exclude_inds:
                 continue
             data = (
                 self.data_path / f"dsgdb9nsd_{mol_id:06d}" / "rho_22.npy",
@@ -133,8 +135,8 @@ class RhoData(Dataset):
         rho2 = rho2.reshape(1, *size)
 
         if self.normalize_to_den:
-            rho1 = self._normalize(rho1, label_path)
-            rho2 = self._normalize(rho2, label_path)
+            rho1 = self._normalize(rho1)
+            rho2 = self._normalize(rho2)
 
         if self.da:
             rho1, rho2 = self.rand_rotate([rho1, rho2])
@@ -160,6 +162,7 @@ def load_data(cfg):
     train_set, test_set = RhoRead(
         data_path=cfg.data_path,
         label_path=cfg.label_path,
+        exclude_path=cfg.exclude_path,
         train_fraction=cfg.train_fraction,
         random_state=cfg.random_state,
     ).data_split()

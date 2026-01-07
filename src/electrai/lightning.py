@@ -63,6 +63,7 @@ class LightningGenerator(LightningModule):
             self.model.parameters(),
             lr=float(self.cfg.lr),
             weight_decay=float(self.cfg.weight_decay),
+            betas=(getattr(self.cfg, "beta1", 0.9), getattr(self.cfg, "beta2", 0.999)),
         )
 
         linsch = torch.optim.lr_scheduler.LinearLR(
