@@ -130,8 +130,8 @@ class RhoData(Dataset):
         label = self.read_data(label_path)
 
         if self.rho_type == "chgcar":
-            data = data.data["total"] / np.prod(data.data["total"].shape)
-            label = label.data["total"] / np.prod(label.data["total"].shape)
+            data = data.data["total"] / data.structure.lattice.volume
+            label = label.data["total"] / label.structure.lattice.volume
         else:
             data = data.data["total"]
             label = label.data["total"]

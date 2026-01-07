@@ -1,13 +1,13 @@
 # Dataset / loader parameters
 dataset_name: "mp"
-data_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/chgcars/
+data_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/SAD_generation/chgcars_128_uneven/
 label_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/label/subset/chgcars/
-map_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/map.json.gz
+map_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/SAD_generation/map.json.gz
 rho_type: chgcar
 functional: GGA
 train_fraction: 0.9
 num_workers: 1
-downsample_label: 1
+downsample_label: 0
 downsample_data: 0
 data_augmentation: False
 random_state: 42
@@ -23,17 +23,18 @@ kernel_size2: 5
 model_precision: 32
 
 # Training parameters
-save_every_epochs: 2
-epochs: 10
-nbatch: 4
+epochs: 50
+nbatch: 1
 lr: 0.01
 weight_decay: 0.0
 warmup_length: 1
+beta1: 0.9
+beta2: 0.99
 gradient_clip_value: 20.0
 
 # Weights and biases
-wandb_mode: offline
-wb_pname: uniform-data-training
+wandb_mode: online
+wb_pname: mp-experiment
 entity: PrinceOA
 
 # checkpoints
