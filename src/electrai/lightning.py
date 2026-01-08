@@ -26,9 +26,7 @@ class LightningGenerator(LightningModule):
         return self.model(x)
 
     def training_step(self, batch):
-        x, y = batch
-        pred = self(x)
-        loss = self.loss_fn(pred, y)
+        loss = self._loss_calculation(batch)
         self.log(
             "train_loss",
             loss,
@@ -40,12 +38,24 @@ class LightningGenerator(LightningModule):
         return loss
 
     def validation_step(self, batch):
-        x, y = batch
-        pred = self(x)
-        loss = self.loss_fn(pred, y)
+        loss = self._loss_calculation(batch)
         self.log(
             "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
         )
+        return loss
+
+    def _loss_calculation(self, batch):
+        x, y = batch
+        if isinstance(x, list):
+            losses = []
+            for x_i, y_i in zip(x, y, strict=True):
+                pred = self(x_i.unsqueeze(0))
+                loss = self.loss_fn(pred, y_i.unsqueeze(0))
+                losses.append(loss)
+            loss = torch.stack(losses).mean()
+        else:
+            pred = self(x)
+            loss = self.loss_fn(pred, y)
         return loss
 
     def configure_optimizers(self):

@@ -10,9 +10,17 @@ from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, default_collate
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
+
+
+def collate_fn(batch):
+    try:
+        return default_collate(batch)
+    except RuntimeError:
+        x, y = zip(*batch, strict=True)
+        return list(x), list(y)
 
 
 def train(args):
@@ -44,6 +52,7 @@ def train(args):
         batch_size=int(cfg.nbatch),
         shuffle=False,
         num_workers=cfg.num_workers,
+        collate_fn=collate_fn,
     )
 
     # -----------------------------
@@ -65,11 +74,13 @@ def train(args):
     else:
         wandb_logger = None
 
+    ckpt_path = Path(getattr(cfg, "ckpt_path", "./checkpoints"))
     checkpoint_cb = ModelCheckpoint(
+        dirpath=ckpt_path,
         monitor="val_loss",
         save_top_k=2,
         mode="min",
-        filename=f"{cfg.model_prefix}" + "_{epoch:02d}_{val_loss:.6f}",
+        filename="ckpt_{epoch:02d}_{val_loss:.6f}",
         save_last=True,
     )
 
@@ -92,4 +103,7 @@ def train(args):
     # -----------------------------
     # Train
     # -----------------------------
-    trainer.fit(lit_model, train_loader, test_loader)
+    ckpt = ckpt_path / "last.ckpt"
+    trainer.fit(
+        lit_model, train_loader, test_loader, ckpt_path=ckpt if ckpt.exists() else None
+    )

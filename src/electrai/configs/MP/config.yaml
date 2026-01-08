@@ -20,14 +20,12 @@ n_residual_blocks: 32
 n_upscale_layers: 0
 kernel_size1: 5
 kernel_size2: 5
-model_prefix: chk
 model_precision: 32
 
 # Training parameters
-use_checkpoint: True
 save_every_epochs: 2
 epochs: 10
-nbatch: 1
+nbatch: 4
 lr: 0.01
 weight_decay: 0.0
 warmup_length: 1
@@ -37,3 +35,6 @@ gradient_clip_value: 20.0
 wandb_mode: offline
 wb_pname: uniform-data-training
 entity: PrinceOA
+
+# checkpoints
+ckpt_path: ./checkpoints

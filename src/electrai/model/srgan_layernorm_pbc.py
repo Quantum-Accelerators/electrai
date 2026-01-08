@@ -37,7 +37,6 @@ class ResidualBlock(nn.Module):
 
     def forward(self, x):
         if self.use_checkpoint and self.training:
-            # Use gradient checkpointing to save memory during training
             return x + checkpoint(self.conv_block, x, use_reentrant=False)
         else:
             return x + self.conv_block(x)
@@ -148,12 +147,18 @@ class GeneratorResNet(nn.Module):
         )
 
     def forward(self, x):
+        if isinstance(x, torch.Tensor):
+            return self._forward(x)
+        return [self._forward(xi.unsqueeze(0)).squeeze(0) for xi in x]
+
+    def _forward(self, x):
         out1 = self.conv1(x)
         out = self.res_blocks(out1)
         out2 = self.conv2(out)
         out = torch.add(out1, out2)
         out = self.upsampling(out)
         out = self.conv3(out)
+
         if self.normalize:
             upscale_factor = 8 ** (self.n_upscale_layers)
             out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
