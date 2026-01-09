@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import torch
 from lightning.pytorch import LightningModule
+
 from src.electrai.model.loss.charge import NormMAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
+from src.electrai.model.unet_3d_pbc import GeneratorUNet
 
 
 class LightningGenerator(LightningModule):
@@ -11,15 +13,38 @@ class LightningGenerator(LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.cfg = cfg
-        self.model = GeneratorResNet(
-            n_residual_blocks=int(cfg.n_residual_blocks),
-            n_upscale_layers=int(cfg.n_upscale_layers),
-            C=int(cfg.n_channels),
-            K1=int(cfg.kernel_size1),
-            K2=int(cfg.kernel_size2),
-            normalize=cfg.normalize,
-            use_checkpoint=getattr(cfg, "use_checkpoint", True),
-        )
+
+        # Model selection based on config
+        model_type = getattr(cfg, "model_type", "resnet").lower()
+
+        if model_type == "resnet":
+            self.model = GeneratorResNet(
+                n_residual_blocks=int(cfg.n_residual_blocks),
+                n_upscale_layers=int(cfg.n_upscale_layers),
+                C=int(cfg.n_channels),
+                K1=int(cfg.kernel_size1),
+                K2=int(cfg.kernel_size2),
+                normalize=cfg.normalize,
+                use_checkpoint=getattr(cfg, "use_checkpoint", True),
+            )
+        elif model_type == "unet":
+            self.model = GeneratorUNet(
+                n_upscale_layers=int(cfg.n_upscale_layers),
+                C=int(cfg.n_channels),
+                depth=getattr(cfg, "unet_depth", 4),
+                K1=int(cfg.kernel_size1),
+                K2=int(cfg.kernel_size2),
+                channel_multiplier=tuple(
+                    getattr(cfg, "channel_multiplier", [1, 2, 4, 8])
+                ),
+                normalize=cfg.normalize,
+                use_checkpoint=getattr(cfg, "use_checkpoint", True),
+            )
+        else:
+            raise ValueError(
+                f"Unknown model_type: {model_type}. Use 'resnet' or 'unet'."
+            )
+
         self.loss_fn = NormMAE()
 
     def forward(self, x):

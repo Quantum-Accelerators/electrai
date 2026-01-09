@@ -1,0 +1,46 @@
+# Dataset / loader parameters
+dataset_name: "mp"
+data_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/chgcars/
+label_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/label/subset/chgcars/
+map_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/map.json.gz
+rho_type: chgcar
+functional: GGA
+train_fraction: 0.9
+num_workers: 1
+downsample_label: 1
+downsample_data: 0
+data_augmentation: False
+random_seed: 42
+normalize: True
+data_precision: f32
+
+# Model parameters
+model_type: unet  # Use U-Net architecture instead of ResNet
+n_channels: 32
+n_residual_blocks: 0  # Not used in U-Net, kept for compatibility
+n_upscale_layers: 0
+kernel_size1: 5
+kernel_size2: 3
+model_precision: 32
+use_checkpoint: True
+
+# U-Net specific parameters
+unet_depth: 4  # Number of encoder/decoder levels
+channel_multiplier: [1, 2, 4, 8]  # Channel scaling at each level
+
+# Training parameters
+save_every_epochs: 2
+epochs: 10
+nbatch: 4
+lr: 0.01
+weight_decay: 0.0
+warmup_length: 1
+gradient_clip_value: 20.0
+
+# Weights and biases
+wandb_mode: offline
+wb_pname: uniform-data-training
+entity: PrinceOA
+
+# checkpoints
+ckpt_path: ./checkpoints
