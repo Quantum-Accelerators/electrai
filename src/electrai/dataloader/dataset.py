@@ -126,7 +126,7 @@ class RhoData(Dataset):
 
     def __getitem__(self, index):
         index = self.member_list[index]
-        data, label = utils.load_numpy_rho(
+        data, label, cond = utils.load_numpy_rho(
             root=self.root,
             category=self.category,
             index=index,
@@ -136,4 +136,7 @@ class RhoData(Dataset):
         )
         data = data.unsqueeze(0)
         label = label.unsqueeze(0)
-        return {"data": data, "label": label, "index": index}
+        out = {"data": data, "label": label, "index": index}
+        if cond is not None:
+            out["cond"] = cond
+        return out

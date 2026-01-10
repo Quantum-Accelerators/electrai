@@ -21,22 +21,40 @@ def load_numpy_rho(
     precision: str,
     augmentation: bool,
     fmt: str = "chgcar",
+    downsample_data: int = 1,
+    downsample_label: int = 1,
 ):
     """
     Load rho data from root directory
     """
     root = Path(root)
+    cond = None
     if fmt == "zarr":
         data, label = load_zarr(root, index)
     elif category == "mp":
-        data, label = load_chgcar(root, index)
+        data, label, cond = load_chgcar(root, index)
     elif category == "qm9":
         data, label = load_npy(root, index)
+        if downsample_data != 1:
+            ds_data = downsample_data
+            ds_label = downsample_label  # noqa
+            nx, ny, nz = data.shape[-3:]
+            nx = nx // ds_data * ds_data
+            ny = ny // ds_data * ds_data
+            nz = nz // ds_data * ds_data
+            data = data[..., :nx, :ny, :nz]
+            nx, ny, nz = label.shape[-3:]
+            nx = nx // ds_data * ds_data
+            ny = ny // ds_data * ds_data
+            nz = nz // ds_data * ds_data
+            label = label[..., :nx, :ny, :nz]
     data = torch.tensor(data, dtype=dtype_map[precision])
     label = torch.tensor(label, dtype=dtype_map[precision])
+    if cond is not None:
+        cond = torch.tensor(cond, dtype=dtype_map[precision])
     if augmentation:
         data, label = rand_rotate([data, label])
-    return data, label
+    return data, label, cond
 
 
 def load_zarr(root: str | bytes | os.PathLike, index: str):
@@ -54,26 +72,31 @@ def load_zarr(root: str | bytes | os.PathLike, index: str):
 
 
 def load_chgcar(root: str | bytes | os.PathLike, index: str):
-    data = Chgcar.from_file(root / "data" / f"{index}.CHGCAR")
-    label = Chgcar.from_file(root / "label" / f"{index}.CHGCAR")
-    data = data.data["total"] / data.structure.lattice.volume
-    label = label.data["total"] / label.structure.lattice.volume
-    return data, label
+    data_chg = Chgcar.from_file(root / "data" / f"{index}.CHGCAR")
+    label_chg = Chgcar.from_file(root / "label" / f"{index}.CHGCAR")
+    data = data_chg.data["total"] / data_chg.structure.lattice.volume
+    label = label_chg.data["total"] / label_chg.structure.lattice.volume
+
+    # Gram matrix upper triangle: [a·a, a·b, a·c, b·b, b·c, c·c] in units of Å²
+    # Orientation-invariant and captures lengths + angles in a physically natural form.
+    # Divided by 100 (Å²) to keep values in a ~0.1–4 range for typical materials.
+    mat = data_chg.structure.lattice.matrix  # (3, 3), rows are lattice vectors
+    gram = mat @ mat.T
+    cond = (gram[np.triu_indices(3)] / 100.0).astype(np.float32)
+
+    return data, label, cond
 
 
 def load_npy(root: str | bytes | os.PathLike, index: str):
+    mol_dir = f"dsgdb9nsd_{int(index):06d}"
     data_size = np.loadtxt(
-        root / "data" / f"dsgdb9nsd_{index:06d}" / "grid_sizes_22.dat", dtype=int
+        root / "data" / mol_dir / "grid_sizes_22.dat", dtype=int
     )
     label_size = np.loadtxt(
-        root / "label" / f"dsgdb9nsd_{index:06d}" / "grid_sizes_22.dat", dtype=int
+        root / "label" / mol_dir / "grid_sizes_22.dat", dtype=int
     )
-    data = np.load(root / "data" / f"dsgdb9nsd_{index:06d}" / "rho_22.npy").reshape(
-        data_size
-    )
-    label = np.load(root / "label" / f"dsgdb9nsd_{index:06d}" / "rho_22.npy").reshape(
-        label_size
-    )
+    data = np.load(root / "data" / mol_dir / "rho_22.npy").reshape(data_size)
+    label = np.load(root / "label" / mol_dir / "rho_22.npy").reshape(label_size)
     # convert a.u. to e/(A^3)
     factor = 1.88973**3
     return data * factor, label * factor
