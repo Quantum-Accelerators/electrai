@@ -1,18 +1,20 @@
 # Dataset / loader parameters
-dataset_name: "mp"
-data_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/chgcars/
-label_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/label/subset/chgcars/
-map_path: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/data/subset/map.json.gz
-rho_type: chgcar
-functional: GGA
-train_fraction: 0.9
-num_workers: 1
-downsample_label: 1
-downsample_data: 0
-data_augmentation: False
-random_state: 42
+data:
+  _target_: src.electrai.dataloader.dataset.RhoRead
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
+  split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_1/split.json
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  val_frac: 0.005
+  drop_last: false
+  augmentation: false
+
+# downsample_label: 0
+# downsample_data: 0
 normalize: True
-data_precision: f32
 
 # Model parameters
 n_channels: 32
@@ -23,18 +25,17 @@ kernel_size2: 5
 model_precision: 32
 
 # Training parameters
-save_every_epochs: 2
-epochs: 10
-nbatch: 4
+epochs: 50
 lr: 0.01
 weight_decay: 0.0
 warmup_length: 1
-gradient_clip_value: 20.0
+beta1: 0.9
+beta2: 0.99
 
 # Weights and biases
-wandb_mode: offline
-wb_pname: uniform-data-training
+wandb_mode: online
 entity: PrinceOA
+wb_pname: mp-experiment
 
 # checkpoints
 ckpt_path: ./checkpoints

@@ -1,26 +1,18 @@
 from __future__ import annotations
 
+# from hydra.utils import instantiate
 import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import torch
 import yaml
+from hydra.utils import instantiate
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
-from src.electrai.dataloader.registry import get_data
 from src.electrai.lightning import LightningGenerator
-from torch.utils.data import DataLoader, default_collate
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
-
-
-def collate_fn(batch):
-    try:
-        return default_collate(batch)
-    except RuntimeError:
-        x, y = zip(*batch, strict=True)
-        return list(x), list(y)
 
 
 def train(args):
@@ -32,26 +24,12 @@ def train(args):
         cfg_dict = yaml.safe_load(f)
     cfg = SimpleNamespace(**cfg_dict)
 
-    assert 0 < cfg.train_fraction < 1, "train_fraction must be between 0 and 1."
-
     # -----------------------------
     # Data
     # -----------------------------
-    train_data, test_data = get_data(cfg)
-    train_loader = DataLoader(
-        train_data,
-        batch_size=int(cfg.nbatch),
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        collate_fn=collate_fn,
-    )
-    test_loader = DataLoader(
-        test_data,
-        batch_size=int(cfg.nbatch),
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        collate_fn=collate_fn,
-    )
+    datamodule = instantiate(cfg.data)
+    train_loader = datamodule.train_dataloader()
+    val_loader = datamodule.val_dataloader()
 
     # -----------------------------
     # Model (LightningModule handles architecture + loss + optimizer)
@@ -103,5 +81,8 @@ def train(args):
     # -----------------------------
     ckpt = ckpt_path / "last.ckpt"
     trainer.fit(
-        lit_model, train_loader, test_loader, ckpt_path=ckpt if ckpt.exists() else None
+        lit_model,
+        train_dataloaders=train_loader,
+        val_dataloaders=val_loader,
+        ckpt_path=ckpt if ckpt.exists() else None,
     )
