@@ -87,6 +87,14 @@ class LightningGenerator(LightningModule):
     def on_test_start(self):
         self.log_dir = self.test_cfg.log_dir
         self.out_dir = self.test_cfg.out_dir
+        if self.out_dir is not None:
+            self.out_dir = Path(self.out_dir)
+            self.out_dir.mkdir(exist_ok=True, parents=True)
+        if self.log_dir is not None:
+            self.log_dir = Path(self.log_dir)
+            self.log_dir.mkdir(exist_ok=True, parents=True)
+            self.tmp_dir = Path(self.out_dir) / "tmp"
+            self.tmp_dir.mkdir(exist_ok=True, parents=True)
         self.test_outputs = []
 
     def test_step(self, batch, batch_idx):
@@ -110,40 +118,38 @@ class LightningGenerator(LightningModule):
 
     def on_test_batch_end(self, outputs, batch, batch_idx):
         if self.out_dir is not None:
-            out_dir = Path(self.out_dir)
-            out_dir.mkdir(exist_ok=True, parents=True)
-
             preds = outputs["pred"]
             indices = outputs["index"]
+            nmae = outputs["nmae"]
 
+            # Save prediction files
             for i in range(len(indices)):
                 idx = indices[i]
-                pred_i = preds[i].numpy()
-                np.save(out_dir / f"{idx}.npy", pred_i)
-
-        self.test_outputs.append(outputs)
-
-    def on_test_epoch_end(self):
-        index = []
-        nmae_all = []
-
-        for o in self.test_outputs:
-            index.extend(list(o["index"]))
-
-            n = o["nmae"]
-            if n.ndim == 0:
-                nmae_all.append(n.unsqueeze(0))
-            else:
-                nmae_all.append(n)
-
-        nmae = torch.cat(nmae_all, dim=0)
+                np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
 
         if self.log_dir is not None:
-            log_dir = Path(self.log_dir)
-            log_dir.mkdir(exist_ok=True, parents=True)
-            csv_path = Path(self.log_dir) / "metrics.csv"
+            # Save batch-level CSV
+            if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
+                nmae = nmae.unsqueeze(0)
+            tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
+            with open(tmp_csv, "w") as f:
+                for i, n in zip(indices, nmae, strict=False):
+                    idx = i
+                    f.write(f"{idx},{n.item()}\n")
 
-            with open(csv_path, "w") as f:
-                f.write("index,nmae\n")
-                for ind, err in zip(index, nmae.tolist(), strict=False):
-                    f.write(f"{ind},{err}\n")
+    def on_test_epoch_end(self):
+        if self.log_dir is None:
+            return
+
+        final_csv = self.log_dir / "metrics.csv"
+
+        # gather all batch CSVs
+        all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
+
+        # write final CSV with header
+        with open(final_csv, "w") as f_out:
+            f_out.write("index,nmae\n")
+            for tmp_csv in all_tmp_csvs:
+                with open(tmp_csv) as f_in:
+                    for line in f_in:
+                        f_out.write(line)
