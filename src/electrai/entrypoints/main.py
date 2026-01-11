@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 
+from src.electrai.entrypoints.test import test
 from src.electrai.entrypoints.train import train
 
 
@@ -24,10 +25,15 @@ def main() -> None:
     train_parser = subparsers.add_parser("train", help="Train the model")
     train_parser.add_argument("--config", type=str, required=True)
 
+    test_parser = subparsers.add_parser("test", help="Test the model")
+    test_parser.add_argument("--config", type=str, required=True)
+
     args = parser.parse_args()
 
     if args.command == "train":
         train(args)
+    if args.command == "test":
+        test(args)
     else:
         raise ValueError(f"Unknown command: {args.command}")
 

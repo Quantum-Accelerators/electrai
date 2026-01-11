@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import time
+from pathlib import Path
+
+import numpy as np
 import torch
 from lightning.pytorch import LightningModule
 from src.electrai.model.loss.charge import NormMAE
@@ -79,3 +83,67 @@ class LightningGenerator(LightningModule):
             optimizer, [linsch, cossch], milestones=[self.cfg.warmup_length]
         )
         return [optimizer], [scheduler]
+
+    def on_test_start(self):
+        self.log_dir = self.test_cfg.log_dir
+        self.out_dir = self.test_cfg.out_dir
+        self.test_outputs = []
+
+    def test_step(self, batch, batch_idx):
+        start_time = time.time()
+        x = batch["data"]
+        y = batch["label"]
+        indices = batch["index"]
+
+        preds = self(x)
+        loss = self.loss_fn(preds, y)
+
+        self.log("test_loss", loss, prog_bar=True, sync_dist=True)
+
+        return {
+            "pred": preds.detach().cpu(),
+            "target": y.detach().cpu(),
+            "index": indices,
+            "nmae": loss.detach().cpu(),
+            "time": time.time() - start_time,  # + batch["load_time"][0], ???
+        }
+
+    def on_test_batch_end(self, outputs, batch, batch_idx):
+        if self.out_dir is not None:
+            out_dir = Path(self.out_dir)
+            out_dir.mkdir(exist_ok=True, parents=True)
+
+            preds = outputs["pred"]
+            indices = outputs["index"]
+
+            for i in range(len(indices)):
+                idx = indices[i]
+                pred_i = preds[i].numpy()
+                np.save(out_dir / f"{idx}.npy", pred_i)
+
+        self.test_outputs.append(outputs)
+
+    def on_test_epoch_end(self):
+        index = []
+        nmae_all = []
+
+        for o in self.test_outputs:
+            index.extend(list(o["index"]))
+
+            n = o["nmae"]
+            if n.ndim == 0:
+                nmae_all.append(n.unsqueeze(0))
+            else:
+                nmae_all.append(n)
+
+        nmae = torch.cat(nmae_all, dim=0)
+
+        if self.log_dir is not None:
+            log_dir = Path(self.log_dir)
+            log_dir.mkdir(exist_ok=True, parents=True)
+            csv_path = Path(self.log_dir) / "metrics.csv"
+
+            with open(csv_path, "w") as f:
+                f.write("index,nmae\n")
+                for ind, err in zip(index, nmae.tolist(), strict=False):
+                    f.write(f"{ind},{err}\n")
