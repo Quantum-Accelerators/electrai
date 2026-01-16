@@ -71,8 +71,8 @@ class GeneratorResNet(nn.Module):
         C=64,
         K1=5,
         K2=3,
-        normalize=True,
         use_checkpoint=True,
+        elf: bool = False,
     ):
         """
         This net upscales each axis by 2**n_upscale_layers
@@ -83,8 +83,8 @@ class GeneratorResNet(nn.Module):
         """
         super().__init__()
         self.n_upscale_layers = n_upscale_layers
-        self.normalize = normalize
         self.use_checkpoint = use_checkpoint
+        self.elf = elf
 
         # First layer
         self.conv1 = nn.Sequential(
@@ -143,7 +143,7 @@ class GeneratorResNet(nn.Module):
                 padding="same",
                 padding_mode="circular",
             ),
-            nn.ReLU(),
+            nn.Sigmoid() if self.elf else nn.ReLU(),
         )
 
     def forward(self, x):
@@ -159,7 +159,7 @@ class GeneratorResNet(nn.Module):
         out = self.upsampling(out)
         out = self.conv3(out)
 
-        if self.normalize:
+        if not self.elf:
             upscale_factor = 8 ** (self.n_upscale_layers)
             out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
             out = (

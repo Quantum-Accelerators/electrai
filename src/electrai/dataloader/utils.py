@@ -6,17 +6,27 @@ import numpy as np
 from pymatgen.io.vasp.outputs import Chgcar
 
 
-def load_numpy_rho(root, category, index, augmentation):
+def load_numpy_rho(root, category, index, augmentation, elf):
     """
     Load rho data from root directory
     """
     root = Path(root)
-    if category == "mp":
+    if category == "mp" and elf:
+        data, label = load_elfcar(root, index)
+    elif category == "mp":
         data, label = load_chgcar(root, index)
     elif category == "qm9":
         data, label = load_npy(root, index)
     if augmentation:
         data, label = rand_rotate([data, label])
+    return data, label
+
+
+def load_elfcar(root, index):
+    data = Chgcar.from_file(root / "data" / f"{index}.ELFCAR")
+    label = Chgcar.from_file(root / "label" / f"{index}.ELFCAR")
+    data = data.data["total"]
+    label = label.data["total"]
     return data, label
 
 

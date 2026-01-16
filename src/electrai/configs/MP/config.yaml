@@ -1,8 +1,9 @@
 # Dataset / loader parameters
 data:
   _target_: src.electrai.dataloader.dataset.RhoRead
-  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
-  split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_1/split.json
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_3/mp_filelist.txt
+  split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_3/split.json
+  elf: True
   precision: f32
   batch_size: 1
   train_workers: 8
@@ -14,7 +15,6 @@ data:
 
 # downsample_label: 0
 # downsample_data: 0
-normalize: True
 
 # Model parameters
 n_channels: 32

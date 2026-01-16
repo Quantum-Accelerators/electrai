@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from lightning.pytorch import LightningModule
-from src.electrai.model.loss.charge import NormMAE
+from src.electrai.model.loss.charge import MAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
 
 
@@ -14,17 +14,18 @@ class LightningGenerator(LightningModule):
     def __init__(self, cfg):
         super().__init__()
         self.save_hyperparameters()
-        self.cfg = cfg
+        elf = cfg.data["elf"]
         self.model = GeneratorResNet(
             n_residual_blocks=int(cfg.n_residual_blocks),
             n_upscale_layers=int(cfg.n_upscale_layers),
             C=int(cfg.n_channels),
             K1=int(cfg.kernel_size1),
             K2=int(cfg.kernel_size2),
-            normalize=cfg.normalize,
             use_checkpoint=getattr(cfg, "use_checkpoint", True),
+            elf=elf,
         )
-        self.loss_fn = NormMAE()
+        self.cfg = cfg
+        self.loss_fn = MAE(elf)
 
     def forward(self, x):
         return self.model(x)

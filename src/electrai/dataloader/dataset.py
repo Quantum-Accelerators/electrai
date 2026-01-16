@@ -28,6 +28,7 @@ class RhoRead:
         drop_last: bool = False,
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
+        elf: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -40,7 +41,9 @@ class RhoRead:
         self.drop_last = drop_last
         self.split_file = split_file
 
-        dataset = RhoData(self.root, precision=precision, augmentation=augmentation)
+        dataset = RhoData(
+            self.root, precision=precision, augmentation=augmentation, elf=elf
+        )
 
         self.subsets = split_data(
             dataset, val_frac=self.val_frac, split_file=self.split_file
@@ -79,10 +82,13 @@ class RhoRead:
 
 
 class RhoData(Dataset):
-    def __init__(self, datapath: str, precision: str, augmentation: bool, **kwargs):
+    def __init__(
+        self, datapath: str, precision: str, augmentation: bool, elf: bool, **kwargs
+    ):
         super().__init__(**kwargs)
         self.aug = augmentation
         self.precision = precision
+        self.elf = elf
         if isinstance(datapath, str) and Path(datapath).is_file():
             with open(datapath) as f:
                 lines = f.readlines()
@@ -90,7 +96,7 @@ class RhoData(Dataset):
         else:
             raise ValueError("No filename found.")
 
-        self.category = Path(datapath).name.split("_")[0]  # example: mp_filelist.txt
+        self.category = Path(datapath).name.split("_")[0]
         self.root = Path(datapath).parent
         self.member_list = member_list
 
@@ -100,7 +106,11 @@ class RhoData(Dataset):
     def __getitem__(self, index):
         index = self.member_list[index]
         data, label = utils.load_numpy_rho(
-            root=self.root, category=self.category, index=index, augmentation=self.aug
+            root=self.root,
+            category=self.category,
+            index=index,
+            augmentation=self.aug,
+            elf=self.elf,
         )
         data = torch.tensor(data, dtype=dtype_map[self.precision]).unsqueeze(0)
         label = torch.tensor(label, dtype=dtype_map[self.precision]).unsqueeze(0)
