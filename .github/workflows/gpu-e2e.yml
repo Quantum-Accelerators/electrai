@@ -19,7 +19,10 @@ on:
 jobs:
   lambda:
     uses: Open-Athena/lambda-gha/.github/workflows/runner.yml@main
-    secrets: inherit
+    secrets:
+      GH_SA_TOKEN: ${{ secrets.GH_SA_TOKEN }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      LAMBDA_SSH_PRIVATE_KEY: ${{ secrets.LAMBDA_SSH_PRIVATE_KEY }}
     with:
       instance_type: ${{ inputs.instance_type || 'gpu_1x_a10' }}
       debug: ${{ inputs.debug || 'false' }}
