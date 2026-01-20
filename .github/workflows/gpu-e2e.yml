@@ -61,7 +61,7 @@ jobs:
 
       - name: Run e2e training test (CPU baseline)
         run: |
-          # Also run CPU test to verify determinism
+          # Run CPU test to verify determinism
           uv run python tests/e2e_train.py --epochs 5
 
       - name: Show GPU memory usage
