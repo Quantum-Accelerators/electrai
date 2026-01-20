@@ -15,6 +15,7 @@ Usage:
     # Just train, don't check (for exploration)
     ./tests/e2e_train.py --no-check
 """
+
 from __future__ import annotations
 
 import os
@@ -28,15 +29,32 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 @click.command()
-@click.option('-c', '--check/--no-check', default=True, help="Check val_loss against expected value")
-@click.option('-e', '--epochs', default=5, help="Number of training epochs")
-@click.option('-s', '--seed', default=42, help="Random seed for reproducibility")
-@click.option('-t', '--tolerance', default=0.001, help="Tolerance for val_loss comparison (absolute)")
-@click.option('-U', '--update-expected', is_flag=True, help="Update expected_loss.txt with final loss")
-@click.option('-v', '--verbose', is_flag=True, help="Verbose output")
+@click.option(
+    "-c",
+    "--check/--no-check",
+    default=True,
+    help="Check val_loss against expected value",
+)
+@click.option("-e", "--epochs", default=5, help="Number of training epochs")
+@click.option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
+@click.option("-s", "--seed", default=42, help="Random seed for reproducibility")
+@click.option(
+    "-t",
+    "--tolerance",
+    default=0.001,
+    help="Tolerance for val_loss comparison (absolute)",
+)
+@click.option(
+    "-U",
+    "--update-expected",
+    is_flag=True,
+    help="Update expected_loss.txt with final loss",
+)
+@click.option("-v", "--verbose", is_flag=True, help="Verbose output")
 def main(
     check: bool,
     epochs: int,
+    gpu: bool,
     seed: int,
     tolerance: float,
     update_expected: bool,
@@ -45,11 +63,10 @@ def main(
     """Run deterministic e2e training test."""
     import torch
     from lightning.pytorch import Trainer, seed_everything
-    from torch.utils.data import DataLoader
-
     from src.electrai.dataloader.registry import get_data
     from src.electrai.entrypoints.train import collate_fn
     from src.electrai.lightning import LightningGenerator
+    from torch.utils.data import DataLoader
 
     # Paths
     repo_root = Path(__file__).parent.parent
@@ -102,8 +119,28 @@ def main(
     cfg.model_precision = 32
     cfg.gradient_clip_value = 1.0
 
+    # Determine accelerator
+    if gpu:
+        import torch
+
+        if torch.cuda.is_available():
+            accelerator = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            accelerator = "mps"
+        else:
+            click.echo(
+                "Warning: --gpu requested but no GPU available, falling back to CPU",
+                err=True,
+            )
+            accelerator = "cpu"
+    else:
+        accelerator = "cpu"
+
     if verbose:
-        click.echo(f"Config: epochs={cfg.epochs}, seed={seed}, n_channels={cfg.n_channels}")
+        click.echo(
+            f"Config: epochs={cfg.epochs}, seed={seed}, n_channels={cfg.n_channels}"
+        )
+        click.echo(f"Accelerator: {accelerator}")
         click.echo(f"Data: {cfg.data_path}")
 
     # Load data
@@ -135,7 +172,7 @@ def main(
         logger=False,
         enable_checkpointing=False,
         enable_progress_bar=verbose,
-        accelerator="cpu",  # CPU for reproducibility across machines
+        accelerator=accelerator,
         devices=1,
         precision=cfg.model_precision,
         deterministic=True,
@@ -177,7 +214,9 @@ def main(
             )
             sys.exit(1)
         else:
-            click.echo(f"PASS: val_loss matches expected within tolerance ({diff:.6f} <= {tolerance})")
+            click.echo(
+                f"PASS: val_loss matches expected within tolerance ({diff:.6f} <= {tolerance})"
+            )
 
 
 if __name__ == "__main__":

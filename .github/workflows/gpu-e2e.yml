@@ -1,8 +1,61 @@
 name: GPU E2E Training Test
+
 on:
   workflow_dispatch:
+    inputs:
+      instance_type:
+        description: 'Lambda instance type'
+        default: 'gpu_1x_a10'
+        type: string
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+      debug:
+        description: 'Debug mode (false/true/N minutes)'
+        default: 'false'
+        type: string
+
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  lambda:
+    uses: Open-Athena/lambda-gha/.github/workflows/runner.yml@main
+    secrets: inherit
+    with:
+      instance_type: ${{ inputs.instance_type || 'gpu_1x_a10' }}
+      debug: ${{ inputs.debug || 'false' }}
+
+  gpu-test:
+    needs: lambda
+    runs-on: ${{ needs.lambda.outputs.id }}
     steps:
-      - run: echo "Placeholder workflow to preserve workflow name in GitHub Actions UI"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check GPU
+        run: nvidia-smi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run e2e training test (GPU)
+        env:
+          EPOCHS: ${{ inputs.epochs || '5' }}
+        run: |
+          # Run with GPU acceleration
+          uv run python tests/e2e_train.py \
+            --gpu \
+            --epochs "$EPOCHS" \
+            --verbose \
+            --no-check  # Don't check against CPU-expected loss (GPU may differ slightly)
+
+      - name: Run e2e training test (CPU baseline)
+        run: |
+          # Also run CPU test to verify determinism
+          uv run python tests/e2e_train.py --epochs 5
+
+      - name: Show GPU memory usage
+        if: always()
+        run: nvidia-smi
