@@ -4,8 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       instance_type:
-        description: 'Lambda instance type'
-        default: 'gpu_1x_a10'
+        description: 'Lambda instance type(s), comma-separated for fallback'
+        default: 'gpu_1x_a10,gpu_1x_a100,gpu_1x_h100_pcie'
+        type: string
+      region:
+        description: 'Lambda region(s), comma-separated for fallback'
+        default: 'us-south-1,us-west-1,us-east-1'
         type: string
       epochs:
         description: 'Number of training epochs'
@@ -24,7 +28,8 @@ jobs:
       LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
       LAMBDA_SSH_PRIVATE_KEY: ${{ secrets.LAMBDA_SSH_PRIVATE_KEY }}
     with:
-      instance_type: ${{ inputs.instance_type || 'gpu_1x_a10' }}
+      instance_type: ${{ inputs.instance_type || 'gpu_1x_a10,gpu_1x_a100,gpu_1x_h100_pcie' }}
+      region: ${{ inputs.region || 'us-south-1,us-west-1,us-east-1' }}
       debug: ${{ inputs.debug || 'false' }}
 
   gpu-test:
