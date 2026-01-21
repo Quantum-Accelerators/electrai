@@ -1,0 +1,129 @@
+name: GPU Benchmark
+
+# Manual trigger only - demonstrates GPU speedup with production-size model
+on:
+  workflow_dispatch:
+    inputs:
+      instance_type:
+        description: 'Lambda instance type(s), comma-separated for fallback'
+        default: 'gpu_1x_a10,gpu_1x_a100,gpu_1x_h100_pcie'
+        type: string
+      region:
+        description: 'Lambda region(s), comma-separated for fallback'
+        default: 'us-south-1,us-west-1,us-east-1'
+        type: string
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+      channels:
+        description: 'Number of model channels (8=tiny, 32=prod, 64=large)'
+        default: '32'
+        type: string
+      residual_blocks:
+        description: 'Number of residual blocks (2=tiny, 16=prod)'
+        default: '16'
+        type: string
+      debug:
+        description: 'Debug mode (false/true/N minutes)'
+        default: 'false'
+        type: string
+
+jobs:
+  lambda:
+    uses: Open-Athena/lambda-gha/.github/workflows/runner.yml@main
+    secrets:
+      GH_SA_TOKEN: ${{ secrets.GH_SA_TOKEN }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      LAMBDA_SSH_PRIVATE_KEY: ${{ secrets.LAMBDA_SSH_PRIVATE_KEY }}
+    with:
+      instance_type: ${{ inputs.instance_type || 'gpu_1x_a10,gpu_1x_a100,gpu_1x_h100_pcie' }}
+      region: ${{ inputs.region || 'us-south-1,us-west-1,us-east-1' }}
+      debug: ${{ inputs.debug || 'false' }}
+
+  benchmark:
+    needs: lambda
+    runs-on: ${{ needs.lambda.outputs.id }}
+    env:
+      EPOCHS: ${{ inputs.epochs || '5' }}
+      CHANNELS: ${{ inputs.channels || '32' }}
+      BLOCKS: ${{ inputs.residual_blocks || '16' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check GPU
+        run: nvidia-smi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run GPU benchmark
+        id: gpu
+        run: |
+          echo "=== GPU BENCHMARK ==="
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS"
+          echo ""
+
+          START=$(date +%s)
+          uv run python tests/e2e_train.py \
+            --gpu \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$BLOCKS" \
+            --verbose \
+            --no-check
+          END=$(date +%s)
+          GPU_TIME=$((END - START))
+          echo ""
+          echo "GPU_TIME=${GPU_TIME}" >> $GITHUB_OUTPUT
+          echo "🚀 GPU training time: ${GPU_TIME}s"
+
+      - name: Run CPU benchmark
+        id: cpu
+        run: |
+          echo "=== CPU BENCHMARK ==="
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS"
+          echo ""
+
+          START=$(date +%s)
+          uv run python tests/e2e_train.py \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$BLOCKS" \
+            --verbose \
+            --no-check
+          END=$(date +%s)
+          CPU_TIME=$((END - START))
+          echo ""
+          echo "CPU_TIME=${CPU_TIME}" >> $GITHUB_OUTPUT
+          echo "🐢 CPU training time: ${CPU_TIME}s"
+
+      - name: Summary
+        run: |
+          GPU_TIME=${{ steps.gpu.outputs.GPU_TIME }}
+          CPU_TIME=${{ steps.cpu.outputs.CPU_TIME }}
+          SPEEDUP=$(echo "scale=2; $CPU_TIME / $GPU_TIME" | bc)
+
+          echo "## 🏁 GPU Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Epochs | $EPOCHS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Channels | $CHANNELS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | 5 samples (repo test data) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | Time | Speedup |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| GPU | ${GPU_TIME}s | **${SPEEDUP}x** |" >> $GITHUB_STEP_SUMMARY
+          echo "| CPU | ${CPU_TIME}s | 1.0x |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Show GPU memory usage
+        if: always()
+        run: nvidia-smi

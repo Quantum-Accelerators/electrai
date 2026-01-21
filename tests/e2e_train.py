@@ -29,29 +29,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 @click.command()
-@click.option(
-    "-c",
-    "--check/--no-check",
-    default=True,
-    help="Check val_loss against expected value",
-)
-@click.option("-e", "--epochs", default=5, help="Number of training epochs")
-@click.option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
-@click.option("-s", "--seed", default=42, help="Random seed for reproducibility")
-@click.option(
-    "-t",
-    "--tolerance",
-    default=0.001,
-    help="Tolerance for val_loss comparison (absolute)",
-)
-@click.option(
-    "-U",
-    "--update-expected",
-    is_flag=True,
-    help="Update expected_loss.txt with final loss",
-)
-@click.option("-v", "--verbose", is_flag=True, help="Verbose output")
+@click.option('-B', '--residual-blocks', default=2, help="Number of residual blocks (default: 2, production: 16)")
+@click.option('-C', '--channels', default=8, help="Number of model channels (default: 8, production: 32-64)")
+@click.option('-c', '--check/--no-check', default=True, help="Check val_loss against expected value")
+@click.option('-e', '--epochs', default=5, help="Number of training epochs")
+@click.option('-g', '--gpu', is_flag=True, help="Use GPU acceleration (if available)")
+@click.option('-s', '--seed', default=42, help="Random seed for reproducibility")
+@click.option('-t', '--tolerance', default=0.001, help="Tolerance for val_loss comparison (absolute)")
+@click.option('-U', '--update-expected', is_flag=True, help="Update expected_loss.txt with final loss")
+@click.option('-v', '--verbose', is_flag=True, help="Verbose output")
 def main(
+    residual_blocks: int,
+    channels: int,
     check: bool,
     epochs: int,
     gpu: bool,
@@ -102,9 +91,9 @@ def main(
     cfg.normalize = True
     cfg.data_precision = "f32"
 
-    # Model (small for fast testing)
-    cfg.n_channels = 8
-    cfg.n_residual_blocks = 2
+    # Model (configurable: small for fast CI, larger for benchmarks)
+    cfg.n_channels = channels
+    cfg.n_residual_blocks = residual_blocks
     cfg.n_upscale_layers = 0  # No upscaling, same resolution
     cfg.kernel_size1 = 3
     cfg.kernel_size2 = 3
@@ -137,9 +126,7 @@ def main(
         accelerator = "cpu"
 
     if verbose:
-        click.echo(
-            f"Config: epochs={cfg.epochs}, seed={seed}, n_channels={cfg.n_channels}"
-        )
+        click.echo(f"Config: epochs={cfg.epochs}, seed={seed}, channels={cfg.n_channels}, blocks={cfg.n_residual_blocks}")
         click.echo(f"Accelerator: {accelerator}")
         click.echo(f"Data: {cfg.data_path}")
 
