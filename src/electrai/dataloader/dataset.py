@@ -29,6 +29,7 @@ class RhoRead(LightningDataModule):
         drop_last: bool = False,
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
+        random_seed: int = 42,
         **kwargs,  # noqa: ARG002
     ):
         super().__init__()
@@ -43,13 +44,17 @@ class RhoRead(LightningDataModule):
         self.split_file = split_file
         self.precision = precision
         self.augmentation = augmentation
+        self.random_seed = random_seed
 
     def setup(self, stage=None):
         dataset = RhoData(
             self.root, precision=self.precision, augmentation=self.augmentation
         )
         self.subsets = split_data(
-            dataset, val_frac=self.val_frac, split_file=self.split_file
+            dataset,
+            val_frac=self.val_frac,
+            split_file=self.split_file,
+            random_seed=self.random_seed,
         )
         if stage == "fit":
             self.train_set = self.subsets["train"]

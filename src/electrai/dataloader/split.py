@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
+import torch
 from torch.utils.data import Subset
 
 
-def split_data(dataset, val_frac=0.005, split_file=None):
+def split_data(dataset, val_frac=0.005, split_file=None, random_seed=42):
     # Load or generate splits
     if split_file is not None:
-        with open(split_file) as fp:
+        with open(split_file) as fp:  # noqa: PTH123
             splits = json.load(fp)
     else:
         data_size = len(dataset)
         validation_size = int(data_size * val_frac)
-        indices = np.random.permutation(data_size)
+        g = torch.Generator()
+        g.manual_seed(random_seed)
+
+        indices = torch.randperm(data_size, generator=g)
+
         splits = {
             "train": indices[validation_size:].tolist(),
             "validation": indices[:validation_size].tolist(),
