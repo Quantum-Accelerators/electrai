@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
+from lightning.pytorch import LightningDataModule
 from src.electrai.dataloader import utils
 from src.electrai.dataloader.collate import collate_fn
 from src.electrai.dataloader.split import split_data
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 dtype_map = {"f32": torch.float32, "f16": torch.float16, "bf16": torch.bfloat16}
 
 
-class RhoRead:
+class RhoRead(LightningDataModule):
     def __init__(
         self,
         root: str | bytes | os.PathLike,
@@ -28,9 +29,10 @@ class RhoRead:
         drop_last: bool = False,
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
-        **kwargs,
+        **kwargs,  # noqa: ARG002
     ):
         super().__init__()
+        self.save_hyperparameters()
         self.root = root
         self.batch_size = batch_size
         self.train_workers = train_workers
@@ -39,42 +41,52 @@ class RhoRead:
         self.val_frac = val_frac
         self.drop_last = drop_last
         self.split_file = split_file
+        self.precision = precision
+        self.augmentation = augmentation
 
-        dataset = RhoData(self.root, precision=precision, augmentation=augmentation)
-
+    def setup(self, stage=None):
+        dataset = RhoData(
+            self.root, precision=self.precision, augmentation=self.augmentation
+        )
         self.subsets = split_data(
             dataset, val_frac=self.val_frac, split_file=self.split_file
         )
+        if stage == "fit":
+            self.train_set = self.subsets["train"]
+            self.val_set = self.subsets["validation"]
+        elif stage == "test":
+            self.test_set = self.subsets["test"]
 
     def train_dataloader(self):
         return DataLoader(
-            self.subsets["train"],
+            self.train_set,
             self.batch_size,
             num_workers=self.train_workers,
             shuffle=True,
-            # sampler=DistributedSampler(self.train_set, drop_last=self.drop_last), do we need this eventhough we use pytorch lightning? important question
-            collate_fn=collate_fn,  # originally it was partial(collate_list_of_dicts, pin_memory=self.pin_memory) should we be concerned about partial and pin_memory?
+            collate_fn=collate_fn,
+            pin_memory=self.pin_memory,
+            drop_last=self.drop_last,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.subsets["validation"],
+            self.val_set,
             self.batch_size,
             num_workers=self.val_workers,
-            shuffle=False,  # I added this
-            # collate_fn=partial(collate_list_of_dicts, pin_memory=self.pin_memory),
-            # note: no sampler, so all devices will get full set
+            shuffle=False,
+            collate_fn=collate_fn,
+            pin_memory=self.pin_memory,
+            drop_last=self.drop_last,
         )
 
     def test_dataloader(self):
         return DataLoader(
-            self.subsets["test"],
+            self.test_set,
             batch_size=1,
             num_workers=self.val_workers,
-            collate_fn=collate_fn,  # partial(collate_list_of_dicts, pin_memory=self.pin_memory),
-            # note: distributed sampler will shuffle and distribute different parts of dataset
-            # to different nodes/devices
-            # sampler=DistributedEvalSampler(self.test_set),
+            collate_fn=collate_fn,
+            pin_memory=self.pin_memory,
+            drop_last=self.drop_last,
         )
 
 
@@ -84,7 +96,7 @@ class RhoData(Dataset):
         self.aug = augmentation
         self.precision = precision
         if isinstance(datapath, str) and Path(datapath).is_file():
-            with open(datapath) as f:
+            with open(datapath) as f:  # noqa: PTH123
                 lines = f.readlines()
             member_list = [line.replace("\n", "") for line in lines]
         else:
