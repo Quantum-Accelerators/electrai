@@ -146,9 +146,6 @@ lint.ignore = [
   "PERF203",  # try-except-in-loop
   "RET505", # Unnecessary `elif` after `return`
   "PLC0415", # `import` should be at the top-level of a file
-  "ARG002", # Unused method argument: `kwargs`
-  "PTH123", # `open()` should be replaced by `Path.open()`
-  "NPY002", # Replace legacy `np.random.rand` call with `np.random.Generator`
 ]
 lint.unfixable = [
   "T20",  # Removes print statements
