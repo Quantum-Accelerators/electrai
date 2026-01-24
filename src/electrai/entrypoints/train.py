@@ -27,8 +27,6 @@ def train(args):
     # Data
     # -----------------------------
     datamodule = instantiate(cfg.data)
-    # train_loader = datamodule.train_dataloader()
-    # val_loader = datamodule.val_dataloader()
 
     # -----------------------------
     # Model (LightningModule handles architecture + loss + optimizer)
@@ -80,9 +78,5 @@ def train(args):
     # -----------------------------
     ckpt = ckpt_path / "last.ckpt"
     trainer.fit(
-        lit_model,
-        datamodule=datamodule,
-        # train_dataloaders=train_loader,
-        # val_dataloaders=val_loader,
-        ckpt_path=ckpt if ckpt.exists() else None,
+        lit_model, datamodule=datamodule, ckpt_path=ckpt if ckpt.exists() else None
     )
