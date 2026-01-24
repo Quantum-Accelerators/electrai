@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import torch
-from torch.utils.data import Subset
+from torch.utils.data import Dataset, Subset
 
 
-def split_data(dataset, val_frac=0.005, split_file=None, random_seed=42):
+def split_data(
+    dataset: Dataset,
+    val_frac: float = 0.005,
+    split_file: str | None = None,
+    random_seed: int = 42,
+):
     # Load or generate splits
     if split_file is not None:
-        with open(split_file) as fp:  # noqa: PTH123
+        with Path(split_file).open() as fp:
             splits = json.load(fp)
     else:
         data_size = len(dataset)

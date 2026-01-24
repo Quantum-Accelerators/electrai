@@ -101,7 +101,7 @@ class RhoData(Dataset):
         self.aug = augmentation
         self.precision = precision
         if isinstance(datapath, str) and Path(datapath).is_file():
-            with open(datapath) as f:  # noqa: PTH123
+            with Path(datapath).open() as f:
                 lines = f.readlines()
             member_list = [line.replace("\n", "") for line in lines]
         else:
@@ -117,8 +117,12 @@ class RhoData(Dataset):
     def __getitem__(self, index):
         index = self.member_list[index]
         data, label = utils.load_numpy_rho(
-            root=self.root, category=self.category, index=index, augmentation=self.aug
+            root=self.root,
+            category=self.category,
+            index=index,
+            precision=self.precision,
+            augmentation=self.aug,
         )
-        data = torch.tensor(data, dtype=dtype_map[self.precision]).unsqueeze(0)
-        label = torch.tensor(label, dtype=dtype_map[self.precision]).unsqueeze(0)
+        data = data.unsqueeze(0)
+        label = label.unsqueeze(0)
         return {"data": data, "label": label, "index": index}
