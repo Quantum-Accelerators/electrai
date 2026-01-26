@@ -53,8 +53,7 @@ def test(args):
     # Train
     # -----------------------------
     ckpt = ckpt_path / "last.ckpt"
-    trainer.test(
-        model=lit_model,
-        dataloaders=test_loader,
-        ckpt_path=ckpt if ckpt.exists() else None,
-    )
+    if not ckpt.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+
+    trainer.test(model=lit_model, dataloaders=test_loader, ckpt_path=ckpt)
