@@ -5,8 +5,9 @@ End-to-end training test with deterministic seeding.
 Runs a minimal training loop on the sample data in data/MP/ and verifies
 that the final validation loss matches an expected value (within tolerance).
 
-Expected values are platform-specific (darwin vs linux) since floating-point
-operations can produce slightly different results across platforms.
+Expected values are platform-specific (darwin-arm64 vs darwin-x86_64 vs linux)
+since floating-point operations can produce slightly different results across
+platforms and CPU architectures.
 
 Usage:
     # Run with defaults (5 epochs, checks val_loss)
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform as platform_mod
 import sys
 from pathlib import Path
 
@@ -32,14 +34,29 @@ import click
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def get_platform() -> str:
-    """Get platform key for expected values (darwin or linux)."""
+def get_platform(gpu: bool = False) -> str:
+    """Get platform key for expected values.
+
+    Returns platform-architecture combinations:
+    - darwin-arm64 (Apple Silicon Macs, CPU)
+    - darwin-x86_64 (Intel Macs, CPU)
+    - linux (Linux x86_64, CPU)
+    - linux-gpu (Linux x86_64, CUDA GPU)
+
+    Args:
+        gpu: Whether GPU acceleration is being used
+    """
+    machine = platform_mod.machine()
     if sys.platform == "darwin":
-        return "darwin"
+        # Distinguish Apple Silicon from Intel Macs
+        if machine == "arm64":
+            return "darwin-arm64"
+        else:
+            return "darwin-x86_64"
     elif sys.platform.startswith("linux"):
-        return "linux"
+        return "linux-gpu" if gpu else "linux"
     else:
-        return sys.platform
+        return f"{sys.platform}-{machine}"
 
 
 class LossTracker:
@@ -54,8 +71,11 @@ class LossTracker:
 @click.option('-B', '--residual-blocks', default=2, help="Number of residual blocks (default: 2, production: 16)")
 @click.option('-C', '--channels', default=8, help="Number of model channels (default: 8, production: 32-64)")
 @click.option('-c', '--check/--no-check', default=True, help="Check val_loss against expected value")
+@click.option('-d', '--data-path', default=None, help="Path to input data (default: data/MP/chgcars/input)")
 @click.option('-e', '--epochs', default=5, help="Number of training epochs")
 @click.option('-g', '--gpu', is_flag=True, help="Use GPU acceleration (if available)")
+@click.option('-l', '--label-path', default=None, help="Path to label data (default: data/MP/chgcars/label)")
+@click.option('-m', '--map-path', default=None, help="Path to map file (default: data/MP/map/map_sample.json.gz)")
 @click.option('-s', '--seed', default=42, help="Random seed for reproducibility")
 @click.option('-t', '--tolerance', default=0.001, help="Tolerance for val_loss comparison (absolute)")
 @click.option('-U', '--update-expected', is_flag=True, help="Update expected_values.json for current platform")
@@ -64,8 +84,11 @@ def main(
     residual_blocks: int,
     channels: int,
     check: bool,
+    data_path: str | None,
     epochs: int,
     gpu: bool,
+    label_path: str | None,
+    map_path: str | None,
     seed: int,
     tolerance: float,
     update_expected: bool,
@@ -83,8 +106,8 @@ def main(
     repo_root = Path(__file__).parent.parent
     expected_values_file = Path(__file__).parent / "expected_values.json"
 
-    # Platform detection
-    platform = get_platform()
+    # Platform detection (includes GPU suffix for linux-gpu)
+    platform = get_platform(gpu=gpu)
 
     # Force deterministic behavior
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -102,9 +125,9 @@ def main(
 
     # Dataset
     cfg.dataset_name = "mp"
-    cfg.data_path = str(repo_root / "data/MP/chgcars/input")
-    cfg.label_path = str(repo_root / "data/MP/chgcars/label")
-    cfg.map_path = str(repo_root / "data/MP/map/map_sample.json.gz")
+    cfg.data_path = data_path or str(repo_root / "data/MP/chgcars/input")
+    cfg.label_path = label_path or str(repo_root / "data/MP/chgcars/label")
+    cfg.map_path = map_path or str(repo_root / "data/MP/map/map_sample.json.gz")
     cfg.rho_type = "chgcar"
     cfg.functional = "GGA"
     cfg.train_fraction = 0.6  # 3 train, 2 val from 5 samples

@@ -11,6 +11,10 @@ on:
         description: 'Number of training epochs'
         default: '5'
         type: string
+      update_expected:
+        description: 'Update expected values (for first run or after changes)'
+        default: false
+        type: boolean
       debug:
         description: 'Debug mode (false/true/N minutes)'
         default: 'false'
@@ -49,18 +53,35 @@ jobs:
       - name: Run e2e training test (GPU)
         env:
           EPOCHS: ${{ inputs.epochs || '5' }}
+          UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
         run: |
           # Run with GPU acceleration
           uv run python tests/e2e_train.py \
             --gpu \
             --epochs "$EPOCHS" \
             --verbose \
-            --no-check  # Don't check against CPU-expected loss (GPU may differ slightly)
+            $UPDATE_EXPECTED
+
+      - name: Upload GPU expected values
+        if: ${{ inputs.update_expected }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: expected-linux-gpu
+          path: tests/expected_values.json
 
       - name: Run e2e training test (CPU baseline)
+        env:
+          UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
         run: |
           # Run CPU test to verify determinism
-          uv run python tests/e2e_train.py --epochs 5 --verbose
+          uv run python tests/e2e_train.py --epochs 5 --verbose $UPDATE_EXPECTED
+
+      - name: Upload CPU expected values
+        if: ${{ inputs.update_expected }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: expected-linux
+          path: tests/expected_values.json
 
       - name: Show GPU memory usage
         if: always()
