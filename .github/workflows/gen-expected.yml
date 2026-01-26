@@ -1,3 +1,19 @@
+# Generate Expected Values (GHA Runners)
+#
+# Generates expected values on GitHub-hosted runners.
+# Generates/verifies expected values for: darwin-arm64, linux (ubuntu-latest)
+#
+# Note: The linux values from ubuntu-latest differ slightly from EC2.
+# For authoritative linux/linux-gpu values, use gpu-e2e.yml instead.
+# This workflow is useful for:
+#   - darwin-arm64 values (when no local Apple Silicon Mac available)
+#   - Documenting GHA runner vs EC2 differences
+#
+# To regenerate:
+#   gh workflow run gen-expected.yml
+#   gh run download <run-id> -n expected-values
+#   cp expected_values.json tests/
+
 name: Generate Expected Values
 
 on:

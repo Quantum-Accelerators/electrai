@@ -1,3 +1,16 @@
+# GPU E2E Training Test
+#
+# Runs deterministic e2e training tests on EC2 GPU instances.
+# Generates/verifies expected values for: linux, linux-gpu
+#
+# These are the authoritative expected values for Linux since CI runs on EC2.
+# (Note: ubuntu-latest in gen-expected.yml produces slightly different values)
+#
+# To regenerate expected values:
+#   gh workflow run gpu-e2e.yml -f update_expected=true
+#   gh run download <run-id> -n expected-linux-gpu
+#   cp expected_values.json tests/
+
 name: GPU E2E Training Test
 
 on:

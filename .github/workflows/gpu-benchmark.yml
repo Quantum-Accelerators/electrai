@@ -1,3 +1,14 @@
+# GPU Benchmark
+#
+# Compares GPU vs CPU training time with configurable model size.
+# Does NOT verify expected values (uses --no-check).
+#
+# Currently uses the 5-sample test dataset. For meaningful GPU speedup
+# comparisons, consider using larger data via --data-path.
+#
+# Example with production-size model:
+#   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16
+
 name: GPU Benchmark
 
 # Manual trigger only - demonstrates GPU speedup with production-size model
