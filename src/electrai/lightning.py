@@ -124,26 +124,26 @@ class LightningGenerator(LightningModule):
         self.test_outputs.append(outputs)
 
     def on_test_epoch_end(self):
-        index = []
-        nmae_all = []
+        indices = []
+        nmae_chunks = []
 
-        for o in self.test_outputs:
-            index.extend(list(o["index"]))
+        for output in self.test_outputs:
+            indices.extend(list(output["index"]))
 
-            n = o["nmae"]
-            if n.ndim == 0:
-                nmae_all.append(n.unsqueeze(0))
+            batch_nmae = output["nmae"]
+            if batch_nmae.ndim == 0:
+                nmae_chunks.append(batch_nmae.unsqueeze(0))
             else:
-                nmae_all.append(n)
+                nmae_chunks.append(batch_nmae)
 
-        nmae = torch.cat(nmae_all, dim=0)
+        all_nmae = torch.cat(nmae_chunks, dim=0)
 
         if self.log_dir is not None:
             log_dir = Path(self.log_dir)
             log_dir.mkdir(exist_ok=True, parents=True)
-            csv_path = Path(self.log_dir) / "metrics.csv"
+            csv_path = log_dir / "metrics.csv"
 
             with open(csv_path, "w") as f:
                 f.write("index,nmae\n")
-                for ind, err in zip(index, nmae.tolist(), strict=False):
+                for ind, err in zip(indices, all_nmae.tolist(), strict=False):
                     f.write(f"{ind},{err}\n")
