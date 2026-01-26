@@ -31,6 +31,7 @@ def test(args):
     # Model (LightningModule handles architecture + loss + optimizer)
     # -----------------------------
     lit_model = LightningGenerator(cfg)
+    lit_model.test_cfg = SimpleNamespace(log_dir=cfg.log_dir, out_dir=cfg.out_dir)
 
     # -----------------------------
     # Callback
@@ -47,7 +48,6 @@ def test(args):
         devices=1,
         precision=cfg.model_precision,
     )
-    lit_model.test_cfg = SimpleNamespace(log_dir=cfg.log_dir, out_dir=cfg.out_dir)
 
     # -----------------------------
     # Train
