@@ -1,0 +1,108 @@
+name: Generate Expected Values
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gen-expected]
+
+permissions:
+  id-token: write  # For EC2 OIDC
+  contents: write  # For committing results
+
+jobs:
+  gen-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate expected values (darwin)
+        run: uv run python tests/e2e_train.py --update-expected --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: expected-darwin
+          path: tests/expected_values.json
+
+  gen-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate expected values (linux)
+        run: uv run python tests/e2e_train.py --update-expected --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: expected-linux
+          path: tests/expected_values.json
+
+  commit:
+    needs: [gen-macos, gen-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download darwin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: expected-darwin
+          path: tmp/darwin
+
+      - name: Download linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: expected-linux
+          path: tmp/linux
+
+      - name: Merge expected values
+        run: |
+          # Each artifact has expected_values.json with only that platform's values
+          # Merge them into a single file
+          python3 << 'EOF'
+          import json
+
+          darwin = json.load(open('tmp/darwin/expected_values.json'))
+          linux = json.load(open('tmp/linux/expected_values.json'))
+
+          merged = {
+              "darwin": darwin.get("darwin"),
+              "linux": linux.get("linux"),
+          }
+
+          with open('tests/expected_values.json', 'w') as f:
+              json.dump(merged, f, indent=2)
+              f.write('\n')
+
+          print("Merged expected values:")
+          print(json.dumps(merged, indent=2))
+          EOF
+
+      - name: Show diff
+        run: git diff tests/expected_values.json || true
+
+      - name: Commit expected values
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add tests/expected_values.json
+          git status
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Regenerate platform-specific expected values"
+            git push
+          fi

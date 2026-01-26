@@ -5,11 +5,14 @@ End-to-end training test with deterministic seeding.
 Runs a minimal training loop on the sample data in data/MP/ and verifies
 that the final validation loss matches an expected value (within tolerance).
 
+Expected values are platform-specific (darwin vs linux) since floating-point
+operations can produce slightly different results across platforms.
+
 Usage:
     # Run with defaults (5 epochs, checks val_loss)
     ./tests/e2e_train.py
 
-    # Run more epochs, update expected loss
+    # Run more epochs, update expected values for current platform
     ./tests/e2e_train.py --epochs 10 --update-expected
 
     # Just train, don't check (for exploration)
@@ -18,6 +21,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -28,6 +32,24 @@ import click
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+def get_platform() -> str:
+    """Get platform key for expected values (darwin or linux)."""
+    if sys.platform == "darwin":
+        return "darwin"
+    elif sys.platform.startswith("linux"):
+        return "linux"
+    else:
+        return sys.platform
+
+
+class LossTracker:
+    """Callback to track per-epoch losses."""
+
+    def __init__(self):
+        self.epoch_train_losses: list[float] = []
+        self.epoch_val_losses: list[float] = []
+
+
 @click.command()
 @click.option('-B', '--residual-blocks', default=2, help="Number of residual blocks (default: 2, production: 16)")
 @click.option('-C', '--channels', default=8, help="Number of model channels (default: 8, production: 32-64)")
@@ -36,7 +58,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 @click.option('-g', '--gpu', is_flag=True, help="Use GPU acceleration (if available)")
 @click.option('-s', '--seed', default=42, help="Random seed for reproducibility")
 @click.option('-t', '--tolerance', default=0.001, help="Tolerance for val_loss comparison (absolute)")
-@click.option('-U', '--update-expected', is_flag=True, help="Update expected_loss.txt with final loss")
+@click.option('-U', '--update-expected', is_flag=True, help="Update expected_values.json for current platform")
 @click.option('-v', '--verbose', is_flag=True, help="Verbose output")
 def main(
     residual_blocks: int,
@@ -51,7 +73,7 @@ def main(
 ):
     """Run deterministic e2e training test."""
     import torch
-    from lightning.pytorch import Trainer, seed_everything
+    from lightning.pytorch import Callback, Trainer, seed_everything
     from src.electrai.dataloader.registry import get_data
     from src.electrai.entrypoints.train import collate_fn
     from src.electrai.lightning import LightningGenerator
@@ -59,7 +81,10 @@ def main(
 
     # Paths
     repo_root = Path(__file__).parent.parent
-    expected_loss_file = Path(__file__).parent / "expected_loss.txt"
+    expected_values_file = Path(__file__).parent / "expected_values.json"
+
+    # Platform detection
+    platform = get_platform()
 
     # Force deterministic behavior
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -110,8 +135,6 @@ def main(
 
     # Determine accelerator
     if gpu:
-        import torch
-
         if torch.cuda.is_available():
             accelerator = "cuda"
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -126,6 +149,7 @@ def main(
         accelerator = "cpu"
 
     if verbose:
+        click.echo(f"Platform: {platform}")
         click.echo(f"Config: epochs={cfg.epochs}, seed={seed}, channels={cfg.n_channels}, blocks={cfg.n_residual_blocks}")
         click.echo(f"Accelerator: {accelerator}")
         click.echo(f"Data: {cfg.data_path}")
@@ -153,6 +177,26 @@ def main(
     # Model
     model = LightningGenerator(cfg)
 
+    # Loss tracking callback
+    class EpochLossCallback(Callback):
+        def __init__(self):
+            self.epoch_train_losses: list[float] = []
+            self.epoch_val_losses: list[float] = []
+
+        def on_train_epoch_end(self, trainer, pl_module):
+            train_loss = trainer.callback_metrics.get("train_loss_epoch")
+            if train_loss is not None:
+                self.epoch_train_losses.append(float(train_loss))
+
+        def on_validation_epoch_end(self, trainer, pl_module):
+            val_loss = trainer.callback_metrics.get("val_loss_epoch")
+            if val_loss is None:
+                val_loss = trainer.callback_metrics.get("val_loss")
+            if val_loss is not None:
+                self.epoch_val_losses.append(float(val_loss))
+
+    loss_callback = EpochLossCallback()
+
     # Trainer (minimal, no logging)
     trainer = Trainer(
         max_epochs=cfg.epochs,
@@ -164,41 +208,95 @@ def main(
         precision=cfg.model_precision,
         deterministic=True,
         gradient_clip_val=cfg.gradient_clip_value,
+        callbacks=[loss_callback],
     )
 
     # Train
     trainer.fit(model, train_loader, test_loader)
 
-    # Get final validation loss
+    # Get final losses
     final_val_loss = trainer.callback_metrics.get("val_loss_epoch")
     if final_val_loss is None:
         final_val_loss = trainer.callback_metrics.get("val_loss")
     final_val_loss = float(final_val_loss)
 
+    final_train_loss = trainer.callback_metrics.get("train_loss_epoch")
+    if final_train_loss is not None:
+        final_train_loss = float(final_train_loss)
+
+    # Results
+    results = {
+        "final_val_loss": final_val_loss,
+        "final_train_loss": final_train_loss,
+        "epoch_val_losses": loss_callback.epoch_val_losses,
+        "epoch_train_losses": loss_callback.epoch_train_losses,
+    }
+
+    if verbose:
+        click.echo(f"\nResults for {platform}:")
+        click.echo(f"  Final val_loss: {final_val_loss:.6f}")
+        if final_train_loss:
+            click.echo(f"  Final train_loss: {final_train_loss:.6f}")
+        click.echo(f"  Epoch val_losses: {[f'{v:.6f}' for v in loss_callback.epoch_val_losses]}")
+        click.echo(f"  Epoch train_losses: {[f'{v:.6f}' for v in loss_callback.epoch_train_losses]}")
+
     click.echo(f"Final val_loss: {final_val_loss:.6f}")
 
-    # Update expected loss file if requested
+    # Update expected values file if requested
     if update_expected:
-        expected_loss_file.write_text(f"{final_val_loss:.6f}\n")
-        click.echo(f"Updated {expected_loss_file}")
+        if expected_values_file.exists():
+            expected_values = json.loads(expected_values_file.read_text())
+        else:
+            expected_values = {}
+
+        expected_values[platform] = results
+        expected_values_file.write_text(json.dumps(expected_values, indent=2) + "\n")
+        click.echo(f"Updated {expected_values_file} for platform '{platform}'")
         return
 
     # Check against expected
     if check:
-        if not expected_loss_file.exists():
-            click.echo(f"No expected loss file at {expected_loss_file}", err=True)
+        if not expected_values_file.exists():
+            click.echo(f"No expected values file at {expected_values_file}", err=True)
             click.echo("Run with --update-expected to create it", err=True)
             sys.exit(1)
 
-        expected_loss = float(expected_loss_file.read_text().strip())
-        diff = abs(final_val_loss - expected_loss)
+        expected_values = json.loads(expected_values_file.read_text())
+
+        if platform not in expected_values:
+            click.echo(f"No expected values for platform '{platform}'", err=True)
+            click.echo(f"Available platforms: {list(expected_values.keys())}", err=True)
+            click.echo("Run with --update-expected to add values for this platform", err=True)
+            sys.exit(1)
+
+        expected = expected_values[platform]
+
+        if expected.get("final_val_loss") is None:
+            click.echo(f"Expected values for '{platform}' are null (not yet generated)", err=True)
+            click.echo("Run with --update-expected to generate values for this platform", err=True)
+            sys.exit(1)
+
+        expected_val_loss = expected["final_val_loss"]
+        diff = abs(final_val_loss - expected_val_loss)
 
         if diff > tolerance:
             click.echo(
                 f"FAIL: val_loss {final_val_loss:.6f} differs from expected "
-                f"{expected_loss:.6f} by {diff:.6f} (tolerance: {tolerance})",
+                f"{expected_val_loss:.6f} by {diff:.6f} (tolerance: {tolerance})",
                 err=True,
             )
+
+            # Show per-epoch comparison if available
+            if expected.get("epoch_val_losses") and loss_callback.epoch_val_losses:
+                click.echo("\nPer-epoch val_loss comparison:", err=True)
+                for i, (actual, exp) in enumerate(zip(
+                    loss_callback.epoch_val_losses,
+                    expected["epoch_val_losses"]
+                )):
+                    epoch_diff = abs(actual - exp)
+                    marker = " <-- DIVERGED" if epoch_diff > tolerance else ""
+                    click.echo(f"  Epoch {i}: actual={actual:.6f}, expected={exp:.6f}, diff={epoch_diff:.6f}{marker}", err=True)
+
             sys.exit(1)
         else:
             click.echo(
