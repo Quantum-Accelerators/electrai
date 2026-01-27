@@ -10,7 +10,6 @@ downsample_label: 1
 downsample_data: 2
 data_augmentation: False
 random_state: 42
-normalize_to_den: True
 normalize: True
 data_precision: f32
 

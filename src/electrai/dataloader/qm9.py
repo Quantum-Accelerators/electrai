@@ -61,7 +61,6 @@ class RhoData(Dataset):
         data_augmentation=True,
         downsample_data=1,
         downsample_label=1,
-        normalize_to_den=False,
     ):
         """
         Parameters
@@ -73,7 +72,6 @@ class RhoData(Dataset):
         self.da = data_augmentation
         self.data = data
         self.data_precision = data_precision
-        self.normalize_to_den = normalize_to_den
         self.rng = np.random.default_rng()
 
     def __len__(self):
@@ -116,7 +114,7 @@ class RhoData(Dataset):
         else:
             return [rotate(rotate(rotate(d))) for d in data_lst]
 
-    def _normalize(self, data):
+    def unit_conversion(self, data):
         factor = 1.88973**3
         return data * factor
 
@@ -134,9 +132,8 @@ class RhoData(Dataset):
         size = np.loadtxt(label_gs_path, dtype=int)
         rho2 = rho2.reshape(1, *size)
 
-        if self.normalize_to_den:
-            rho1 = self._normalize(rho1)
-            rho2 = self._normalize(rho2)
+        rho1 = self.unit_conversion(rho1)
+        rho2 = self.unit_conversion(rho2)
 
         if self.da:
             rho1, rho2 = self.rand_rotate([rho1, rho2])
@@ -173,7 +170,6 @@ def load_data(cfg):
         cfg.data_augmentation,
         cfg.downsample_data,
         cfg.downsample_label,
-        cfg.normalize_to_den,
     )
 
     test_data = RhoData(
@@ -182,6 +178,5 @@ def load_data(cfg):
         cfg.data_augmentation,
         cfg.downsample_data,
         cfg.downsample_label,
-        cfg.normalize_to_den,
     )
     return train_data, test_data
