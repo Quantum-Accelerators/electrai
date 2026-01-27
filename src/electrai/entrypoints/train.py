@@ -61,11 +61,6 @@ def train(args):
     # -----------------------------
     # Trainer
     # -----------------------------
-    local_world_size = int(
-        os.environ.get("LOCAL_WORLD_SIZE", torch.cuda.device_count())
-    )
-    world_size = int(os.environ.get("WORLD_SIZE", local_world_size))
-    num_nodes = max(1, world_size // local_world_size)
     trainer = Trainer(
         max_epochs=int(cfg.epochs),
         logger=wandb_logger,
