@@ -41,11 +41,12 @@ class RhoRead:
         for mol_id in range(1, num_samples):
             if mol_id in exclude_inds:
                 continue
+            mol_dir = f"dsgdb9nsd_{mol_id:06d}"
             data = (
-                self.data_path / f"dsgdb9nsd_{mol_id:06d}" / "rho_22.npy",
-                self.label_path / f"dsgdb9nsd_{mol_id:06d}" / "rho_22.npy",
-                self.data_path / f"dsgdb9nsd_{mol_id:06d}" / "grid_sizes_22.dat",
-                self.label_path / f"dsgdb9nsd_{mol_id:06d}" / "grid_sizes_22.dat",
+                self.data_path / mol_dir / "rho_22.npy",  # flattened array
+                self.label_path / mol_dir / "rho_22.npy",  # flattened array
+                self.data_path / mol_dir / "grid_sizes_22.dat",
+                self.label_path / mol_dir / "grid_sizes_22.dat",
             )
             data_list.append(data)
         train_data, test_data = train_test_split(
