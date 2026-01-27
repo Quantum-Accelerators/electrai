@@ -36,7 +36,7 @@ class RhoRead:
 
     def data_split(self):
         data_list = []
-        exclude_inds = np.loadtxt(self.exclude_path)
+        exclude_inds = set(np.loadtxt(self.exclude_path))
         for mol_id in range(1, 133886):
             if mol_id in exclude_inds:
                 continue
