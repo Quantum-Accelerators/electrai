@@ -11,6 +11,7 @@ from .registry import register_data
 
 dtype_map = {"f32": torch.float32, "f16": torch.float16, "bf16": torch.bfloat16}
 num_samples = 133886
+conversion_factor = 1.88973**3  # Bohr^3 to Angstrom^3
 
 
 class RhoRead:
@@ -117,7 +118,7 @@ class RhoData(Dataset):
             return [rotate(rotate(rotate(d))) for d in data_lst]
 
     def unit_conversion(self, data):
-        factor = 1.88973**3
+        factor = conversion_factor
         return data * factor
 
     def __getitem__(self, idx):
