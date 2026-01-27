@@ -122,10 +122,7 @@ class RhoData(Dataset):
         return data * factor
 
     def __getitem__(self, idx):
-        data_path = self.data[idx][0]
-        label_path = self.data[idx][1]
-        data_gs_path = self.data[idx][2]
-        label_gs_path = self.data[idx][3]
+        data_path, label_path, data_gs_path, label_gs_path = self.data[idx]
 
         rho1 = torch.tensor(np.load(data_path), dtype=dtype_map[self.data_precision])
         size = np.loadtxt(data_gs_path, dtype=int)
