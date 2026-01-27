@@ -124,34 +124,38 @@ class RhoData(Dataset):
     def __getitem__(self, idx):
         data_path, label_path, data_gs_path, label_gs_path = self.data[idx]
 
-        rho1 = torch.tensor(np.load(data_path), dtype=dtype_map[self.data_precision])
+        rho_input = torch.tensor(
+            np.load(data_path), dtype=dtype_map[self.data_precision]
+        )
         size = np.loadtxt(data_gs_path, dtype=int)
-        rho1 = rho1.reshape(1, *size)
+        rho_input = rho_input.reshape(1, *size)
 
-        rho2 = torch.tensor(np.load(label_path), dtype=dtype_map[self.data_precision])
+        rho_label = torch.tensor(
+            np.load(label_path), dtype=dtype_map[self.data_precision]
+        )
         size = np.loadtxt(label_gs_path, dtype=int)
-        rho2 = rho2.reshape(1, *size)
+        rho_label = rho_label.reshape(1, *size)
 
-        rho1 = self.unit_conversion(rho1)
-        rho2 = self.unit_conversion(rho2)
+        rho_input = self.unit_conversion(rho_input)
+        rho_label = self.unit_conversion(rho_label)
 
         if self.da:
-            rho1, rho2 = self.rand_rotate([rho1, rho2])
+            rho_input, rho_label = self.rand_rotate([rho_input, rho_label])
 
         ds1 = self.ds_data
         ds2 = self.ds_label
-        nx, ny, nz = rho1.size()[-3:]
+        nx, ny, nz = rho_input.size()[-3:]
         nx = nx // ds1 * ds1
         ny = ny // ds1 * ds1
         nz = nz // ds1 * ds1
-        rho1 = rho1[..., :nx:ds1, :ny:ds1, :nz:ds1]
-        nx, ny, nz = rho2.size()[-3:]
+        rho_input = rho_input[..., :nx:ds1, :ny:ds1, :nz:ds1]
+        nx, ny, nz = rho_label.size()[-3:]
         nx = nx // ds1 * ds1
         ny = ny // ds1 * ds1
         nz = nz // ds1 * ds1
-        rho2 = rho2[..., :nx:ds2, :ny:ds2, :nz:ds2]
+        rho_label = rho_label[..., :nx:ds2, :ny:ds2, :nz:ds2]
 
-        return (rho1, rho2)
+        return (rho_input, rho_label)
 
 
 @register_data("qm9")
