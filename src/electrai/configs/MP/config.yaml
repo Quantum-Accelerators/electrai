@@ -12,20 +12,22 @@ data:
   drop_last: false
   augmentation: false
   random_seed: 42
+  # downsample_label: 0
+  # downsample_data: 0
 
-# downsample_label: 0
-# downsample_data: 0
-normalize: True
-
-# Model parameters
-n_channels: 32
-n_residual_blocks: 32
-n_upscale_layers: 0
-kernel_size1: 5
-kernel_size2: 5
-model_precision: 32
+# Model
+model:
+  _target_: src.electrai.model.srgan_layernorm_pbc.GeneratorResNet
+  n_residual_blocks: 32
+  n_upscale_layers: 0
+  n_channels: 32
+  kernel_size1: 5
+  kernel_size2: 5
+  normalize: True
+  use_checkpoint: False
 
 # Training parameters
+precision: 32
 epochs: 50
 lr: 0.01
 weight_decay: 0.0

@@ -68,17 +68,17 @@ class GeneratorResNet(nn.Module):
         out_channels=1,
         n_residual_blocks=16,
         n_upscale_layers=2,
-        C=64,
-        K1=5,
-        K2=3,
+        n_channels=64,
+        kernel_size1=5,
+        kernel_size2=3,
         normalize=True,
         use_checkpoint=True,
     ):
         """
         This net upscales each axis by 2**n_upscale_layers
-        C = channel size in most of layers
-        K1 = kernel size in the first and last layers
-        K2 = kernel size in Res blocks
+        n_channels = channel size in most of layers
+        kernel_size1 = kernel size in the first and last layers
+        kernel_size2 = kernel size in Res blocks
         use_checkpoint = enable gradient checkpointing to save memory
         """
         super().__init__()
@@ -90,8 +90,8 @@ class GeneratorResNet(nn.Module):
         self.conv1 = nn.Sequential(
             nn.Conv3d(
                 in_channels,
-                C,
-                kernel_size=K1,
+                n_channels,
+                kernel_size=kernel_size1,
                 stride=1,
                 padding="same",
                 padding_mode="circular",
@@ -101,7 +101,7 @@ class GeneratorResNet(nn.Module):
 
         # Residual blocks
         res_blocks = [
-            ResidualBlock(C, K=K2, use_checkpoint=use_checkpoint)
+            ResidualBlock(n_channels, K=kernel_size2, use_checkpoint=use_checkpoint)
             for _ in range(n_residual_blocks)
         ]
         self.res_blocks = nn.Sequential(*res_blocks)
@@ -109,9 +109,14 @@ class GeneratorResNet(nn.Module):
         # Second conv layer post residual blocks
         self.conv2 = nn.Sequential(
             nn.Conv3d(
-                C, C, kernel_size=K2, stride=1, padding="same", padding_mode="circular"
+                n_channels,
+                n_channels,
+                kernel_size=kernel_size2,
+                stride=1,
+                padding="same",
+                padding_mode="circular",
             ),
-            nn.InstanceNorm3d(C),
+            nn.InstanceNorm3d(n_channels),
         )
 
         # Upsampling layers
@@ -120,15 +125,15 @@ class GeneratorResNet(nn.Module):
             upsampling += [
                 # nn.Upsample(scale_factor=2),
                 nn.Conv3d(
-                    C,
-                    C * 8,
-                    kernel_size=K2,
+                    n_channels,
+                    n_channels * 8,
+                    kernel_size=kernel_size2,
                     stride=1,
                     padding="same",
                     padding_mode="circular",
                 ),
-                nn.InstanceNorm3d(C * 8),
-                PixelShuffle3d(C * 8, upscale_factor=2),
+                nn.InstanceNorm3d(n_channels * 8),
+                PixelShuffle3d(n_channels * 8, upscale_factor=2),
                 nn.PReLU(),
             ]
         self.upsampling = nn.Sequential(*upsampling)
@@ -136,9 +141,9 @@ class GeneratorResNet(nn.Module):
         # Final output layer
         self.conv3 = nn.Sequential(
             nn.Conv3d(
-                C,
+                n_channels,
                 out_channels,
-                kernel_size=K1,
+                kernel_size=kernel_size1,
                 stride=1,
                 padding="same",
                 padding_mode="circular",
