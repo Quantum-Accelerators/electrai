@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 from .registry import register_data
 
 dtype_map = {"f32": torch.float32, "f16": torch.float16, "bf16": torch.bfloat16}
+num_samples = 133886
 
 
 class RhoRead:
@@ -37,7 +38,7 @@ class RhoRead:
     def data_split(self):
         data_list = []
         exclude_inds = set(np.loadtxt(self.exclude_path))
-        for mol_id in range(1, 133886):
+        for mol_id in range(1, num_samples):
             if mol_id in exclude_inds:
                 continue
             data = (
