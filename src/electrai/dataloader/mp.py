@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import gzip
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import numpy as np
 import torch
 import yaml
 from pymatgen.io.vasp.outputs import Chgcar
@@ -11,6 +11,9 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from .registry import register_data
+
+if TYPE_CHECKING:
+    import numpy as np
 
 dtype_map = {"f32": torch.float32, "f16": torch.float16, "bf16": torch.bfloat16}
 
