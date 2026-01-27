@@ -142,18 +142,18 @@ class RhoData(Dataset):
         if self.da:
             rho_input, rho_label = self.rand_rotate([rho_input, rho_label])
 
-        ds1 = self.ds_data
-        ds2 = self.ds_label
+        ds_input = self.ds_data
+        ds_label = self.ds_label
         nx, ny, nz = rho_input.size()[-3:]
-        nx = nx // ds1 * ds1
-        ny = ny // ds1 * ds1
-        nz = nz // ds1 * ds1
-        rho_input = rho_input[..., :nx:ds1, :ny:ds1, :nz:ds1]
+        nx = nx // ds_input * ds_input
+        ny = ny // ds_input * ds_input
+        nz = nz // ds_input * ds_input
+        rho_input = rho_input[..., :nx:ds_input, :ny:ds_input, :nz:ds_input]
         nx, ny, nz = rho_label.size()[-3:]
-        nx = nx // ds1 * ds1
-        ny = ny // ds1 * ds1
-        nz = nz // ds1 * ds1
-        rho_label = rho_label[..., :nx:ds2, :ny:ds2, :nz:ds2]
+        nx = nx // ds_input * ds_input
+        ny = ny // ds_input * ds_input
+        nz = nz // ds_input * ds_input
+        rho_label = rho_label[..., :nx:ds_label, :ny:ds_label, :nz:ds_label]
 
         return (rho_input, rho_label)
 
