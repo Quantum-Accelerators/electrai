@@ -11,12 +11,21 @@ from __future__ import annotations
 import argparse
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from enum import Enum
 from pathlib import Path
 
 import numpy as np
 from pymatgen.io.vasp.outputs import Chgcar
 
 logger = logging.getLogger(__name__)
+
+
+class SpreadMode(str, Enum):
+    """Mode for spreading charge around atomic positions."""
+
+    POINT = "point"  # Delta function at nearest grid point
+    TRILINEAR = "trilinear"  # Spread to 8 neighboring grid points
+    GAUSSIAN = "gaussian"  # 3D Gaussian distribution
 
 
 def fractional_to_grid_index(
@@ -50,7 +59,7 @@ def fractional_to_grid_index(
 
 
 def create_point_charge_density(
-    chgcar: Chgcar, spread_charge: bool = False
+    chgcar: Chgcar, spread_mode: SpreadMode = SpreadMode.POINT, sigma: float = 0.5
 ) -> np.ndarray:
     """
     Create a point-charge density array from atomic positions.
@@ -59,10 +68,14 @@ def create_point_charge_density(
     ----------
     chgcar : Chgcar
         Original CHGCAR object containing structure and charge density.
-    spread_charge : bool
-        If True, spread the charge using trilinear interpolation to the 8
-        neighboring grid points. If False, place all charge at the nearest
-        grid point.
+    spread_mode : SpreadMode
+        How to distribute charge around atomic positions:
+        - POINT: Delta function at nearest grid point (default)
+        - TRILINEAR: Spread to 8 neighboring grid points
+        - GAUSSIAN: 3D Gaussian distribution with given sigma
+    sigma : float
+        Standard deviation for Gaussian spread in Angstroms (default: 0.5).
+        Only used when spread_mode is GAUSSIAN.
 
     Returns
     -------
@@ -86,10 +99,20 @@ def create_point_charge_density(
     for site in structure:
         frac_coords = site.frac_coords
 
-        if spread_charge:
+        if spread_mode == SpreadMode.TRILINEAR:
             # Trilinear interpolation to 8 neighboring grid points
-            point_charge_data = _add_spread_charge(
+            point_charge_data = _add_trilinear_charge(
                 point_charge_data, frac_coords, grid_shape, charge_per_atom
+            )
+        elif spread_mode == SpreadMode.GAUSSIAN:
+            # 3D Gaussian distribution
+            point_charge_data = _add_gaussian_charge(
+                point_charge_data,
+                frac_coords,
+                grid_shape,
+                charge_per_atom,
+                sigma,
+                structure.lattice,
             )
         else:
             # Place all charge at nearest grid point
@@ -99,7 +122,7 @@ def create_point_charge_density(
     return point_charge_data
 
 
-def _add_spread_charge(
+def _add_trilinear_charge(
     data: np.ndarray,
     frac_coords: np.ndarray,
     grid_shape: tuple[int, int, int],
@@ -172,8 +195,91 @@ def _add_spread_charge(
     return data
 
 
+def _add_gaussian_charge(
+    data: np.ndarray,
+    frac_coords: np.ndarray,
+    grid_shape: tuple[int, int, int],
+    charge: float,
+    sigma: float,
+    lattice,
+) -> np.ndarray:
+    """
+    Add charge spread using a 3D Gaussian distribution centered at the atom.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Charge density array to modify in place.
+    frac_coords : np.ndarray
+        Fractional coordinates of the atom.
+    grid_shape : tuple[int, int, int]
+        Shape of the grid.
+    charge : float
+        Total charge to distribute.
+    sigma : float
+        Standard deviation of the Gaussian in Angstroms.
+    lattice : Lattice
+        Pymatgen Lattice object for coordinate transformations.
+
+    Returns
+    -------
+    np.ndarray
+        Modified charge density array.
+    """
+    # Wrap to [0, 1) range
+    frac_coords = frac_coords % 1.0
+
+    # Create grid of fractional coordinates
+    fi = np.arange(grid_shape[0]) / grid_shape[0]
+    fj = np.arange(grid_shape[1]) / grid_shape[1]
+    fk = np.arange(grid_shape[2]) / grid_shape[2]
+
+    # Calculate fractional displacement from atom to each grid point
+    # Account for periodic boundary conditions (minimum image convention)
+    di = fi - frac_coords[0]
+    dj = fj - frac_coords[1]
+    dk = fk - frac_coords[2]
+
+    # Apply minimum image convention
+    di = di - np.round(di)
+    dj = dj - np.round(dj)
+    dk = dk - np.round(dk)
+
+    # Create 3D grids of displacements
+    di_grid, dj_grid, dk_grid = np.meshgrid(di, dj, dk, indexing="ij")
+
+    # Stack fractional displacements: shape (N, 3) where N = product of grid_shape
+    frac_displacements = np.stack(
+        [di_grid.ravel(), dj_grid.ravel(), dk_grid.ravel()], axis=1
+    )
+
+    # Convert fractional displacements to Cartesian (Angstroms)
+    cart_displacements = lattice.get_cartesian_coords(frac_displacements)
+
+    # Calculate squared distances
+    dist_sq = np.sum(cart_displacements**2, axis=1)
+
+    # Calculate Gaussian weights
+    weights = np.exp(-dist_sq / (2 * sigma**2))
+
+    # Normalize weights so they sum to 1
+    weights = weights / weights.sum()
+
+    # Reshape weights to grid shape
+    weights = weights.reshape(grid_shape)
+
+    # Add weighted charge to grid
+    # Multiply by np.prod(grid_shape) to convert from electrons to CHGCAR units
+    data += weights * charge * np.prod(grid_shape)
+
+    return data
+
+
 def create_point_charge_chgcar(
-    input_path: str | Path, output_path: str | Path, spread_charge: bool = False
+    input_path: str | Path,
+    output_path: str | Path,
+    spread_mode: SpreadMode = SpreadMode.POINT,
+    sigma: float = 0.5,
 ) -> None:
     """
     Read a CHGCAR file and create a point-charge version.
@@ -184,9 +290,11 @@ def create_point_charge_chgcar(
         Path to the input CHGCAR file.
     output_path : str | Path
         Path to write the output CHGCAR file.
-    spread_charge : bool
-        If True, spread the charge using trilinear interpolation.
-        If False (default), place all charge at the nearest grid point.
+    spread_mode : SpreadMode
+        How to distribute charge around atomic positions (default: POINT).
+    sigma : float
+        Standard deviation for Gaussian spread in Angstroms (default: 0.5).
+        Only used when spread_mode is GAUSSIAN.
     """
     input_path = Path(input_path)
     output_path = Path(output_path)
@@ -202,8 +310,10 @@ def create_point_charge_chgcar(
     original_total = chgcar.data["total"].sum() / np.prod(chgcar.data["total"].shape)
     logger.info(f"Original total electrons: {original_total:.4f}")
 
-    logger.info("Creating point charge density...")
-    point_charge_data = create_point_charge_density(chgcar, spread_charge=spread_charge)
+    logger.info(f"Creating point charge density (mode: {spread_mode.value})...")
+    point_charge_data = create_point_charge_density(
+        chgcar, spread_mode=spread_mode, sigma=sigma
+    )
 
     new_total = point_charge_data.sum() / np.prod(point_charge_data.shape)
     logger.info(f"New total electrons: {new_total:.4f}")
@@ -216,23 +326,25 @@ def create_point_charge_chgcar(
     logger.info("Done!")
 
 
-def _process_single_file(args: tuple[Path, Path, bool]) -> tuple[Path, bool, str]:
+def _process_single_file(
+    args: tuple[Path, Path, SpreadMode, float],
+) -> tuple[Path, bool, str]:
     """
     Worker function for parallel processing.
 
     Parameters
     ----------
-    args : tuple[Path, Path, bool]
-        Tuple of (input_path, output_path, spread_charge).
+    args : tuple[Path, Path, SpreadMode, float]
+        Tuple of (input_path, output_path, spread_mode, sigma).
 
     Returns
     -------
     tuple[Path, bool, str]
         Tuple of (input_path, success, error_message).
     """
-    input_path, output_path, spread_charge = args
+    input_path, output_path, spread_mode, sigma = args
     try:
-        create_point_charge_chgcar(input_path, output_path, spread_charge)
+        create_point_charge_chgcar(input_path, output_path, spread_mode, sigma)
         return (input_path, True, "")
     except Exception as e:
         return (input_path, False, str(e))
@@ -242,7 +354,8 @@ def convert_directory(
     input_dir: str | Path,
     output_dir: str | Path,
     pattern: str = "*.CHGCAR",
-    spread_charge: bool = False,
+    spread_mode: SpreadMode = SpreadMode.POINT,
+    sigma: float = 0.5,
     max_workers: int | None = None,
 ) -> tuple[int, int]:
     """
@@ -256,8 +369,10 @@ def convert_directory(
         Directory where output CHGCAR files will be created.
     pattern : str
         Glob pattern to match input files (default: "*.CHGCAR").
-    spread_charge : bool
-        If True, spread the charge using trilinear interpolation.
+    spread_mode : SpreadMode
+        How to distribute charge around atomic positions (default: POINT).
+    sigma : float
+        Standard deviation for Gaussian spread in Angstroms (default: 0.5).
     max_workers : int | None
         Maximum number of parallel workers. If None, uses the number of CPU cores.
 
@@ -281,7 +396,7 @@ def convert_directory(
 
     # Prepare arguments for parallel processing
     conversion_args = [
-        (input_file, output_dir / input_file.name, spread_charge)
+        (input_file, output_dir / input_file.name, spread_mode, sigma)
         for input_file in input_files
     ]
 
@@ -309,6 +424,26 @@ def convert_directory(
     return success_count, failed_count
 
 
+def _add_spread_args(parser: argparse.ArgumentParser) -> None:
+    """Add spread mode arguments to a parser."""
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["point", "trilinear", "gaussian"],
+        default="point",
+        help="Charge distribution mode: 'point' (delta at nearest grid point), "
+        "'trilinear' (spread to 8 neighbors), or 'gaussian' (3D Gaussian). "
+        "Default: 'point'.",
+    )
+    parser.add_argument(
+        "--sigma",
+        type=float,
+        default=0.5,
+        help="Standard deviation for Gaussian spread in Angstroms (default: 0.5). "
+        "Only used with --mode=gaussian.",
+    )
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -323,11 +458,7 @@ def main():
     file_parser.add_argument(
         "output", type=str, help="Path to write the output CHGCAR file."
     )
-    file_parser.add_argument(
-        "--spread",
-        action="store_true",
-        help="Spread charge across 8 neighboring grid points using trilinear interpolation.",
-    )
+    _add_spread_args(file_parser)
 
     # Directory conversion
     dir_parser = subparsers.add_parser(
@@ -345,11 +476,7 @@ def main():
         default="*.CHGCAR",
         help="Glob pattern to match input files (default: '*.CHGCAR').",
     )
-    dir_parser.add_argument(
-        "--spread",
-        action="store_true",
-        help="Spread charge across 8 neighboring grid points using trilinear interpolation.",
-    )
+    _add_spread_args(dir_parser)
     dir_parser.add_argument(
         "--workers",
         type=int,
@@ -360,15 +487,21 @@ def main():
     args = parser.parse_args()
 
     if args.command == "convert":
+        spread_mode = SpreadMode(args.mode)
         create_point_charge_chgcar(
-            input_path=args.input, output_path=args.output, spread_charge=args.spread
+            input_path=args.input,
+            output_path=args.output,
+            spread_mode=spread_mode,
+            sigma=args.sigma,
         )
     elif args.command == "convert-dir":
+        spread_mode = SpreadMode(args.mode)
         convert_directory(
             input_dir=args.input_dir,
             output_dir=args.output_dir,
             pattern=args.pattern,
-            spread_charge=args.spread,
+            spread_mode=spread_mode,
+            sigma=args.sigma,
             max_workers=args.workers,
         )
     else:
