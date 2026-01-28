@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -215,27 +216,163 @@ def create_point_charge_chgcar(
     logger.info("Done!")
 
 
+def _process_single_file(args: tuple[Path, Path, bool]) -> tuple[Path, bool, str]:
+    """
+    Worker function for parallel processing.
+
+    Parameters
+    ----------
+    args : tuple[Path, Path, bool]
+        Tuple of (input_path, output_path, spread_charge).
+
+    Returns
+    -------
+    tuple[Path, bool, str]
+        Tuple of (input_path, success, error_message).
+    """
+    input_path, output_path, spread_charge = args
+    try:
+        create_point_charge_chgcar(input_path, output_path, spread_charge)
+        return (input_path, True, "")
+    except Exception as e:
+        return (input_path, False, str(e))
+
+
+def convert_directory(
+    input_dir: str | Path,
+    output_dir: str | Path,
+    pattern: str = "*.CHGCAR",
+    spread_charge: bool = False,
+    max_workers: int | None = None,
+) -> tuple[int, int]:
+    """
+    Convert all CHGCAR files in a directory to point-charge versions.
+
+    Parameters
+    ----------
+    input_dir : str | Path
+        Directory containing CHGCAR files.
+    output_dir : str | Path
+        Directory where output CHGCAR files will be created.
+    pattern : str
+        Glob pattern to match input files (default: "*.CHGCAR").
+    spread_charge : bool
+        If True, spread the charge using trilinear interpolation.
+    max_workers : int | None
+        Maximum number of parallel workers. If None, uses the number of CPU cores.
+
+    Returns
+    -------
+    tuple[int, int]
+        Number of successfully converted files and number of failed conversions.
+    """
+    input_dir = Path(input_dir).expanduser()
+    output_dir = Path(output_dir).expanduser()
+
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find all matching files
+    input_files = list(input_dir.glob(pattern))
+    logger.info(f"Found {len(input_files)} files matching '{pattern}' in {input_dir}")
+
+    if not input_files:
+        return 0, 0
+
+    # Prepare arguments for parallel processing
+    conversion_args = [
+        (input_file, output_dir / input_file.name, spread_charge)
+        for input_file in input_files
+    ]
+
+    success_count = 0
+    failed_count = 0
+
+    # Process files in parallel
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        future_to_file = {
+            executor.submit(_process_single_file, args): args[0]
+            for args in conversion_args
+        }
+
+        for future in as_completed(future_to_file):
+            input_file, success, error_msg = future.result()
+            if success:
+                success_count += 1
+            else:
+                logger.error(f"Failed to convert {input_file}: {error_msg}")
+                failed_count += 1
+
+    logger.info(
+        f"Conversion complete: {success_count} successful, {failed_count} failed"
+    )
+    return success_count, failed_count
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     parser = argparse.ArgumentParser(
-        description="Create a point-charge version of a CHGCAR file."
+        description="Create point-charge versions of CHGCAR files."
     )
-    parser.add_argument("input", type=str, help="Path to the input CHGCAR file.")
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Single file conversion
+    file_parser = subparsers.add_parser("convert", help="Convert a single CHGCAR file.")
+    file_parser.add_argument("input", type=str, help="Path to the input CHGCAR file.")
+    file_parser.add_argument(
         "output", type=str, help="Path to write the output CHGCAR file."
     )
-    parser.add_argument(
+    file_parser.add_argument(
         "--spread",
         action="store_true",
         help="Spread charge across 8 neighboring grid points using trilinear interpolation.",
     )
 
+    # Directory conversion
+    dir_parser = subparsers.add_parser(
+        "convert-dir", help="Convert all CHGCAR files in a directory."
+    )
+    dir_parser.add_argument(
+        "input_dir", type=str, help="Directory containing CHGCAR files."
+    )
+    dir_parser.add_argument(
+        "output_dir", type=str, help="Directory to write output CHGCAR files."
+    )
+    dir_parser.add_argument(
+        "--pattern",
+        type=str,
+        default="*.CHGCAR",
+        help="Glob pattern to match input files (default: '*.CHGCAR').",
+    )
+    dir_parser.add_argument(
+        "--spread",
+        action="store_true",
+        help="Spread charge across 8 neighboring grid points using trilinear interpolation.",
+    )
+    dir_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers (default: number of CPU cores).",
+    )
+
     args = parser.parse_args()
 
-    create_point_charge_chgcar(
-        input_path=args.input, output_path=args.output, spread_charge=args.spread
-    )
+    if args.command == "convert":
+        create_point_charge_chgcar(
+            input_path=args.input, output_path=args.output, spread_charge=args.spread
+        )
+    elif args.command == "convert-dir":
+        convert_directory(
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+            pattern=args.pattern,
+            spread_charge=args.spread,
+            max_workers=args.workers,
+        )
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
