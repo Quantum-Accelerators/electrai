@@ -78,20 +78,21 @@ class ResUNet3D(nn.Module):
 
     def forward(self, x):
         skips = []
-        x = self.in_conv(x)
+        out = self.in_conv(x)
 
         for enc, down in zip(self.enc_blocks, self.downs, strict=False):
-            x = enc(x)
-            skips.append(x)
-            x = down(x)
-        x = self.mid(x)
+            out = enc(out)
+            skips.append(out)
+            out = down(out)
+        out = self.mid(out)
 
         for up, dec in zip(self.ups, self.dec_blocks, strict=False):
-            x = up(x)
-            x = torch.cat([x, skips.pop()], dim=1)
-            x = dec(x)
-
-        return self.out_conv(x)
+            out = up(out)
+            out = torch.cat([out, skips.pop()], dim=1)
+            out = dec(out)
+        out = self.out_conv(out)
+        out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
+        return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
 
 
 def downsample(cin, cout):
