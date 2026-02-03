@@ -24,6 +24,9 @@ model:
   n_residual_blocks: 1
   kernel_size: 5
   depth: 2
+  normalize: true
+  use_conditioning: false
+  cond_dim: 6
 
 # Training parameters
 precision: 32

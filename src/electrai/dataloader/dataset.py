@@ -30,6 +30,8 @@ class RhoRead(LightningDataModule):
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
         random_seed: int = 42,
+        downsample_data: int = 1,
+        downsample_label: int = 1,
         **kwargs,  # noqa: ARG002
     ):
         super().__init__()
@@ -45,10 +47,16 @@ class RhoRead(LightningDataModule):
         self.precision = precision
         self.augmentation = augmentation
         self.random_seed = random_seed
+        self.downsample_data = downsample_data
+        self.downsample_label = downsample_label
 
     def setup(self, stage=None):
         dataset = RhoData(
-            self.root, precision=self.precision, augmentation=self.augmentation
+            self.root,
+            precision=self.precision,
+            augmentation=self.augmentation,
+            downsample_data=self.downsample_data,
+            downsample_label=self.downsample_label,
         )
         self.subsets = split_data(
             dataset,
@@ -96,10 +104,20 @@ class RhoRead(LightningDataModule):
 
 
 class RhoData(Dataset):
-    def __init__(self, datapath: str, precision: str, augmentation: bool, **kwargs):
+    def __init__(
+        self,
+        datapath: str,
+        precision: str,
+        augmentation: bool,
+        downsample_data: int,
+        downsample_label: int,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.aug = augmentation
         self.precision = precision
+        self.downsample_data = downsample_data
+        self.downsample_label = downsample_label
         if isinstance(datapath, str) and Path(datapath).is_file():
             with Path(datapath).open() as f:
                 lines = f.readlines()
@@ -116,13 +134,19 @@ class RhoData(Dataset):
 
     def __getitem__(self, index):
         index = self.member_list[index]
-        data, label = utils.load_numpy_rho(
+        data, label, cond = utils.load_numpy_rho(
             root=self.root,
             category=self.category,
             index=index,
             precision=self.precision,
             augmentation=self.aug,
+            downsample_data=self.downsample_data,
+            downsample_label=self.downsample_label,
         )
         data = data.unsqueeze(0)
         label = label.unsqueeze(0)
-        return {"data": data, "label": label, "index": index}
+
+        out = {"data": data, "label": label, "index": index}
+        if cond is not None:
+            out["cond"] = cond
+        return out
