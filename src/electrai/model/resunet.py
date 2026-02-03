@@ -33,6 +33,7 @@ class ResUNet3D(nn.Module):
         depth,
         n_residual_blocks,
         kernel_size,
+        normalize,
     ):
         super().__init__()
 
@@ -41,6 +42,7 @@ class ResUNet3D(nn.Module):
         # -------- Encoder --------
         self.enc_blocks = nn.ModuleList()
         self.downs = nn.ModuleList()
+        self.normalize = normalize
 
         ch = n_channels
         for _ in range(depth):
@@ -91,8 +93,10 @@ class ResUNet3D(nn.Module):
             out = torch.cat([out, skips.pop()], dim=1)
             out = dec(out)
         out = self.out_conv(out)
-        out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
-        return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
+        if self.normalize:
+            out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
+            out = out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
+        return out
 
 
 def downsample(cin, cout):
