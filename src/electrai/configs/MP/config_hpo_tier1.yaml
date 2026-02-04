@@ -1,0 +1,81 @@
+# Tier 1 Coarse Search - Critical hyperparameters only
+# Focus: model architecture + learning rate
+
+hpo:
+  study_name: resunet_hpo_tier1
+  n_trials: 50
+  timeout: null
+  storage: sqlite:////home/ubuntu/betsy-electrai-2/optuna/hpo_tier1.db
+  direction: minimize
+  pruner:
+    type: median
+    n_startup_trials: 5
+    n_warmup_steps: 3
+  sampler:
+    type: tpe
+
+  # Tier 1 search space only
+  search_space:
+    # Model architecture (critical)
+    depth:
+      type: int
+      low: 2
+      high: 4
+    n_channels:
+      type: categorical
+      choices: [16, 32, 64]
+    n_residual_blocks:
+      type: int
+      low: 1
+      high: 3
+    kernel_size:
+      type: categorical
+      choices: [3, 5]
+
+    # Learning rate (critical)
+    lr:
+      type: float
+      low: 1.0e-4
+      high: 1.0e-2
+      log: true
+
+# Fixed Tier 2 parameters (reasonable defaults)
+data:
+  _target_: src.electrai.dataloader.dataset.RhoRead
+  root: /home/ubuntu/betsy-electrai-2/dataset2/mp_filelist.txt
+  split_file: null
+  precision: f32
+  batch_size: 1  # fixed
+  # train_workers: 8
+  # val_workers: 2
+  pin_memory: false
+  val_frac: 0.1
+  drop_last: false
+  augmentation: false  # fixed: disabled
+  random_seed: 42
+
+model:
+  _target_: src.electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 32
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+
+# Fixed training parameters
+precision: 32
+epochs: 15
+lr: 0.001
+weight_decay: 0.0  # fixed
+warmup_length: 5  # fixed
+gradient_clip_value: 5.0  # fixed
+beta1: 0.9
+beta2: 0.99
+
+# Logging
+wandb_mode: online
+entity: PrinceOA
+wb_pname: betsy-mp-hpo-tier1
+
+ckpt_path: ./hpo_tier1_checkpoints
