@@ -81,8 +81,13 @@ jobs:
           echo "Syncing $S3_SAMPLES samples from S3..."
           mkdir -p /tmp/electrai/input /tmp/electrai/label
 
-          # Get list of files to download
-          FILES=$(aws s3 ls s3://openathena/electrai/input/ | head -n "$S3_SAMPLES" | awk '{print $4}')
+          # Get list of files to download (using s3api to limit at source)
+          FILES=$(aws s3api list-objects-v2 \
+            --bucket openathena \
+            --prefix electrai/input/ \
+            --max-items "$S3_SAMPLES" \
+            --query 'Contents[].Key' \
+            --output text | tr '\t' '\n' | sed 's|electrai/input/||')
 
           # Download input and label files
           for f in $FILES; do
