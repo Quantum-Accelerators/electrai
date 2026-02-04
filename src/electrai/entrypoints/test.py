@@ -40,12 +40,15 @@ def test(args):
     # -----------------------------
     # Trainer
     # -----------------------------
-    out_dir = Path(getattr(cfg, "out_dir", "predictions"))
+    if cfg.save_pred:
+        out_dir = Path(getattr(cfg, "out_dir", "predictions"))
+        out_dir.mkdir(exist_ok=True, parents=True)
+    else:
+        out_dir = None
     log_dir = Path(getattr(cfg, "log_dir", "logs"))
     tmp_dir = log_dir / "tmp"
-    for directory in [log_dir, out_dir, tmp_dir]:
+    for directory in [log_dir, tmp_dir]:
         directory.mkdir(exist_ok=True, parents=True)
-
     trainer = Trainer(
         logger=None,
         callbacks=None,
@@ -55,7 +58,7 @@ def test(args):
     )
 
     lit_model.test_cfg = SimpleNamespace(
-        log_dir=log_dir, out_dir=out_dir, tmp_dir=tmp_dir
+        log_dir=log_dir, out_dir=out_dir, tmp_dir=tmp_dir, save_pred=cfg.save_pred
     )
 
     # -----------------------------

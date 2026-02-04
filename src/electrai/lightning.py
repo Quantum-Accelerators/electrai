@@ -89,6 +89,7 @@ class LightningGenerator(LightningModule):
         self.log_dir = self.test_cfg.log_dir
         self.out_dir = self.test_cfg.out_dir
         self.tmp_dir = self.test_cfg.tmp_dir
+        self.save_pred = self.test_cfg.save_pred
         self.test_outputs = []
 
     def test_step(self, batch, batch_idx):
@@ -115,9 +116,10 @@ class LightningGenerator(LightningModule):
         indices = outputs["index"]
         nmae = outputs["nmae"]
 
-        for i in range(len(indices)):
-            idx = indices[i]
-            np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
+        if self.save_pred:
+            for i in range(len(indices)):
+                idx = indices[i]
+                np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
 
         if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
             nmae = nmae.unsqueeze(0)
