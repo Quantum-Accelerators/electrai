@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -87,7 +86,7 @@ class LightningGenerator(LightningModule):
     def on_test_start(self):
         self.log_dir = self.test_cfg.log_dir
         self.out_dir = self.test_cfg.out_dir
-        self.tmp_dir = Path(self.out_dir) / "tmp"
+        self.tmp_dir = self.out_dir / "tmp"
         self.tmp_dir.mkdir(exist_ok=True, parents=True)
         self.test_outputs = []
 
