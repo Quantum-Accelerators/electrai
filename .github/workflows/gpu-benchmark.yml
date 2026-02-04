@@ -81,16 +81,19 @@ jobs:
           echo "Syncing $S3_SAMPLES samples from S3..."
           mkdir -p /tmp/electrai/input /tmp/electrai/label
 
-          # List and download limited number of files
-          aws s3 ls s3://openathena/electrai/input/ | head -n "$S3_SAMPLES" | awk '{print $4}' | while read f; do
+          # Get list of files to download
+          FILES=$(aws s3 ls s3://openathena/electrai/input/ | head -n "$S3_SAMPLES" | awk '{print $4}')
+
+          # Download input and label files
+          for f in $FILES; do
             aws s3 cp "s3://openathena/electrai/input/$f" /tmp/electrai/input/
             aws s3 cp "s3://openathena/electrai/label/$f" /tmp/electrai/label/
           done
 
-          # Create a map file for the downloaded samples
+          # Create a map file with GGA key containing the downloaded sample IDs
           echo "Creating map file for $S3_SAMPLES samples..."
           ls /tmp/electrai/input/*.CHGCAR | sed 's|.*/||; s|\.CHGCAR||' | \
-            python3 -c "import json,sys; print(json.dumps({s.strip(): {'input': f'/tmp/electrai/input/{s.strip()}.CHGCAR', 'label': f'/tmp/electrai/label/{s.strip()}.CHGCAR'} for s in sys.stdin}))" | \
+            python3 -c "import json,sys; ids=[s.strip() for s in sys.stdin]; print(json.dumps({'GGA': ids}))" | \
             gzip > /tmp/electrai/map_subset.json.gz
 
           echo "Downloaded $(ls /tmp/electrai/input/ | wc -l) input files"
