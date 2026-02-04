@@ -1,0 +1,101 @@
+# Hyperparameter Optimization Configuration for ResUNet
+# This config defines both the search space and fixed parameters
+
+# HPO settings
+hpo:
+  study_name: resunet_hpo
+  n_trials: 50
+  timeout: null  # seconds, null for no timeout
+  storage: sqlite:///hpo_study.db
+  direction: minimize  # minimize val_loss
+  pruner:
+    type: median
+    n_startup_trials: 5
+    n_warmup_steps: 3  # epochs before pruning starts
+  sampler:
+    type: tpe  # tpe, random, or grid
+
+  # Search space definitions
+  search_space:
+    # Model architecture
+    depth:
+      type: int
+      low: 2
+      high: 4
+    n_channels:
+      type: categorical
+      choices: [16, 32, 64]
+    n_residual_blocks:
+      type: int
+      low: 1
+      high: 3
+    kernel_size:
+      type: categorical
+      choices: [3, 5]
+
+    # Training parameters
+    lr:
+      type: float
+      low: 1.0e-4
+      high: 1.0e-2
+      log: true
+    weight_decay:
+      type: categorical
+      choices: [0.0, 1.0e-5, 1.0e-4]
+    warmup_length:
+      type: int
+      low: 1
+      high: 10
+    gradient_clip_value:
+      type: categorical
+      choices: [1.0, 5.0, 20.0]
+
+    # Data parameters
+    batch_size:
+      type: categorical
+      choices: [1, 2, 4]
+    augmentation:
+      type: categorical
+      choices: [true, false]
+
+# Fixed dataset parameters (not tuned)
+data:
+  _target_: src.electrai.dataloader.dataset.RhoRead
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
+  split_file: null
+  precision: f32
+  batch_size: 1  # overridden by search_space
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  val_frac: 0.1  # larger val set for reliable HPO signal
+  drop_last: false
+  augmentation: false  # overridden by search_space
+  random_seed: 42
+
+# Fixed model parameters
+model:
+  _target_: src.electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 32  # overridden by search_space
+  n_residual_blocks: 1  # overridden by search_space
+  kernel_size: 5  # overridden by search_space
+  depth: 2  # overridden by search_space
+
+# Fixed training parameters
+precision: 32
+epochs: 15  # reduced for HPO iterations
+lr: 0.001  # overridden by search_space
+weight_decay: 0.0  # overridden by search_space
+warmup_length: 3  # overridden by search_space
+beta1: 0.9
+beta2: 0.99
+
+# Logging - W&B for tracking HPO trials
+wandb_mode: online
+entity: PrinceOA
+wb_pname: mp-hpo
+
+# Checkpoints - minimal saving during HPO
+ckpt_path: ./hpo_checkpoints
