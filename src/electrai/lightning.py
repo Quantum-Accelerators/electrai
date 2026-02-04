@@ -126,7 +126,7 @@ class LightningGenerator(LightningModule):
                 nmae = nmae.unsqueeze(0)
             tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
             with open(tmp_csv, "w") as f:
-                for i, n in zip(indices, nmae, strict=False):
+                for i, n in zip(indices, nmae, strict=True):
                     idx = i
                     f.write(f"{idx},{n.item()}\n")
 
