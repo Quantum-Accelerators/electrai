@@ -3,11 +3,10 @@
 # Compares GPU vs CPU training time with configurable model size.
 # Does NOT verify expected values (uses --no-check).
 #
-# Currently uses the 5-sample test dataset. For meaningful GPU speedup
-# comparisons, consider using larger data via --data-path.
-#
-# Example with production-size model:
-#   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16
+# Examples:
+#   gh workflow run gpu-benchmark.yml -f s3_samples=10   # Test S3 access with 10 samples
+#   gh workflow run gpu-benchmark.yml -f s3_samples=200  # Full S3 dataset
+#   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16  # Production model
 
 name: GPU Benchmark
 
@@ -30,6 +29,10 @@ on:
       residual_blocks:
         description: 'Number of residual blocks (2=tiny, 16=prod)'
         default: '16'
+        type: string
+      s3_samples:
+        description: 'Number of S3 samples to use (0=use repo test data, 10-200 for S3)'
+        default: '0'
         type: string
       debug:
         description: 'Debug mode (false/true/N minutes)'
@@ -70,12 +73,45 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Sync S3 training data
+        if: inputs.s3_samples != '0' && inputs.s3_samples != ''
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
+        run: |
+          echo "Syncing $S3_SAMPLES samples from S3..."
+          mkdir -p /tmp/electrai/input /tmp/electrai/label
+
+          # List and download limited number of files
+          aws s3 ls s3://openathena/electrai/input/ | head -n "$S3_SAMPLES" | awk '{print $4}' | while read f; do
+            aws s3 cp "s3://openathena/electrai/input/$f" /tmp/electrai/input/
+            aws s3 cp "s3://openathena/electrai/label/$f" /tmp/electrai/label/
+          done
+
+          # Create a map file for the downloaded samples
+          echo "Creating map file for $S3_SAMPLES samples..."
+          ls /tmp/electrai/input/*.CHGCAR | sed 's|.*/||; s|\.CHGCAR||' | \
+            python3 -c "import json,sys; print(json.dumps({s.strip(): {'input': f'/tmp/electrai/input/{s.strip()}.CHGCAR', 'label': f'/tmp/electrai/label/{s.strip()}.CHGCAR'} for s in sys.stdin}))" | \
+            gzip > /tmp/electrai/map_subset.json.gz
+
+          echo "Downloaded $(ls /tmp/electrai/input/ | wc -l) input files"
+          echo "Downloaded $(ls /tmp/electrai/label/ | wc -l) label files"
+
       - name: Run GPU benchmark
         id: gpu
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
         run: |
           echo "=== GPU BENCHMARK ==="
-          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS"
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES"
           echo ""
+
+          DATA_ARGS=""
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_ARGS="--data-path /tmp/electrai/input --label-path /tmp/electrai/label --map-path /tmp/electrai/map_subset.json.gz"
+            echo "Using S3 data ($S3_SAMPLES samples)"
+          else
+            echo "Using repo test data (5 samples)"
+          fi
 
           START=$(date +%s)
           uv run python tests/e2e_train.py \
@@ -84,7 +120,8 @@ jobs:
             --channels "$CHANNELS" \
             --residual-blocks "$BLOCKS" \
             --verbose \
-            --no-check
+            --no-check \
+            $DATA_ARGS
           END=$(date +%s)
           GPU_TIME=$((END - START))
           echo ""
@@ -93,10 +130,20 @@ jobs:
 
       - name: Run CPU benchmark
         id: cpu
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
         run: |
           echo "=== CPU BENCHMARK ==="
-          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS"
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES"
           echo ""
+
+          DATA_ARGS=""
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_ARGS="--data-path /tmp/electrai/input --label-path /tmp/electrai/label --map-path /tmp/electrai/map_subset.json.gz"
+            echo "Using S3 data ($S3_SAMPLES samples)"
+          else
+            echo "Using repo test data (5 samples)"
+          fi
 
           START=$(date +%s)
           uv run python tests/e2e_train.py \
@@ -104,7 +151,8 @@ jobs:
             --channels "$CHANNELS" \
             --residual-blocks "$BLOCKS" \
             --verbose \
-            --no-check
+            --no-check \
+            $DATA_ARGS
           END=$(date +%s)
           CPU_TIME=$((END - START))
           echo ""
@@ -112,10 +160,18 @@ jobs:
           echo "CPU training time: ${CPU_TIME}s"
 
       - name: Summary
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
         run: |
           GPU_TIME=${{ steps.gpu.outputs.GPU_TIME }}
           CPU_TIME=${{ steps.cpu.outputs.CPU_TIME }}
           SPEEDUP=$(echo "scale=2; $CPU_TIME / $GPU_TIME" | bc)
+
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_DESC="$S3_SAMPLES samples (S3)"
+          else
+            DATA_DESC="5 samples (repo test data)"
+          fi
 
           echo "## GPU Benchmark Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -125,7 +181,7 @@ jobs:
           echo "| Epochs | $EPOCHS |" >> $GITHUB_STEP_SUMMARY
           echo "| Channels | $CHANNELS |" >> $GITHUB_STEP_SUMMARY
           echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Data | 5 samples (repo test data) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Results" >> $GITHUB_STEP_SUMMARY
           echo "| Device | Time | Speedup |" >> $GITHUB_STEP_SUMMARY
