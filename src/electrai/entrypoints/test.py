@@ -9,8 +9,6 @@ from hydra.utils import instantiate
 from lightning.pytorch import Trainer
 from src.electrai.lightning import LightningGenerator
 
-torch.backends.cudnn.conv.fp32_precision = "tf32"
-
 
 def test(args):
     # -----------------------------
