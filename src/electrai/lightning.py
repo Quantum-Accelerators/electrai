@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import time
 
 import numpy as np
@@ -87,8 +88,7 @@ class LightningGenerator(LightningModule):
     def on_test_start(self):
         self.log_dir = self.test_cfg.log_dir
         self.out_dir = self.test_cfg.out_dir
-        self.tmp_dir = self.out_dir / "tmp"
-        self.tmp_dir.mkdir(exist_ok=True, parents=True)
+        self.tmp_dir = self.test_cfg.tmp_dir
         self.test_outputs = []
 
     def test_step(self, batch, batch_idx):
@@ -107,7 +107,7 @@ class LightningGenerator(LightningModule):
             "target": y.detach().cpu(),
             "index": indices,
             "nmae": loss.detach().cpu(),
-            "time": time.time() - start_time,  # + batch["load_time"][0], ???
+            "time": time.time() - start_time,
         }
 
     def on_test_batch_end(self, outputs, batch, batch_idx):
@@ -115,12 +115,10 @@ class LightningGenerator(LightningModule):
         indices = outputs["index"]
         nmae = outputs["nmae"]
 
-        # Save prediction files
         for i in range(len(indices)):
             idx = indices[i]
             np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
 
-        # Save batch-level CSV
         if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
             nmae = nmae.unsqueeze(0)
         tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
@@ -131,7 +129,6 @@ class LightningGenerator(LightningModule):
 
     def on_test_epoch_end(self):
         is_dist = dist.is_available() and dist.is_initialized()
-        rank = dist.get_rank() if is_dist else 0
 
         if is_dist:
             dist.barrier()
@@ -139,7 +136,7 @@ class LightningGenerator(LightningModule):
         final_csv = self.log_dir / "metrics.csv"
         all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
 
-        if rank == 0:
+        if self.global_rank == 0:
             with open(final_csv, "w") as f_out:
                 f_out.write("index,nmae\n")
                 for tmp_csv in all_tmp_csvs:
@@ -147,7 +144,7 @@ class LightningGenerator(LightningModule):
                         for line in f_in:
                             f_out.write(line)
 
-            self.tmp_dir.rmdir()
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
         if is_dist:
             dist.barrier()
