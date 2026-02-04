@@ -87,14 +87,8 @@ class LightningGenerator(LightningModule):
     def on_test_start(self):
         self.log_dir = self.test_cfg.log_dir
         self.out_dir = self.test_cfg.out_dir
-        if self.out_dir is not None:
-            self.out_dir = Path(self.out_dir)
-            self.out_dir.mkdir(exist_ok=True, parents=True)
-        if self.log_dir is not None:
-            self.log_dir = Path(self.log_dir)
-            self.log_dir.mkdir(exist_ok=True, parents=True)
-            self.tmp_dir = Path(self.out_dir) / "tmp"
-            self.tmp_dir.mkdir(exist_ok=True, parents=True)
+        self.tmp_dir = Path(self.out_dir) / "tmp"
+        self.tmp_dir.mkdir(exist_ok=True, parents=True)
         self.test_outputs = []
 
     def test_step(self, batch, batch_idx):

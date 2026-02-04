@@ -39,3 +39,5 @@ wb_pname: mp-experiment
 
 # checkpoints
 ckpt_path: ./checkpoints
+log_dir: ./logs
+out_dir: ./predictions

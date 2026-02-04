@@ -47,7 +47,11 @@ def test(args):
         devices=1,
         precision=cfg.model_precision,
     )
-    lit_model.test_cfg = SimpleNamespace(log_dir=cfg.log_dir, out_dir=cfg.out_dir)
+    out_dir = Path(getattr(cfg, "out_dir", "predictions"))
+    out_dir.mkdir(exist_ok=True, parents=True)
+    log_dir = Path(getattr(cfg, "log_dir", "logs"))
+    log_dir.mkdir(exist_ok=True, parents=True)
+    lit_model.test_cfg = SimpleNamespace(log_dir=log_dir, out_dir=out_dir)
 
     # -----------------------------
     # Train
