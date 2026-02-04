@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from lightning.pytorch import LightningModule
 from src.electrai.model.loss.charge import NormMAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
@@ -110,39 +111,43 @@ class LightningGenerator(LightningModule):
         }
 
     def on_test_batch_end(self, outputs, batch, batch_idx):
-        if self.out_dir is not None:
-            preds = outputs["pred"]
-            indices = outputs["index"]
-            nmae = outputs["nmae"]
+        preds = outputs["pred"]
+        indices = outputs["index"]
+        nmae = outputs["nmae"]
 
-            # Save prediction files
-            for i in range(len(indices)):
-                idx = indices[i]
-                np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
+        # Save prediction files
+        for i in range(len(indices)):
+            idx = indices[i]
+            np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
 
-        if self.log_dir is not None:
-            # Save batch-level CSV
-            if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
-                nmae = nmae.unsqueeze(0)
-            tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
-            with open(tmp_csv, "w") as f:
-                for i, n in zip(indices, nmae, strict=True):
-                    idx = i
-                    f.write(f"{idx},{n.item()}\n")
+        # Save batch-level CSV
+        if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
+            nmae = nmae.unsqueeze(0)
+        tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
+        with open(tmp_csv, "w") as f:
+            for i, n in zip(indices, nmae, strict=True):
+                idx = i
+                f.write(f"{idx},{n.item()}\n")
 
     def on_test_epoch_end(self):
-        if self.log_dir is None:
-            return
+        is_dist = dist.is_available() and dist.is_initialized()
+        rank = dist.get_rank() if is_dist else 0
+
+        if is_dist:
+            dist.barrier()
 
         final_csv = self.log_dir / "metrics.csv"
-
-        # gather all batch CSVs
         all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
 
-        # write final CSV with header
-        with open(final_csv, "w") as f_out:
-            f_out.write("index,nmae\n")
-            for tmp_csv in all_tmp_csvs:
-                with open(tmp_csv) as f_in:
-                    for line in f_in:
-                        f_out.write(line)
+        if rank == 0:
+            with open(final_csv, "w") as f_out:
+                f_out.write("index,nmae\n")
+                for tmp_csv in all_tmp_csvs:
+                    with open(tmp_csv) as f_in:
+                        for line in f_in:
+                            f_out.write(line)
+
+            self.tmp_dir.rmdir()
+
+        if is_dist:
+            dist.barrier()
