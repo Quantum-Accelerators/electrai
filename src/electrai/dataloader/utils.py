@@ -66,7 +66,6 @@ def load_chgcar(root: str | bytes | os.PathLike, index: str):
     # --- conditioning vector from the (data) lattice ---
     lat = data_chg.structure.lattice
     a, b, c = lat.abc
-    # angles are in degrees in pymatgen
     ca = np.cos(np.deg2rad(lat.alpha))
     cb = np.cos(np.deg2rad(lat.beta))
     cg = np.cos(np.deg2rad(lat.gamma))
