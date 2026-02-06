@@ -103,20 +103,22 @@ class LightningGenerator(LightningModule):
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
-        return {
-            "pred": preds.detach().cpu(),
+        out = {
             "target": y.detach().cpu(),
             "index": indices,
             "nmae": loss.detach().cpu(),
             "time": time.time() - start_time,
         }
+        if self.save_pred:
+            out["pred"] = preds.detach().cpu()
+        return out
 
     def on_test_batch_end(self, outputs, batch, batch_idx):
-        preds = outputs["pred"]
         indices = outputs["index"]
         nmae = outputs["nmae"]
 
         if self.save_pred:
+            preds = outputs["pred"]
             for i in range(len(indices)):
                 idx = indices[i]
                 np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
