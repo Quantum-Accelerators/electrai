@@ -121,14 +121,16 @@ class LightningGenerator(LightningModule):
             preds = outputs["pred"]
             for i in range(len(indices)):
                 idx = indices[i]
-                np.save(self.out_dir / f"{idx}.npy", preds[i].squeeze(0).cpu().numpy())
+                np.save(
+                    self.out_dir / f"rank_{self.global_rank}_{idx}.npy",
+                    preds[i].squeeze(0).cpu().numpy(),
+                )
 
         if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
             nmae = nmae.unsqueeze(0)
         tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
         with open(tmp_csv, "w") as f:
-            for i, n in zip(indices, nmae, strict=True):
-                idx = i
+            for idx, n in zip(indices, nmae, strict=True):
                 f.write(f"{idx},{n.item()}\n")
 
     def on_test_epoch_end(self):
