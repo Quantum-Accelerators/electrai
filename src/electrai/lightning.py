@@ -7,7 +7,6 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from lightning.pytorch import LightningModule
-
 from src.electrai.model.loss.charge import NormMAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
 
@@ -129,18 +128,18 @@ class LightningGenerator(LightningModule):
 
         if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
             nmae = nmae.unsqueeze(0)
-        tmp_csv = self.tmp_dir / f"metrics_batch_{self.global_rank}_{batch_idx}.csv"
+        tmp_csv = (
+            self.tmp_dir / f"metrics_rank_{self.global_rank}_batch_{batch_idx}.csv"
+        )
         with open(tmp_csv, "w") as f:
             for idx, n in zip(indices, nmae, strict=True):
-                f.write(f"{idx},{n.item()}\n")
+                f.write(f"rank_{self.global_rank},{idx},{n.item()}\n")
 
     def on_test_epoch_end(self):
         is_dist = dist.is_available() and dist.is_initialized()
 
         # Each rank counts how many tmp CSVs it wrote
-        local_count = len(
-            list(self.tmp_dir.glob(f"metrics_batch_{self.global_rank}_*.csv"))
-        )
+        local_count = len(list(self.tmp_dir.glob("metrics_rank_*_batch_*.csv")))
 
         if is_dist:
             # Sum file counts across all ranks so rank 0 knows the expected total
@@ -153,15 +152,18 @@ class LightningGenerator(LightningModule):
         else:
             expected_total = local_count
 
+        final_csv = self.log_dir / "metrics.csv"
+        all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
+
         if self.global_rank == 0:
             final_csv = self.log_dir / "metrics.csv"
 
             # Retry glob until all files are visible (handles NFS caching)
-            all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
+            all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
             retries = 0
             while len(all_tmp_csvs) < expected_total and retries < 30:
                 time.sleep(1)
-                all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
+                all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
                 retries += 1
 
             if len(all_tmp_csvs) < expected_total:
@@ -170,7 +172,7 @@ class LightningGenerator(LightningModule):
                 )
 
             with open(final_csv, "w") as f_out:
-                f_out.write("index,nmae\n")
+                f_out.write("rank,index,nmae\n")
                 for tmp_csv in all_tmp_csvs:
                     with open(tmp_csv) as f_in:
                         for line in f_in:
