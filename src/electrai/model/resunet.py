@@ -64,14 +64,13 @@ class ResUNet3D(nn.Module):
         for _ in range(depth):
             self.ups.append(upsample(ch, ch // 2))
             ch //= 2
-            self.dec_blocks.append(
-                nn.Sequential(
-                    *[
-                        ResBlock3D(2 * ch, ch, kernel_size)
-                        for _ in range(n_residual_blocks)
-                    ]
-                )
+            # First block takes concatenated input (2*ch channels from skip + upsampled)
+            # Subsequent blocks take ch channels (output of previous block)
+            blocks = [ResBlock3D(2 * ch, ch, kernel_size)]
+            blocks.extend(
+                [ResBlock3D(ch, ch, kernel_size) for _ in range(n_residual_blocks - 1)]
             )
+            self.dec_blocks.append(nn.Sequential(*blocks))
 
         # -------- Output --------
         self.out_conv = nn.Conv3d(n_channels, out_channels, kernel_size=1)
