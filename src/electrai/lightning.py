@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from lightning.pytorch import LightningModule
+
 from src.electrai.model.loss.charge import NormMAE
 from src.electrai.model.srgan_layernorm_pbc import GeneratorResNet
 
@@ -136,13 +137,38 @@ class LightningGenerator(LightningModule):
     def on_test_epoch_end(self):
         is_dist = dist.is_available() and dist.is_initialized()
 
-        if is_dist:
-            dist.barrier()
+        # Each rank counts how many tmp CSVs it wrote
+        local_count = len(
+            list(self.tmp_dir.glob(f"metrics_batch_{self.global_rank}_*.csv"))
+        )
 
-        final_csv = self.log_dir / "metrics.csv"
-        all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
+        if is_dist:
+            # Sum file counts across all ranks so rank 0 knows the expected total
+            count_tensor = torch.tensor(
+                [local_count], dtype=torch.long, device=self.device
+            )
+            dist.all_reduce(count_tensor, op=dist.ReduceOp.SUM)
+            expected_total = count_tensor.item()
+            dist.barrier()
+        else:
+            expected_total = local_count
 
         if self.global_rank == 0:
+            final_csv = self.log_dir / "metrics.csv"
+
+            # Retry glob until all files are visible (handles NFS caching)
+            all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
+            retries = 0
+            while len(all_tmp_csvs) < expected_total and retries < 30:
+                time.sleep(1)
+                all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_batch_*.csv"))
+                retries += 1
+
+            if len(all_tmp_csvs) < expected_total:
+                raise RuntimeError(
+                    f"Expected {expected_total} CSV files but found {len(all_tmp_csvs)}. Possible NFS caching issue."
+                )
+
             with open(final_csv, "w") as f_out:
                 f_out.write("index,nmae\n")
                 for tmp_csv in all_tmp_csvs:
