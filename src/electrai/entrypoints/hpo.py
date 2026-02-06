@@ -1,4 +1,11 @@
-"""Hyperparameter optimization entrypoint using Optuna."""
+"""Hyperparameter optimization entrypoint using Optuna.
+
+Run with regular python (NOT torchrun):
+    uv run python src/electrai/entrypoints/hpo.py --config path/to/config.yaml
+
+For multi-GPU training within each trial, set devices in config or use --devices flag:
+    uv run python src/electrai/entrypoints/hpo.py --config path/to/config.yaml --devices 8
+"""
 
 from __future__ import annotations
 
@@ -23,6 +30,35 @@ if TYPE_CHECKING:
     from optuna import Trial
 
 logger = logging.getLogger(__name__)
+
+
+def get_gpu_config(hpo_cfg: dict, args) -> tuple[int, str]:
+    """Determine number of devices and strategy for training.
+
+    Returns (num_devices, strategy) tuple.
+
+    Note: We use ddp_spawn instead of ddp because the regular ddp strategy
+    uses subprocess launching which re-runs the entire script on each GPU.
+    This causes each process to create different Optuna trials with different
+    hyperparameters, leading to model mismatch errors across ranks.
+    ddp_spawn uses torch.multiprocessing.spawn which creates child processes
+    from within the training call, ensuring all ranks use the same model.
+    """
+    # Priority: CLI args > config > auto-detect
+    if hasattr(args, "devices") and args.devices is not None:
+        num_devices = args.devices
+    else:
+        num_devices = hpo_cfg.get("devices", "auto")
+
+    if num_devices == "auto":
+        num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+
+    # Use ddp_spawn for multi-GPU (not ddp which uses subprocess launcher)
+    strategy = (
+        "ddp_spawn" if isinstance(num_devices, int) and num_devices > 1 else "auto"
+    )
+
+    return num_devices, strategy
 
 
 def suggest_hyperparameters(trial: Trial, search_space: dict) -> dict:
@@ -77,8 +113,11 @@ def apply_hyperparameters(cfg_dict: dict, params: dict) -> dict:
     return cfg
 
 
-def create_objective(cfg_dict: dict, hpo_cfg: dict):
+def create_objective(cfg_dict: dict, hpo_cfg: dict, args):
     """Create the Optuna objective function."""
+    # Determine GPU configuration once for all trials
+    num_devices, strategy = get_gpu_config(hpo_cfg, args)
+    logger.info(f"Training config: {num_devices} device(s), strategy={strategy}")
 
     def objective(trial: Trial) -> float:
         # Suggest hyperparameters
@@ -115,15 +154,18 @@ def create_objective(cfg_dict: dict, hpo_cfg: dict):
                 entity=getattr(cfg, "entity", None),
                 name=f"trial_{trial.number}",
                 group=hpo_cfg.get("study_name", "resunet_hpo"),
-                config={**params, "trial_number": trial.number},
+                config={
+                    **params,
+                    "trial_number": trial.number,
+                    "num_devices": num_devices,
+                },
                 reinit=True,
             )
         else:
             wandb_logger = None
 
-        # Callbacks
+        # Callbacks - only use pruning callback on single GPU (DDP has issues with it)
         callbacks = [
-            PyTorchLightningPruningCallback(trial, monitor="val_loss"),
             ModelCheckpoint(
                 dirpath=Path(cfg.ckpt_path) / f"trial_{trial.number}",
                 monitor="val_loss",
@@ -132,16 +174,23 @@ def create_objective(cfg_dict: dict, hpo_cfg: dict):
             ),
             EarlyStopping(monitor="val_loss", patience=5, mode="min"),
         ]
+        # Optuna pruning callback doesn't work well with DDP strategies
+        if strategy not in ("ddp", "ddp_spawn"):
+            callbacks.insert(
+                0, PyTorchLightningPruningCallback(trial, monitor="val_loss")
+            )
 
-        # Trainer
+        # Trainer with multi-GPU support
         trainer = Trainer(
             max_epochs=int(cfg.epochs),
             callbacks=callbacks,
             accelerator="gpu" if torch.cuda.is_available() else "cpu",
-            devices=1,
+            devices=num_devices,
+            num_nodes=1,
+            strategy=strategy,
             precision=cfg.precision,
-            enable_progress_bar=False,
-            enable_model_summary=False,
+            enable_progress_bar=True,
+            enable_model_summary=trial.number == 0,  # Only show summary for first trial
             logger=wandb_logger,
             gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
         )
@@ -229,7 +278,7 @@ def run_hpo(args):
     )
 
     # Create objective
-    objective = create_objective(cfg_dict, hpo_cfg)
+    objective = create_objective(cfg_dict, hpo_cfg, args)
 
     # Run optimization
     study.optimize(
@@ -275,6 +324,12 @@ if __name__ == "__main__":
         type=str,
         default="src/electrai/configs/MP/config_hpo.yaml",
         help="Path to HPO config file",
+    )
+    parser.add_argument(
+        "--devices",
+        type=int,
+        default=None,
+        help="Number of GPUs to use per trial (default: auto-detect all available)",
     )
     args = parser.parse_args()
 
