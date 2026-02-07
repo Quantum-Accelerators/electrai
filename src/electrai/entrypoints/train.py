@@ -11,8 +11,6 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.lightning import LightningGenerator
 
-torch.backends.cudnn.conv.fp32_precision = "tf32"
-
 
 def train(args):
     # -----------------------------

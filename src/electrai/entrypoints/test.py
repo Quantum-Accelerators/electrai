@@ -9,8 +9,6 @@ from hydra.utils import instantiate
 from lightning.pytorch import Trainer
 from src.electrai.lightning import LightningGenerator
 
-torch.backends.cudnn.conv.fp32_precision = "tf32"
-
 
 def test(args):
     # -----------------------------
@@ -31,6 +29,7 @@ def test(args):
     # Model (LightningModule handles architecture + loss + optimizer)
     # -----------------------------
     lit_model = LightningGenerator(cfg)
+    lit_model.test_cfg = SimpleNamespace(log_dir=cfg.log_dir, out_dir=cfg.out_dir)
 
     # -----------------------------
     # Callback
@@ -65,8 +64,7 @@ def test(args):
     # Train
     # -----------------------------
     ckpt = ckpt_path / "last.ckpt"
-    trainer.test(
-        model=lit_model,
-        dataloaders=test_loader,
-        ckpt_path=ckpt if ckpt.exists() else None,
-    )
+    if not ckpt.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+
+    trainer.test(model=lit_model, dataloaders=test_loader, ckpt_path=ckpt)
