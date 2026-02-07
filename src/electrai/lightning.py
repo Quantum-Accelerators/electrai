@@ -137,38 +137,34 @@ class LightningGenerator(LightningModule):
 
     def on_test_epoch_end(self):
         is_dist = dist.is_available() and dist.is_initialized()
+        rank = dist.get_rank() if is_dist else 0
 
-        # Each rank counts how many tmp CSVs it wrote
-        local_count = len(list(self.tmp_dir.glob("metrics_rank_*_batch_*.csv")))
+        # Count only files written by THIS rank
+        local_count = len(list(self.tmp_dir.glob(f"metrics_rank_{rank}_batch_*.csv")))
 
         if is_dist:
-            # Sum file counts across all ranks so rank 0 knows the expected total
             count_tensor = torch.tensor(
                 [local_count], dtype=torch.long, device=self.device
             )
             dist.all_reduce(count_tensor, op=dist.ReduceOp.SUM)
-            expected_total = count_tensor.item()
+            expected_total = int(count_tensor.item())
             dist.barrier()
         else:
             expected_total = local_count
 
         final_csv = self.log_dir / "metrics.csv"
-        all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
 
         if self.global_rank == 0:
-            final_csv = self.log_dir / "metrics.csv"
-
-            # Retry glob until all files are visible (handles NFS caching)
-            all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
             retries = 0
-            while len(all_tmp_csvs) < expected_total and retries < 30:
+            all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
+            while len(all_tmp_csvs) < expected_total and retries < 60:
                 time.sleep(1)
                 all_tmp_csvs = sorted(self.tmp_dir.glob("metrics_rank_*_batch_*.csv"))
                 retries += 1
 
             if len(all_tmp_csvs) < expected_total:
                 raise RuntimeError(
-                    f"Expected {expected_total} CSV files but found {len(all_tmp_csvs)}. Possible NFS caching issue."
+                    f"Expected {expected_total} CSV files but found {len(all_tmp_csvs)}."
                 )
 
             with open(final_csv, "w") as f_out:
