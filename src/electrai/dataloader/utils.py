@@ -25,22 +25,28 @@ def load_numpy_rho(
     """
     root = Path(root)
     if category == "mp":
-        data, label = load_chgcar(root, index)
+        data, label, lattice = load_chgcar(root, index)
     elif category == "qm9":
         data, label = load_npy(root, index)
     data = torch.tensor(data, dtype=dtype_map[precision])
     label = torch.tensor(label, dtype=dtype_map[precision])
+    lattice = torch.tensor(lattice, dtype=dtype_map[precision])
+    grid_shape = torch.tensor(
+        data.shape, dtype=dtype_map[precision], device=lattice.device
+    )
+    lattice = lattice / grid_shape[:, None]
     if augmentation:
         data, label = rand_rotate([data, label])
-    return data, label
+    return data, label, lattice
 
 
 def load_chgcar(root: str | bytes | os.PathLike, index: str):
     data = Chgcar.from_file(root / "data" / f"{index}.CHGCAR")
     label = Chgcar.from_file(root / "label" / f"{index}.CHGCAR")
+    lattice = data.structure.lattice.matrix
     data = data.data["total"] / data.structure.lattice.volume
     label = label.data["total"] / label.structure.lattice.volume
-    return data, label
+    return data, label, lattice
 
 
 def load_npy(root: str | bytes | os.PathLike, index: str):

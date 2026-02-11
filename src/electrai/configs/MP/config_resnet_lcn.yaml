@@ -1,0 +1,48 @@
+# Dataset / loader parameters
+data:
+  _target_: src.electrai.dataloader.dataset.RhoRead
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
+  split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/split.json
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  val_frac: 0.005
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+  # downsample_label: 0
+  # downsample_data: 0
+
+# Model
+model:
+  _target_: src.electrai.model.resnet_LCN.GeneratorResNet
+  n_residual_blocks: 32
+  n_channels: 32
+  kernel_size1: 5
+  kernel_size2: 5
+  normalize: True
+  use_checkpoint: False
+  use_lattice_conv: true
+  use_radial_embedding: true
+  num_gaussians: 500
+  use_positional_embedding: true
+  pos_embed_dim: 500
+
+# Training parameters
+precision: 32
+epochs: 50
+lr: 0.01
+weight_decay: 0.0
+warmup_length: 1
+beta1: 0.9
+beta2: 0.99
+
+# Weights and biases
+wandb_mode: online
+entity: PrinceOA
+wb_pname: mp-experiment
+
+# checkpoints
+ckpt_path: ./checkpoints
