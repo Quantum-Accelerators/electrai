@@ -30,9 +30,10 @@ class RhoRead(LightningDataModule):
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
         random_seed: int = 42,
-        **kwargs,
+        **kwargs,  # noqa: ARG002
     ):
         super().__init__()
+        self.save_hyperparameters()
         self.root = root
         self.batch_size = batch_size
         self.train_workers = train_workers
@@ -45,11 +46,21 @@ class RhoRead(LightningDataModule):
         self.augmentation = augmentation
         self.random_seed = random_seed
 
-        dataset = RhoData(self.root, precision=precision, augmentation=augmentation)
-
-        self.subsets = split_data(
-            dataset, val_frac=self.val_frac, split_file=self.split_file
+    def setup(self, stage=None):
+        dataset = RhoData(
+            self.root, precision=self.precision, augmentation=self.augmentation
         )
+        self.subsets = split_data(
+            dataset,
+            val_frac=self.val_frac,
+            split_file=self.split_file,
+            random_seed=self.random_seed,
+        )
+        if stage == "fit":
+            self.train_set = self.subsets["train"]
+            self.val_set = self.subsets["validation"]
+        elif stage == "test":
+            self.test_set = self.subsets["test"]
 
     def setup(self, stage=None):
         dataset = RhoData(
@@ -69,7 +80,7 @@ class RhoRead(LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.subsets["train"],
+            self.train_set,
             self.batch_size,
             num_workers=self.train_workers,
             shuffle=True,
@@ -78,7 +89,7 @@ class RhoRead(LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(
-            self.subsets["validation"],
+            self.val_set,
             self.batch_size,
             num_workers=self.val_workers,
             shuffle=False,
@@ -86,7 +97,7 @@ class RhoRead(LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(
-            self.subsets["test"],
+            self.test_set,
             batch_size=1,
             num_workers=self.val_workers,
             collate_fn=collate_fn,
@@ -102,7 +113,7 @@ class RhoData(Dataset):
         self.aug = augmentation
         self.precision = precision
         if isinstance(datapath, str) and Path(datapath).is_file():
-            with open(datapath) as f:
+            with Path(datapath).open() as f:
                 lines = f.readlines()
             member_list = [line.replace("\n", "") for line in lines]
         else:
@@ -118,8 +129,12 @@ class RhoData(Dataset):
     def __getitem__(self, index):
         index = self.member_list[index]
         data, label = utils.load_numpy_rho(
-            root=self.root, category=self.category, index=index, augmentation=self.aug
+            root=self.root,
+            category=self.category,
+            index=index,
+            precision=self.precision,
+            augmentation=self.aug,
         )
-        data = torch.tensor(data, dtype=dtype_map[self.precision]).unsqueeze(0)
-        label = torch.tensor(label, dtype=dtype_map[self.precision]).unsqueeze(0)
+        data = data.unsqueeze(0)
+        label = label.unsqueeze(0)
         return {"data": data, "label": label, "index": index}

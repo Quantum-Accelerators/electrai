@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import torch
 from torch.utils.data import Dataset, Subset
@@ -14,7 +15,7 @@ def split_data(
 ):
     # Load or generate splits
     if split_file is not None:
-        with open(split_file) as fp:
+        with Path(split_file).open() as fp:
             splits = json.load(fp)
     else:
         data_size = len(dataset)
