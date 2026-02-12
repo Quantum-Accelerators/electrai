@@ -11,6 +11,7 @@ data:
   val_frac: 0.005
   drop_last: false
   augmentation: false
+  random_seed: 42
 
 # downsample_label: 0
 # downsample_data: 0
