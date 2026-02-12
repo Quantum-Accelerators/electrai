@@ -93,13 +93,19 @@ class LightningGenerator(LightningModule):
         self.test_outputs = []
 
     def test_step(self, batch, batch_idx):
-        start_time = time.time()
         x = batch["data"]
         y = batch["label"]
         indices = batch["index"]
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
 
+        start.record()
         preds = self(x)
         loss = self.loss_fn(preds, y)
+        end.record()
+
+        torch.cuda.synchronize()
+        elapsed = start.elapsed_time(end)
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
@@ -107,7 +113,7 @@ class LightningGenerator(LightningModule):
             "target": y.detach().cpu(),
             "index": indices,
             "nmae": loss.detach().cpu(),
-            "time": time.time() - start_time,
+            "duration": elapsed,
         }
         if self.save_pred:
             out["pred"] = preds.detach().cpu()

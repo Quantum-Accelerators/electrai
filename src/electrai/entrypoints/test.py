@@ -23,7 +23,6 @@ def test(args):
     # Data
     # -----------------------------
     datamodule = instantiate(cfg.data)
-    test_loader = datamodule.test_dataloader()
 
     # -----------------------------
     # Model (LightningModule handles architecture + loss + optimizer)
@@ -67,4 +66,4 @@ def test(args):
     if not ckpt.exists():
         raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
 
-    trainer.test(model=lit_model, dataloaders=test_loader, ckpt_path=ckpt)
+    trainer.test(model=lit_model, datamodule=datamodule, ckpt_path=ckpt)
