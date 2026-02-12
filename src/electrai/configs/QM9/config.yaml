@@ -1,0 +1,36 @@
+# Dataset / loader parameters
+dataset_name: "qm9"
+data_path: /scratch/gpfs/ROSENGROUP/common/qm9/data/results/
+label_path: /scratch/gpfs/ROSENGROUP/common/qm9/label/results/
+exclude_path: /scratch/gpfs/ROSENGROUP/common/qm9/exclude.txt
+rho_type: chgcar
+train_fraction: 0.925
+num_workers: 2
+downsample_label: 1
+downsample_data: 2
+data_augmentation: False
+random_state: 42
+normalize: True
+data_precision: f32
+
+# Model parameters
+n_channels: 32
+n_residual_blocks: 32
+n_upscale_layers: 1
+kernel_size1: 5
+kernel_size2: 5
+model_precision: 32
+
+# Training parameters
+epochs: 50
+nbatch: 1
+lr: 0.01
+weight_decay: 0.0
+warmup_length: 1
+beta1: 0.9
+beta2: 0.99
+
+# Weights and biases
+wandb_mode: online
+wb_pname: qm9-experiment
+entity: PrinceOA
