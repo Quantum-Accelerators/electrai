@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,11 +7,10 @@ import torch
 import yaml
 from hydra.utils import instantiate
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from src.electrai.lightning import LightningGenerator
 
 
-def train(args):
+def test(args):
     # -----------------------------
     # Load YAML config
     # -----------------------------
@@ -30,51 +28,42 @@ def train(args):
     # Model (LightningModule handles architecture + loss + optimizer)
     # -----------------------------
     lit_model = LightningGenerator(cfg)
+    lit_model.test_cfg = SimpleNamespace(log_dir=cfg.log_dir, out_dir=cfg.out_dir)
 
     # -----------------------------
-    # Logging and callbacks
+    # Callback
     # -----------------------------
-    wandb_mode = getattr(cfg, "wandb_mode", "disabled").lower()
-    os.environ["WANDB_MODE"] = wandb_mode
-    if wandb_mode != "disabled":
-        from lightning.pytorch.loggers import WandbLogger
-
-        wandb_logger = WandbLogger(
-            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg)
-        )
-    else:
-        wandb_logger = None
-
     ckpt_path = Path(getattr(cfg, "ckpt_path", "./checkpoints"))
-    checkpoint_cb = ModelCheckpoint(
-        dirpath=ckpt_path,
-        monitor="val_loss",
-        save_top_k=2,
-        mode="min",
-        filename="ckpt_{epoch:02d}_{val_loss:.6f}",
-        save_last=True,
-    )
-
-    lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     # -----------------------------
     # Trainer
     # -----------------------------
+    if cfg.save_pred:
+        out_dir = Path(getattr(cfg, "out_dir", "predictions"))
+        out_dir.mkdir(exist_ok=True, parents=True)
+    else:
+        out_dir = None
+    log_dir = Path(getattr(cfg, "log_dir", "logs"))
+    tmp_dir = log_dir / "tmp"
+    for directory in [log_dir, tmp_dir]:
+        directory.mkdir(exist_ok=True, parents=True)
     trainer = Trainer(
-        max_epochs=int(cfg.epochs),
-        logger=wandb_logger,
-        callbacks=[checkpoint_cb, lr_monitor],
+        logger=None,
+        callbacks=None,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
         precision=cfg.model_precision,
-        log_every_n_steps=1,
-        gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
+    )
+
+    lit_model.test_cfg = SimpleNamespace(
+        log_dir=log_dir, out_dir=out_dir, tmp_dir=tmp_dir, save_pred=cfg.save_pred
     )
 
     # -----------------------------
     # Train
     # -----------------------------
     ckpt = ckpt_path / "last.ckpt"
-    trainer.fit(
-        lit_model, datamodule=datamodule, ckpt_path=ckpt if ckpt.exists() else None
-    )
+    if not ckpt.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+
+    trainer.test(model=lit_model, datamodule=datamodule, ckpt_path=ckpt)

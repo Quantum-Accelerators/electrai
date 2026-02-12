@@ -62,6 +62,22 @@ class RhoRead(LightningDataModule):
         elif stage == "test":
             self.test_set = self.subsets["test"]
 
+    def setup(self, stage=None):
+        dataset = RhoData(
+            self.root, precision=self.precision, augmentation=self.augmentation
+        )
+        self.subsets = split_data(
+            dataset,
+            val_frac=self.val_frac,
+            split_file=self.split_file,
+            random_seed=self.random_seed,
+        )
+        if stage == "fit":
+            self.train_set = self.subsets["train"]
+            self.val_set = self.subsets["validation"]
+        elif stage == "test":
+            self.test_set = self.subsets["test"]
+
     def train_dataloader(self):
         return DataLoader(
             self.train_set,
@@ -69,8 +85,6 @@ class RhoRead(LightningDataModule):
             num_workers=self.train_workers,
             shuffle=True,
             collate_fn=collate_fn,
-            pin_memory=self.pin_memory,
-            drop_last=self.drop_last,
         )
 
     def val_dataloader(self):
@@ -79,9 +93,6 @@ class RhoRead(LightningDataModule):
             self.batch_size,
             num_workers=self.val_workers,
             shuffle=False,
-            collate_fn=collate_fn,
-            pin_memory=self.pin_memory,
-            drop_last=self.drop_last,
         )
 
     def test_dataloader(self):
@@ -90,9 +101,10 @@ class RhoRead(LightningDataModule):
             batch_size=1,
             num_workers=self.val_workers,
             collate_fn=collate_fn,
-            pin_memory=self.pin_memory,
-            drop_last=self.drop_last,
         )
+
+    def on_exception(self, exception: BaseException) -> None:
+        return
 
 
 class RhoData(Dataset):
