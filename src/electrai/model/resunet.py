@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 
 
 class ResBlock3D(nn.Module):
-    def __init__(self, cin, cout, k):
+    def __init__(self, cin, cout, k, use_checkpoint=True):
         super().__init__()
-        self.conv1 = nn.Conv3d(cin, cout, k, padding=k // 2, padding_mode="circular")
-        self.norm1 = nn.InstanceNorm3d(cout)
+        self.use_checkpoint = use_checkpoint
+        self.conv_block = nn.Sequential(
+            nn.Conv3d(cin, cout, k, padding=k // 2, padding_mode="circular"),
+            nn.InstanceNorm3d(cout),
+            nn.PReLU(),
+            nn.Conv3d(cout, cout, k, padding=k // 2, padding_mode="circular"),
+            nn.InstanceNorm3d(cout),
+        )
         self.act = nn.PReLU()
-        self.conv2 = nn.Conv3d(cout, cout, k, padding=k // 2, padding_mode="circular")
-        self.norm2 = nn.InstanceNorm3d(cout)
 
         if cin != cout:
             self.skip = nn.Conv3d(cin, cout, 1)
@@ -19,9 +24,12 @@ class ResBlock3D(nn.Module):
             self.skip = nn.Identity()
 
     def forward(self, x):
-        h = self.act(self.norm1(self.conv1(x)))
-        h = self.norm2(self.conv2(h))
-        return self.act(h + self.skip(x))
+        if self.use_checkpoint and self.training:
+            return self.act(
+                checkpoint(self.conv_block, x, use_reentrant=False) + self.skip(x)
+            )
+        else:
+            return self.act(self.conv_block(x) + self.skip(x))
 
 
 class ResUNet3D(nn.Module):
@@ -33,10 +41,12 @@ class ResUNet3D(nn.Module):
         depth,
         n_residual_blocks,
         kernel_size,
+        use_checkpoint=True,
     ):
         super().__init__()
-
-        self.in_conv = ResBlock3D(in_channels, n_channels, kernel_size)
+        self.in_conv = ResBlock3D(
+            in_channels, n_channels, kernel_size, use_checkpoint=use_checkpoint
+        )
 
         # -------- Encoder --------
         self.enc_blocks = nn.ModuleList()
@@ -46,7 +56,10 @@ class ResUNet3D(nn.Module):
         for _ in range(depth):
             self.enc_blocks.append(
                 nn.Sequential(
-                    *[ResBlock3D(ch, ch, kernel_size) for _ in range(n_residual_blocks)]
+                    *[
+                        ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+                        for _ in range(n_residual_blocks)
+                    ]
                 )
             )
             self.downs.append(downsample(ch, 2 * ch))
@@ -54,7 +67,10 @@ class ResUNet3D(nn.Module):
 
         # -------- Bottleneck --------
         self.mid = nn.Sequential(
-            *[ResBlock3D(ch, ch, kernel_size) for _ in range(2 * n_residual_blocks)]
+            *[
+                ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+                for _ in range(2 * n_residual_blocks)
+            ]
         )
 
         # -------- Decoder --------
@@ -67,7 +83,9 @@ class ResUNet3D(nn.Module):
             self.dec_blocks.append(
                 nn.Sequential(
                     *[
-                        ResBlock3D(2 * ch, ch, kernel_size)
+                        ResBlock3D(
+                            2 * ch, ch, kernel_size, use_checkpoint=use_checkpoint
+                        )
                         for _ in range(n_residual_blocks)
                     ]
                 )
