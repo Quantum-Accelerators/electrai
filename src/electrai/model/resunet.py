@@ -109,7 +109,7 @@ class ResUNet3D(nn.Module):
             out = torch.cat([out, skips.pop()], dim=1)
             out = dec(out)
         out = self.out_conv(out)
-        out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
+        out = out / (torch.sum(out, axis=(-3, -2, -1))[..., None, None, None] + 1e-8)
         return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
 
 
