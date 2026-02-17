@@ -23,6 +23,7 @@ class LatticeConv3d(nn.Module):
         use_lattice_conv=False,
         use_radial_embedding=False,
         use_positional_embedding=False,
+        trainable_gaussian_params=False,
         num_gaussians=16,
         pos_embed_dim=16,
         pos_embed_type="learnable",
@@ -41,6 +42,7 @@ class LatticeConv3d(nn.Module):
         self.stride = stride
         self.dilation = dilation
         self.use_lattice_conv = use_lattice_conv
+        self.trainable_gaussian_params = trainable_gaussian_params
         self.conv = nn.Conv3d(
             in_channels,
             out_channels,
@@ -60,7 +62,10 @@ class LatticeConv3d(nn.Module):
         if use_lattice_conv:
             if use_radial_embedding:
                 self.gaussian_smear = GaussianRadialBasis(
-                    num_gaussians=num_gaussians, r_min=0.0, r_max=r_max, trainable=True
+                    num_gaussians=num_gaussians,
+                    r_min=0.0,
+                    r_max=r_max,
+                    trainable=self.trainable_gaussian_params,
                 )
 
             if use_positional_embedding:
@@ -144,6 +149,15 @@ class LatticeConv3d(nn.Module):
         cart_coords = torch.einsum("ijkl,bml->bijkm", frac_coords, lattice_vectors)
         distances = torch.norm(cart_coords, dim=-1)
 
+        debug_stats = {}
+        debug_stats["distances"] = {
+            "min": distances.min().item(),
+            "max": distances.max().item(),
+            "mean": distances.mean().item(),
+            "has_nan": torch.isnan(distances).any().item(),
+            "has_inf": torch.isinf(distances).any().item(),
+        }
+
         if self.use_radial_embedding:
             radial_features = self.gaussian_smear(distances)
             radial_flat = rearrange(radial_features, "b kz ky kx n -> b (kz ky kx) n")
@@ -177,7 +191,7 @@ class LatticeConv3d(nn.Module):
         if squeeze_batch:
             kernel = kernel.squeeze(0)
 
-        return kernel
+        return kernel, debug_stats
 
     def forward(self, x, lattice_vectors=None):
         if not self.use_lattice_conv or (
@@ -188,9 +202,9 @@ class LatticeConv3d(nn.Module):
         B = x.shape[0]
         if lattice_vectors.dim() == 2:
             x_padded = self._apply_padding(x)
-            geometric_kernel = self.compute_geometric_kernel(lattice_vectors)
+            geometric_kernels = self.compute_geometric_kernel(lattice_vectors)
             alpha = 1  # self.mix_weight
-            kernel = alpha * geometric_kernel
+            kernel = alpha * geometric_kernels
 
             return F.conv3d(
                 x_padded,
@@ -202,7 +216,10 @@ class LatticeConv3d(nn.Module):
             )
 
         else:
-            geometric_kernels = self.compute_geometric_kernel(lattice_vectors)
+            geometric_kernels, debug_stats = self.compute_geometric_kernel(
+                lattice_vectors
+            )
+            self.last_debug_stats = debug_stats
             alpha = 1  # 0.1  # self.mix_weight
             # self.register_buffer("base_weight", w)  # saved + moved with .to(device), not trained
 

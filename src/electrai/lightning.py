@@ -27,6 +27,13 @@ class LightningGenerator(LightningModule):
             on_epoch=True,
             sync_dist=False,
         )
+        if hasattr(self.model, "conv1") and hasattr(
+            self.model.conv1, "last_debug_stats"
+        ):
+            stats = self.model.conv1.last_debug_stats
+            for key, values in stats.items():
+                for metric, val in values.items():
+                    self.log(f"debug/{key}/{metric}", val, on_step=True, on_epoch=False)
         return loss
 
     def validation_step(self, batch):
@@ -35,6 +42,68 @@ class LightningGenerator(LightningModule):
             "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
         )
         return loss
+
+    # def _log_gaussian_params(self, prefix="train_"):
+    #     for name, module in self.model.named_modules():
+    #         if isinstance(module, torch.nn.Module) and hasattr(
+    #             module, "gaussian_smear"
+    #         ):
+    #             gaussian_smear = module.gaussian_smear
+
+    #             if hasattr(gaussian_smear, "centers"):
+    #                 centers = gaussian_smear.centers
+    #                 self.log(
+    #                     f"{prefix}gaussian/centers_mean",
+    #                     centers.mean(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #                 self.log(
+    #                     f"{prefix}gaussian/centers_std",
+    #                     centers.std(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #                 self.log(
+    #                     f"{prefix}gaussian/centers_min",
+    #                     centers.min(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #                 self.log(
+    #                     f"{prefix}gaussian/centers_max",
+    #                     centers.max(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+
+    #             if hasattr(gaussian_smear, "widths"):
+    #                 widths = gaussian_smear.widths
+    #                 self.log(
+    #                     f"{prefix}gaussian/widths_mean",
+    #                     widths.mean(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #                 self.log(
+    #                     f"{prefix}gaussian/widths_std",
+    #                     widths.std(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #                 self.log(
+    #                     f"{prefix}gaussian/widths_min",
+    #                     widths.min(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #                 self.log(
+    #                     f"{prefix}gaussian/widths_max",
+    #                     widths.max(),
+    #                     on_step=True,
+    #                     on_epoch=True,
+    #                 )
+    #             break
 
     def _loss_calculation(self, batch):
         x = batch["data"]

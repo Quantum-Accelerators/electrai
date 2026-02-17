@@ -15,6 +15,7 @@ class ResidualBlock(nn.Module):
         use_lattice_conv=False,
         use_radial_embedding=False,
         use_positional_embedding=False,
+        trainable_gaussian_params=False,
         num_gaussians=16,
         pos_embed_dim=16,
     ):
@@ -31,6 +32,7 @@ class ResidualBlock(nn.Module):
             use_lattice_conv=use_lattice_conv,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
+            trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
         )
@@ -46,6 +48,7 @@ class ResidualBlock(nn.Module):
             use_lattice_conv=use_lattice_conv,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
+            trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
         )
@@ -81,6 +84,7 @@ class GeneratorResNet(nn.Module):
         use_lattice_conv=False,
         use_radial_embedding=False,
         use_positional_embedding=False,
+        trainable_gaussian_params=False,
         num_gaussians=16,
         pos_embed_dim=16,
     ):
@@ -100,6 +104,7 @@ class GeneratorResNet(nn.Module):
             use_lattice_conv=use_lattice_conv,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
+            trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
         )
@@ -128,6 +133,7 @@ class GeneratorResNet(nn.Module):
             use_lattice_conv=use_lattice_conv,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
+            trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
         )
@@ -144,6 +150,7 @@ class GeneratorResNet(nn.Module):
             use_lattice_conv=use_lattice_conv,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
+            trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
         )
