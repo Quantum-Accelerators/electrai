@@ -8,7 +8,6 @@ import torch
 import torch.distributed as dist
 from hydra.utils import instantiate
 from lightning.pytorch import LightningModule
-from pathlim import Path
 from src.electrai.model.loss.charge import NormMAE
 
 
@@ -113,7 +112,7 @@ class LightningGenerator(LightningModule):
             out["pred"] = preds.detach().cpu()
         return out
 
-    def on_test_batch_end(self, outputs, batch_idx):
+    def on_test_batch_end(self, outputs, _batch, batch_idx):
         indices = outputs["index"]
         nmae = outputs["nmae"]
 
@@ -131,7 +130,7 @@ class LightningGenerator(LightningModule):
         tmp_csv = (
             self.tmp_dir / f"metrics_rank_{self.global_rank}_batch_{batch_idx}.csv"
         )
-        with Path.open(tmp_csv, "w") as f:
+        with tmp_csv.open("w") as f:
             for idx, n in zip(indices, nmae, strict=True):
                 f.write(f"rank_{self.global_rank},{idx},{n.item()}\n")
 
@@ -167,10 +166,10 @@ class LightningGenerator(LightningModule):
                     f"Expected {expected_total} CSV files but found {len(all_tmp_csvs)}."
                 )
 
-            with Path.open(final_csv, "w") as f_out:
+            with final_csv.open("w") as f_out:
                 f_out.write("rank,index,nmae\n")
                 for tmp_csv in all_tmp_csvs:
-                    with Path.open(tmp_csv) as f_in:
+                    with tmp_csv.open() as f_in:
                         for line in f_in:
                             f_out.write(line)
 

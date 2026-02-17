@@ -47,4 +47,3 @@ ckpt_path: ./checkpoints
 # save_pred: true
 # log_dir: ./logs
 # out_dir: ./predictions
-

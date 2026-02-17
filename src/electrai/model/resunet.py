@@ -81,9 +81,14 @@ class ResUNet3D(nn.Module):
         for _ in range(depth):
             self.ups.append(PeriodicUpsampleConv3d(ch, ch // 2))
             ch //= 2
-            blocks = [ResBlock3D(2 * ch, ch, kernel_size, use_checkpoint=use_checkpoint)]
+            blocks = [
+                ResBlock3D(2 * ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+            ]
             blocks.extend(
-                [ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint) for _ in range(n_residual_blocks - 1)]
+                [
+                    ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+                    for _ in range(n_residual_blocks - 1)
+                ]
             )
             self.dec_blocks.append(nn.Sequential(*blocks))
 

@@ -30,7 +30,6 @@ class RhoRead(LightningDataModule):
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
         random_seed: int = 42,
-        **kwargs,  # noqa: ARG002
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -94,8 +93,6 @@ class RhoRead(LightningDataModule):
             drop_last=self.drop_last,
         )
 
-    def on_exception(self, _exception: BaseException) -> None:
-        return
 
 class RhoData(Dataset):
     def __init__(self, datapath: str, precision: str, augmentation: bool, **kwargs):
