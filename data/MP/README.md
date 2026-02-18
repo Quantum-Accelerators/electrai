@@ -14,33 +14,33 @@ Install required dependencies:
 
 ### Basic Usage (downloads GGA data by default)
 ```bash
-python download_from_s3.py download
+uv run download_from_s3.py download
 ```
 
 ### Download specific key
 ```bash
-python download_from_s3.py download --key=GGA
+uv run download_from_s3.py download --key=GGA
 ```
 
 ### List available keys
 ```bash
-python download_from_s3.py list_keys
+uv run download_from_s3.py list_keys
 ```
 
 ### Custom output directory
 ```bash
-python download_from_s3.py download --key=GGA --output_dir=./my_data
+uv run download_from_s3.py download --key=GGA --output_dir=./my_data
 ```
 
 ### Parallel downloads with custom worker count
 ```bash
 # Use 5 parallel workers (default is 10)
-python download_from_s3.py download --key=GGA --max_workers=5
+uv run download_from_s3.py download --key=GGA --max_workers=5
 ```
 
 ### Full command line options
 ```bash
-python download_from_s3.py download --help
+uv run download_from_s3.py download --help
 ```
 
 ## What the script does
@@ -78,11 +78,6 @@ Based on the current map_sample.json.gz file, the GGA key contains these task ID
 - mp-1828986
 - mp-1887555
 - mp-1924667
-- mp-2367080
-- mp-2411562
-- mp-2493198
-- mp-2680643
-- mp-2709708
 
 The `.json.gz` files for these task IDs are available in `data/MP/jsongz`, and the corresponding VASP CHGCAR files can be found in `data/MP/chgcars`.
 The label charge densities where obtained from the Material Project database.

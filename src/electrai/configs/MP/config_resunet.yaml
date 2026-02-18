@@ -24,6 +24,7 @@ model:
   n_residual_blocks: 1
   kernel_size: 5
   depth: 2
+  use_checkpoint: False
 
 # Training parameters
 precision: 32
@@ -41,3 +42,9 @@ wb_pname: mp-experiment
 
 # checkpoints
 ckpt_path: ./checkpoints
+
+# test the model
+# save_pred: true
+# log_dir: ./logs
+# out_dir: ./predictions
+

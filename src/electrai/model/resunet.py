@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 class ResBlock3D(nn.Module):
-    def __init__(self, cin, cout, k):
+    def __init__(self, cin, cout, k, use_checkpoint=True):
         super().__init__()
-        self.conv1 = nn.Conv3d(cin, cout, k, padding=k // 2, padding_mode="circular")
-        self.norm1 = nn.InstanceNorm3d(cout)
+        self.use_checkpoint = use_checkpoint
+        self.conv_block = nn.Sequential(
+            nn.Conv3d(cin, cout, k, padding=k // 2, padding_mode="circular"),
+            nn.InstanceNorm3d(cout),
+            nn.PReLU(),
+            nn.Conv3d(cout, cout, k, padding=k // 2, padding_mode="circular"),
+            nn.InstanceNorm3d(cout),
+        )
         self.act = nn.PReLU()
-        self.conv2 = nn.Conv3d(cout, cout, k, padding=k // 2, padding_mode="circular")
-        self.norm2 = nn.InstanceNorm3d(cout)
 
         if cin != cout:
             self.skip = nn.Conv3d(cin, cout, 1)
@@ -19,9 +25,12 @@ class ResBlock3D(nn.Module):
             self.skip = nn.Identity()
 
     def forward(self, x):
-        h = self.act(self.norm1(self.conv1(x)))
-        h = self.norm2(self.conv2(h))
-        return self.act(h + self.skip(x))
+        if self.use_checkpoint and self.training:
+            return self.act(
+                checkpoint(self.conv_block, x, use_reentrant=False) + self.skip(x)
+            )
+        else:
+            return self.act(self.conv_block(x) + self.skip(x))
 
 
 class ResUNet3D(nn.Module):
@@ -33,10 +42,12 @@ class ResUNet3D(nn.Module):
         depth,
         n_residual_blocks,
         kernel_size,
+        use_checkpoint=True,
     ):
         super().__init__()
-
-        self.in_conv = ResBlock3D(in_channels, n_channels, kernel_size)
+        self.in_conv = ResBlock3D(
+            in_channels, n_channels, kernel_size, use_checkpoint=use_checkpoint
+        )
 
         # -------- Encoder --------
         self.enc_blocks = nn.ModuleList()
@@ -46,7 +57,10 @@ class ResUNet3D(nn.Module):
         for _ in range(depth):
             self.enc_blocks.append(
                 nn.Sequential(
-                    *[ResBlock3D(ch, ch, kernel_size) for _ in range(n_residual_blocks)]
+                    *[
+                        ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+                        for _ in range(n_residual_blocks)
+                    ]
                 )
             )
             self.downs.append(downsample(ch, 2 * ch))
@@ -54,7 +68,10 @@ class ResUNet3D(nn.Module):
 
         # -------- Bottleneck --------
         self.mid = nn.Sequential(
-            *[ResBlock3D(ch, ch, kernel_size) for _ in range(2 * n_residual_blocks)]
+            *[
+                ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+                for _ in range(2 * n_residual_blocks)
+            ]
         )
 
         # -------- Decoder --------
@@ -62,13 +79,11 @@ class ResUNet3D(nn.Module):
         self.dec_blocks = nn.ModuleList()
 
         for _ in range(depth):
-            self.ups.append(upsample(ch, ch // 2))
+            self.ups.append(PeriodicUpsampleConv3d(ch, ch // 2))
             ch //= 2
-            # First block takes concatenated input (2*ch channels from skip + upsampled)
-            # Subsequent blocks take ch channels (output of previous block)
-            blocks = [ResBlock3D(2 * ch, ch, kernel_size)]
+            blocks = [ResBlock3D(2 * ch, ch, kernel_size, use_checkpoint=use_checkpoint)]
             blocks.extend(
-                [ResBlock3D(ch, ch, kernel_size) for _ in range(n_residual_blocks - 1)]
+                [ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint) for _ in range(n_residual_blocks - 1)]
             )
             self.dec_blocks.append(nn.Sequential(*blocks))
 
@@ -94,17 +109,26 @@ class ResUNet3D(nn.Module):
         return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
 
 
+class PeriodicUpsampleConv3d(nn.Module):
+    def __init__(self, cin, cout):
+        super().__init__()
+        self.up = nn.Upsample(scale_factor=2, mode="trilinear", align_corners=False)
+        self.conv = nn.Conv3d(cin, cout, 3, padding=1, padding_mode="circular")
+        self.norm = nn.InstanceNorm3d(cout)
+        self.act = nn.PReLU()
+
+    def forward(self, x):
+        x = F.pad(x, (1, 1, 1, 1, 1, 1), mode="circular")
+        x = self.up(x)
+        x = x[..., 2:-2, 2:-2, 2:-2]
+        x = self.conv(x)
+        x = self.norm(x)
+        return self.act(x)
+
+
 def downsample(cin, cout):
     return nn.Sequential(
         nn.Conv3d(cin, cout, 3, stride=2, padding=1, padding_mode="circular"),
-        nn.InstanceNorm3d(cout),
-        nn.PReLU(),
-    )
-
-
-def upsample(cin, cout):
-    return nn.Sequential(
-        nn.ConvTranspose3d(cin, cout, kernel_size=2, stride=2),
         nn.InstanceNorm3d(cout),
         nn.PReLU(),
     )
