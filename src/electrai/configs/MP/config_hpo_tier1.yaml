@@ -5,7 +5,7 @@ hpo:
   study_name: resunet_hpo_tier1
   n_trials: 50
   timeout: null
-  storage: sqlite:////home/ubuntu/betsy-electrai-2/optuna/hpo_tier1.db
+  storage: sqlite:///hpo_tier1.db
   direction: minimize
   pruner:
     type: median
@@ -42,7 +42,7 @@ hpo:
 # Fixed Tier 2 parameters (reasonable defaults)
 data:
   _target_: src.electrai.dataloader.dataset.RhoRead
-  root: /home/ubuntu/betsy-electrai-2/dataset2/mp_filelist.txt
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
   split_file: null
   precision: f32
   batch_size: 1  # fixed
