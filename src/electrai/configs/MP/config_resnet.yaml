@@ -1,6 +1,6 @@
 # Dataset / loader parameters
 data:
-  _target_: src.electrai.dataloader.dataset.RhoRead
+  _target_: electrai.dataloader.dataset.RhoRead
   root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
   split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_1/split.json
   precision: f32
@@ -17,7 +17,7 @@ data:
 
 # Model
 model:
-  _target_: src.electrai.model.srgan_layernorm_pbc.GeneratorResNet
+  _target_: electrai.model.srgan_layernorm_pbc.GeneratorResNet
   n_residual_blocks: 32
   n_upscale_layers: 0
   n_channels: 32

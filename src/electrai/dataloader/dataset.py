@@ -5,10 +5,11 @@ from typing import TYPE_CHECKING
 
 import torch
 from lightning.pytorch import LightningDataModule
-from src.electrai.dataloader import utils
-from src.electrai.dataloader.collate import collate_fn
-from src.electrai.dataloader.split import split_data
 from torch.utils.data import DataLoader, Dataset
+
+from electrai.dataloader import utils
+from electrai.dataloader.collate import collate_fn
+from electrai.dataloader.split import split_data
 
 if TYPE_CHECKING:
     import os

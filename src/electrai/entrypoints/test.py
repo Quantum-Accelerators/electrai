@@ -7,7 +7,8 @@ import torch
 import yaml
 from hydra.utils import instantiate
 from lightning.pytorch import Trainer
-from src.electrai.lightning import LightningGenerator
+
+from electrai.lightning import LightningGenerator
 
 
 def test(args):

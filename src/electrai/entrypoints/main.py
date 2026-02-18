@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 
 import torch
-from src.electrai.entrypoints.test import test
-from src.electrai.entrypoints.train import train
+
+from electrai.entrypoints.test import test
+from electrai.entrypoints.train import train
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
 

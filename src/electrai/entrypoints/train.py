@@ -9,7 +9,8 @@ import yaml
 from hydra.utils import instantiate
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
-from src.electrai.lightning import LightningGenerator
+
+from electrai.lightning import LightningGenerator
 
 
 def train(args):

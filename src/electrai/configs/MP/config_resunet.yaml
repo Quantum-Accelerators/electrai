@@ -1,6 +1,6 @@
 # Dataset / loader parameters
 data:
-  _target_: src.electrai.dataloader.dataset.RhoRead
+  _target_: electrai.dataloader.dataset.RhoRead
   root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
   split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_1/split.json
   precision: f32
@@ -17,7 +17,7 @@ data:
 
 # Model
 model:
-  _target_: src.electrai.model.resunet.ResUNet3D
+  _target_: electrai.model.resunet.ResUNet3D
   in_channels: 1
   out_channels: 1
   n_channels: 32
