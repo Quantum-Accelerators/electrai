@@ -6,7 +6,7 @@ map_path: ./data/MP/map/map_sample.json.gz
 rho_type: chgcar
 functional: GGA
 train_fraction: 0.5
-random_state: 42
+random_seed: 42
 normalize_label: False
 normalize_data: False
 data_augmentation: True

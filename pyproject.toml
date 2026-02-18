@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4.0", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
+dev = ["pytest>=8.4.2", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
 docs = [
     "mkdocs-material>=9.4.0",
     "mkdocstrings[python]>=0.22.0",
@@ -147,7 +147,6 @@ lint.ignore = [
   "RET505", # Unnecessary `elif` after `return`
   "PLC0415", # `import` should be at the top-level of a file
 ]
-src = ["src"]
 lint.unfixable = [
   "T20",  # Removes print statements
   "F841", # Removes unused variables
@@ -156,6 +155,7 @@ lint.pydocstyle.convention = "numpy"
 lint.isort.known-first-party = ["electrai"]
 lint.isort.required-imports = ["from __future__ import annotations"]
 lint.isort.split-on-trailing-comma=false
+src = ["src"]
 extend-include = ["*.ipynb"]
 
 [tool.ruff.format]
@@ -177,3 +177,10 @@ namespace_packages = true
 explicit_package_bases = true
 no_implicit_optional = false
 disable_error_code = "annotation-unchecked"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-cov>=3.0.0",
+    "ruff>=0.0.285",
+]

@@ -1,0 +1,8 @@
+name: Generate Expected Values
+on:
+  workflow_dispatch:
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Placeholder workflow to preserve workflow name in GitHub Actions UI"

@@ -1,8 +1,8 @@
 # Docs
 .cache/
+examples/QM9
+examples/MP/experiments
 docs/reference/*
-./examples/MP/experiments
-./examples/QM9s
 *doctrees*
 /site
 
