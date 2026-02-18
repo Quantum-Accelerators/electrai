@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 
@@ -78,7 +79,7 @@ class ResUNet3D(nn.Module):
         self.dec_blocks = nn.ModuleList()
 
         for _ in range(depth):
-            self.ups.append(upsample(ch, ch // 2))
+            self.ups.append(PeriodicUpsampleConv3d(ch, ch // 2))
             ch //= 2
             self.dec_blocks.append(
                 nn.Sequential(
@@ -113,17 +114,26 @@ class ResUNet3D(nn.Module):
         return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
 
 
+class PeriodicUpsampleConv3d(nn.Module):
+    def __init__(self, cin, cout):
+        super().__init__()
+        self.up = nn.Upsample(scale_factor=2, mode="trilinear", align_corners=False)
+        self.conv = nn.Conv3d(cin, cout, 3, padding=1, padding_mode="circular")
+        self.norm = nn.InstanceNorm3d(cout)
+        self.act = nn.PReLU()
+
+    def forward(self, x):
+        x = F.pad(x, (1, 1, 1, 1, 1, 1), mode="circular")
+        x = self.up(x)
+        x = x[..., 2:-2, 2:-2, 2:-2]
+        x = self.conv(x)
+        x = self.norm(x)
+        return self.act(x)
+
+
 def downsample(cin, cout):
     return nn.Sequential(
         nn.Conv3d(cin, cout, 3, stride=2, padding=1, padding_mode="circular"),
-        nn.InstanceNorm3d(cout),
-        nn.PReLU(),
-    )
-
-
-def upsample(cin, cout):
-    return nn.Sequential(
-        nn.ConvTranspose3d(cin, cout, kernel_size=2, stride=2),
         nn.InstanceNorm3d(cout),
         nn.PReLU(),
     )
