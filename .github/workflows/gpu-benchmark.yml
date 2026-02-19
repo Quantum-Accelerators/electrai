@@ -1,8 +1,223 @@
+# GPU Benchmark
+#
+# Runs GPU training benchmark with configurable model size.
+# Two modes:
+#   - GPU-only (default): benchmark GPU training time
+#   - CPU comparison: also run CPU for speedup comparison (use smaller configs)
+#
+# Examples:
+#   gh workflow run gpu-benchmark.yml                                          # GPU-only, 10 S3 samples
+#   gh workflow run gpu-benchmark.yml -f s3_samples=0                          # GPU-only, repo test data
+#   gh workflow run gpu-benchmark.yml -f compare_cpu=true -f s3_samples=0      # GPU vs CPU comparison
+#   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16     # Production model
+
 name: GPU Benchmark
+
+# Manual trigger only
 on:
   workflow_dispatch:
+    inputs:
+      instance_type:
+        description: 'EC2 instance type'
+        default: 'g6.xlarge'
+        type: string
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+      channels:
+        description: 'Number of model channels (8=tiny, 32=prod, 64=large)'
+        default: '32'
+        type: string
+      residual_blocks:
+        description: 'Number of residual blocks (2=tiny, 16=prod)'
+        default: '16'
+        type: string
+      s3_samples:
+        description: 'Number of S3 samples to use (0=use repo test data, 10-200 for S3)'
+        default: '10'
+        type: string
+      compare_cpu:
+        description: 'Also run CPU benchmark for speedup comparison (slower)'
+        default: false
+        type: boolean
+      debug:
+        description: 'Debug mode (false/true/N minutes)'
+        default: 'false'
+        type: string
+
+permissions:
+  id-token: write  # Required for AWS OIDC
+  contents: read
+
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@v2
+    with:
+      ec2_instance_type: ${{ inputs.instance_type || 'g6.xlarge' }}
+      ec2_image_id: ami-0365bff494b18bf93  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.7 (Ubuntu 22.04)
+      ec2_root_device_size: '+10'
+      aws_tags: '[{"Key": "project", "Value": "electrai"}]'
+      debug: ${{ inputs.debug || 'false' }}
+    secrets:
+      GH_SA_TOKEN: ${{ secrets.GH_SA_TOKEN }}
+
+  benchmark:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
+    env:
+      EPOCHS: ${{ inputs.epochs || '5' }}
+      CHANNELS: ${{ inputs.channels || '32' }}
+      BLOCKS: ${{ inputs.residual_blocks || '16' }}
     steps:
-      - run: echo "Placeholder workflow to preserve workflow name in GitHub Actions UI"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check GPU
+        run: nvidia-smi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Sync S3 training data
+        if: inputs.s3_samples != '0' && inputs.s3_samples != ''
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
+        run: |
+          echo "Syncing $S3_SAMPLES samples from S3..."
+          mkdir -p /tmp/electrai/input /tmp/electrai/label
+
+          # Get list of files to download (using s3api to limit at source)
+          # Note: --max-items causes pagination; filter out "None" NextToken
+          FILES=$(aws s3api list-objects-v2 \
+            --bucket openathena \
+            --prefix electrai/input/ \
+            --max-items "$S3_SAMPLES" \
+            --query 'Contents[].Key' \
+            --output text | tr '\t' '\n' | grep -v '^None$' | sed 's|electrai/input/||')
+
+          # Download input and label files
+          for f in $FILES; do
+            aws s3 cp "s3://openathena/electrai/input/$f" /tmp/electrai/input/
+            aws s3 cp "s3://openathena/electrai/label/$f" /tmp/electrai/label/
+          done
+
+          # Create a map file with GGA key containing the downloaded sample IDs
+          echo "Creating map file for $S3_SAMPLES samples..."
+          ls /tmp/electrai/input/*.CHGCAR | sed 's|.*/||; s|\.CHGCAR||' | \
+            python3 -c "import json,sys; ids=[s.strip() for s in sys.stdin]; print(json.dumps({'GGA': ids}))" | \
+            gzip > /tmp/electrai/map_subset.json.gz
+
+          echo "Downloaded $(ls /tmp/electrai/input/ | wc -l) input files"
+          echo "Downloaded $(ls /tmp/electrai/label/ | wc -l) label files"
+
+      - name: Run GPU benchmark
+        id: gpu
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
+        run: |
+          echo "=== GPU BENCHMARK ==="
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES"
+          echo ""
+
+          DATA_ARGS=""
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_ARGS="--data-path /tmp/electrai/input --label-path /tmp/electrai/label --map-path /tmp/electrai/map_subset.json.gz"
+            echo "Using S3 data ($S3_SAMPLES samples)"
+          else
+            echo "Using repo test data (5 samples)"
+          fi
+
+          START=$(date +%s)
+          uv run python tests/e2e_train.py \
+            --gpu \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$BLOCKS" \
+            --gradient-checkpoint \
+            --verbose \
+            --no-check \
+            $DATA_ARGS
+          END=$(date +%s)
+          GPU_TIME=$((END - START))
+          echo ""
+          echo "GPU_TIME=${GPU_TIME}" >> $GITHUB_OUTPUT
+          echo "GPU training time: ${GPU_TIME}s"
+
+      - name: Run CPU benchmark
+        id: cpu
+        if: inputs.compare_cpu
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
+        run: |
+          echo "=== CPU BENCHMARK ==="
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES"
+          echo ""
+
+          DATA_ARGS=""
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_ARGS="--data-path /tmp/electrai/input --label-path /tmp/electrai/label --map-path /tmp/electrai/map_subset.json.gz"
+            echo "Using S3 data ($S3_SAMPLES samples)"
+          else
+            echo "Using repo test data (5 samples)"
+          fi
+
+          START=$(date +%s)
+          uv run python tests/e2e_train.py \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$BLOCKS" \
+            --gradient-checkpoint \
+            --verbose \
+            --no-check \
+            $DATA_ARGS
+          END=$(date +%s)
+          CPU_TIME=$((END - START))
+          echo ""
+          echo "CPU_TIME=${CPU_TIME}" >> $GITHUB_OUTPUT
+          echo "CPU training time: ${CPU_TIME}s"
+
+      - name: Summary
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples }}
+          COMPARE_CPU: ${{ inputs.compare_cpu }}
+        run: |
+          GPU_TIME=${{ steps.gpu.outputs.GPU_TIME }}
+
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_DESC="$S3_SAMPLES samples (S3)"
+          else
+            DATA_DESC="5 samples (repo test data)"
+          fi
+
+          echo "## GPU Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Epochs | $EPOCHS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Channels | $CHANNELS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | Time | Speedup |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|---------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$COMPARE_CPU" = "true" ]; then
+            CPU_TIME=${{ steps.cpu.outputs.CPU_TIME }}
+            SPEEDUP=$(echo "scale=2; $CPU_TIME / $GPU_TIME" | bc)
+            echo "| GPU | ${GPU_TIME}s | **${SPEEDUP}x** |" >> $GITHUB_STEP_SUMMARY
+            echo "| CPU | ${CPU_TIME}s | 1.0x |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| GPU | ${GPU_TIME}s | - |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "*CPU comparison skipped. Run with \`compare_cpu=true\` to include.*" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Show GPU memory usage
+        if: always()
+        run: nvidia-smi

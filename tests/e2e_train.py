@@ -71,6 +71,7 @@ class LossTracker:
 @option("-c", "--check/--no-check", default=True, help="Check val_loss against expected value")
 @option("-d", "--data-path", default=None, help="Path to input data (default: data/MP/chgcars/input)")
 @option("-e", "--epochs", default=5, help="Number of training epochs")
+@option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
 @option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
 @option("-l", "--label-path", default=None, help="Path to label data (default: data/MP/chgcars/label)")
 @option("-m", "--map-path", default=None, help="Path to map file (default: data/MP/map/map_sample.json.gz)")
@@ -85,6 +86,7 @@ def main(
     check: bool,
     data_path: str | None,
     epochs: int,
+    gradient_checkpoint: bool,
     gpu: bool,
     label_path: str | None,
     map_path: str | None,
@@ -145,7 +147,7 @@ def main(
     cfg.n_upscale_layers = 0  # No upscaling, same resolution
     cfg.kernel_size1 = 3
     cfg.kernel_size2 = 3
-    cfg.use_checkpoint = False
+    cfg.use_checkpoint = gradient_checkpoint
 
     # Hydra-style model config for LightningGenerator (uses hydra.utils.instantiate)
     cfg.model = {
@@ -156,7 +158,7 @@ def main(
         "kernel_size1": 3,
         "kernel_size2": 3,
         "normalize": True,
-        "use_checkpoint": False,
+        "use_checkpoint": gradient_checkpoint,
     }
 
     # Training
