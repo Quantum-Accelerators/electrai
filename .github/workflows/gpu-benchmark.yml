@@ -10,11 +10,14 @@
 #   gh workflow run gpu-benchmark.yml -f s3_samples=0                          # GPU-only, repo test data
 #   gh workflow run gpu-benchmark.yml -f compare_cpu=true -f s3_samples=0      # GPU vs CPU comparison
 #   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16     # Production model
+#   gh workflow run gpu-benchmark.yml -f s3_samples=50 -f wandb_project=elf-net-ci  # Log to WandB
 
 name: GPU Benchmark
 
-# Manual trigger only
+# Weekly schedule + manual trigger
 on:
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 6am UTC
   workflow_dispatch:
     inputs:
       instance_type:
@@ -37,10 +40,22 @@ on:
         description: 'Number of S3 samples to use (0=use repo test data, 10-200 for S3)'
         default: '10'
         type: string
+      max_file_size:
+        description: 'Skip S3 samples larger than N MB (0=no limit, 25=safe for L4 24GB)'
+        default: '25'
+        type: string
       compare_cpu:
         description: 'Also run CPU benchmark for speedup comparison (slower)'
         default: false
         type: boolean
+      wandb_project:
+        description: 'WandB project name (empty=disabled)'
+        default: ''
+        type: string
+      dataset_version:
+        description: 'Dataset version tag for WandB (e.g. oa-s3-v1, mp-gga-v2)'
+        default: ''
+        type: string
       debug:
         description: 'Debug mode (false/true/N minutes)'
         default: 'false'
@@ -83,44 +98,63 @@ jobs:
         run: uv sync
 
       - name: Sync S3 training data
-        if: inputs.s3_samples != '0' && inputs.s3_samples != ''
+        if: (inputs.s3_samples || '10') != '0'
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
         run: |
-          echo "Syncing $S3_SAMPLES samples from S3..."
+          echo "Syncing up to $S3_SAMPLES samples from S3 (max ${MAX_FILE_SIZE}MB)..."
           mkdir -p /tmp/electrai/input /tmp/electrai/label
 
-          # Get list of files to download (using s3api to limit at source)
-          # Note: --max-items causes pagination; filter out "None" NextToken
-          FILES=$(aws s3api list-objects-v2 \
+          # List files with sizes, filter by max_file_size, take up to S3_SAMPLES
+          MAX_BYTES=$((MAX_FILE_SIZE * 1024 * 1024))
+          if [ "$MAX_FILE_SIZE" = "0" ]; then
+            MAX_BYTES=999999999999
+          fi
+
+          # Get file list with sizes using s3api (JSON for reliable parsing)
+          ENTRIES=$(aws s3api list-objects-v2 \
             --bucket openathena \
             --prefix electrai/input/ \
-            --max-items "$S3_SAMPLES" \
-            --query 'Contents[].Key' \
-            --output text | tr '\t' '\n' | grep -v '^None$' | sed 's|electrai/input/||')
+            --query "Contents[?Size<=\`$MAX_BYTES\`].[Key,Size]" \
+            --output text | head -n "$S3_SAMPLES")
 
-          # Download input and label files
-          for f in $FILES; do
+          DOWNLOADED=0
+          SKIPPED=0
+          while IFS=$'\t' read -r key size; do
+            [ -z "$key" ] && continue
+            f=$(basename "$key")
+            SIZE_MB=$(echo "scale=1; $size / 1048576" | bc)
+            echo "  $f (${SIZE_MB}MB)"
             aws s3 cp "s3://openathena/electrai/input/$f" /tmp/electrai/input/
             aws s3 cp "s3://openathena/electrai/label/$f" /tmp/electrai/label/
-          done
+            DOWNLOADED=$((DOWNLOADED + 1))
+          done <<< "$ENTRIES"
+
+          echo ""
+          echo "Downloaded $DOWNLOADED samples (skipped files > ${MAX_FILE_SIZE}MB)"
 
           # Create a map file with GGA key containing the downloaded sample IDs
-          echo "Creating map file for $S3_SAMPLES samples..."
+          echo "Creating map file..."
           ls /tmp/electrai/input/*.CHGCAR | sed 's|.*/||; s|\.CHGCAR||' | \
             python3 -c "import json,sys; ids=[s.strip() for s in sys.stdin]; print(json.dumps({'GGA': ids}))" | \
             gzip > /tmp/electrai/map_subset.json.gz
 
-          echo "Downloaded $(ls /tmp/electrai/input/ | wc -l) input files"
-          echo "Downloaded $(ls /tmp/electrai/label/ | wc -l) label files"
+          echo "Input files: $(ls /tmp/electrai/input/ | wc -l)"
+          echo "Label files: $(ls /tmp/electrai/label/ | wc -l)"
 
       - name: Run GPU benchmark
         id: gpu
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
+          WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          DATASET_VERSION: ${{ inputs.dataset_version }}
+          INSTANCE_TYPE: ${{ inputs.instance_type || 'g6.xlarge' }}
         run: |
           echo "=== GPU BENCHMARK ==="
-          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES"
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES, max_file_size=${MAX_FILE_SIZE}MB"
           echo ""
 
           DATA_ARGS=""
@@ -131,30 +165,46 @@ jobs:
             echo "Using repo test data (5 samples)"
           fi
 
+          WANDB_ARGS=""
+          if [ -n "$WANDB_PROJECT" ]; then
+            WANDB_ARGS="--wandb-project $WANDB_PROJECT"
+            echo "WandB logging: $WANDB_PROJECT"
+          fi
+
           START=$(date +%s)
-          uv run python tests/e2e_train.py \
+          OUTPUT=$(uv run python tests/e2e_train.py \
             --gpu \
             --epochs "$EPOCHS" \
             --channels "$CHANNELS" \
             --residual-blocks "$BLOCKS" \
             --gradient-checkpoint \
+            --max-file-size "$MAX_FILE_SIZE" \
             --verbose \
             --no-check \
-            $DATA_ARGS
+            $DATA_ARGS \
+            $WANDB_ARGS 2>&1 | tee /dev/stderr)
           END=$(date +%s)
           GPU_TIME=$((END - START))
           echo ""
           echo "GPU_TIME=${GPU_TIME}" >> $GITHUB_OUTPUT
           echo "GPU training time: ${GPU_TIME}s"
 
+          # Capture WandB run URL from output
+          WANDB_RUN_URL=$(echo "$OUTPUT" | grep -oP 'WANDB_RUN_URL=\K.*' || true)
+          if [ -n "$WANDB_RUN_URL" ]; then
+            echo "WANDB_RUN_URL=${WANDB_RUN_URL}" >> $GITHUB_OUTPUT
+            echo "WandB run: $WANDB_RUN_URL"
+          fi
+
       - name: Run CPU benchmark
         id: cpu
         if: inputs.compare_cpu
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
         run: |
           echo "=== CPU BENCHMARK ==="
-          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES"
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES, max_file_size=${MAX_FILE_SIZE}MB"
           echo ""
 
           DATA_ARGS=""
@@ -171,6 +221,7 @@ jobs:
             --channels "$CHANNELS" \
             --residual-blocks "$BLOCKS" \
             --gradient-checkpoint \
+            --max-file-size "$MAX_FILE_SIZE" \
             --verbose \
             --no-check \
             $DATA_ARGS
@@ -182,13 +233,15 @@ jobs:
 
       - name: Summary
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
           COMPARE_CPU: ${{ inputs.compare_cpu }}
+          WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
         run: |
           GPU_TIME=${{ steps.gpu.outputs.GPU_TIME }}
 
           if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
-            DATA_DESC="$S3_SAMPLES samples (S3)"
+            DATA_DESC="$S3_SAMPLES samples (S3, ≤${MAX_FILE_SIZE}MB)"
           else
             DATA_DESC="5 samples (repo test data)"
           fi
@@ -202,6 +255,12 @@ jobs:
           echo "| Channels | $CHANNELS |" >> $GITHUB_STEP_SUMMARY
           echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
           echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
+          WANDB_RUN_URL="${{ steps.gpu.outputs.WANDB_RUN_URL }}"
+          if [ -n "$WANDB_RUN_URL" ]; then
+            echo "| WandB | [${WANDB_PROJECT}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "$WANDB_PROJECT" ]; then
+            echo "| WandB | [$WANDB_PROJECT](https://wandb.ai/PrinceOA/$WANDB_PROJECT) |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Results" >> $GITHUB_STEP_SUMMARY
           echo "| Device | Time | Speedup |" >> $GITHUB_STEP_SUMMARY

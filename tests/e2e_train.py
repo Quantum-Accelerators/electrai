@@ -74,11 +74,13 @@ class LossTracker:
 @option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
 @option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
 @option("-l", "--label-path", default=None, help="Path to label data (default: data/MP/chgcars/label)")
+@option("-M", "--max-file-size", default=0, type=float, help="Skip input files larger than N MB (0=no limit)")
 @option("-m", "--map-path", default=None, help="Path to map file (default: data/MP/map/map_sample.json.gz)")
 @option("-s", "--seed", default=42, help="Random seed for reproducibility")
 @option("-t", "--tolerance", default=0.001, help="Tolerance for val_loss comparison (absolute)")
 @option("-U", "--update-expected", is_flag=True, help="Update expected_values.json for current platform")
 @option("-v", "--verbose", is_flag=True, help="Verbose output")
+@option("-W", "--wandb-project", default=None, help="Enable WandB logging with this project name")
 # fmt: on
 def main(
     residual_blocks: int,
@@ -89,11 +91,13 @@ def main(
     gradient_checkpoint: bool,
     gpu: bool,
     label_path: str | None,
+    max_file_size: float,
     map_path: str | None,
     seed: int,
     tolerance: float,
     update_expected: bool,
     verbose: bool,
+    wandb_project: str | None,
 ):
     """Run deterministic e2e training test."""
     import torch
@@ -111,11 +115,12 @@ def main(
     # Platform detection (includes GPU suffix for linux-gpu)
     platform = get_platform(gpu=gpu)
 
-    # Force deterministic behavior
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    torch.use_deterministic_algorithms(True, warn_only=True)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # Force deterministic behavior (skip if WandB logging, which implies benchmark mode)
+    if not wandb_project:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
     seed_everything(seed, workers=True)
 
@@ -193,6 +198,23 @@ def main(
 
     # Load data
     train_data, test_data = get_data(cfg)
+
+    # Filter by file size if requested (avoid OOM on large grids)
+    if max_file_size > 0:
+        max_bytes = int(max_file_size * 1024 * 1024)
+        for name, dataset in [("train", train_data), ("val", test_data)]:
+            original = len(dataset.data)
+            dataset.data = [
+                (inp, lbl) for inp, lbl in dataset.data
+                if inp.stat().st_size <= max_bytes
+            ]
+            filtered = original - len(dataset.data)
+            if filtered > 0:
+                echo(f"Filtered {filtered}/{original} {name} samples > {max_file_size}MB")
+        if len(train_data) == 0 or len(test_data) == 0:
+            echo("Error: no samples remain after filtering", err=True)
+            sys.exit(1)
+
     if verbose:
         echo(f"Train samples: {len(train_data)}, Val samples: {len(test_data)}")
 
@@ -242,22 +264,87 @@ def main(
 
     loss_callback = EpochLossCallback()
 
-    # Trainer (minimal, no logging)
+    # WandB logger (optional)
+    logger = False
+    if wandb_project:
+        from lightning.pytorch.loggers import WandbLogger
+
+        dataset_version = os.environ.get("DATASET_VERSION", "")
+        wandb_tags = [platform, f"ch{channels}", f"blk{residual_blocks}"]
+        if gpu:
+            wandb_tags.append("gpu")
+        if dataset_version:
+            wandb_tags.append(f"ds:{dataset_version}")
+        # Pick up CI metadata from env
+        git_sha = os.environ.get("GITHUB_SHA", "")[:8]
+        if git_sha:
+            wandb_tags.append(f"sha:{git_sha}")
+        run_id = os.environ.get("GITHUB_RUN_ID", "")
+        wandb_run_name = f"ci-{git_sha}" if git_sha else None
+
+        # Collect sample IDs from train+val datasets
+        sample_ids = sorted(set(
+            Path(inp).stem
+            for dataset in [train_data, test_data]
+            for inp, _lbl in dataset.data
+        ))
+
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        logger = WandbLogger(
+            project=wandb_project,
+            entity="PrinceOA",
+            name=wandb_run_name,
+            tags=wandb_tags,
+            config={
+                "channels": channels,
+                "residual_blocks": residual_blocks,
+                "epochs": epochs,
+                "gradient_checkpoint": gradient_checkpoint,
+                "max_file_size_mb": max_file_size,
+                "train_samples": len(train_data),
+                "val_samples": len(test_data),
+                "sample_ids": sample_ids,
+                "dataset_version": dataset_version,
+                "seed": seed,
+                "instance_type": os.environ.get("INSTANCE_TYPE", ""),
+                "github_run_id": run_id,
+                "github_sha": os.environ.get("GITHUB_SHA", ""),
+                "github_ref": os.environ.get("GITHUB_REF", ""),
+            },
+        )
+        # Add GHA link as run notes (markdown, visible in WandB Overview tab)
+        if run_id and repo:
+            gha_url = f"https://github.com/{repo}/actions/runs/{run_id}"
+            logger.experiment.notes = f"[GHA run {run_id}]({gha_url})"
+
+    # Trainer
     trainer = Trainer(
         max_epochs=cfg.epochs,
-        logger=False,
+        logger=logger,
         enable_checkpointing=False,
         enable_progress_bar=verbose,
         accelerator=accelerator,
         devices=1,
         precision=cfg.model_precision,
-        deterministic=True,
+        deterministic=not wandb_project,
         gradient_clip_val=cfg.gradient_clip_value,
         callbacks=[loss_callback],
+        log_every_n_steps=1,
     )
 
     # Train
+    import time as _time
+
+    t0 = _time.monotonic()
     trainer.fit(model, train_loader, test_loader)
+    train_wallclock = _time.monotonic() - t0
+
+    # Log summary metrics + wallclock to WandB
+    if wandb_project and logger.experiment:
+        logger.experiment.summary["wallclock_s"] = train_wallclock
+        run_url = logger.experiment.get_url()
+        if run_url:
+            echo(f"WANDB_RUN_URL={run_url}")
 
     # Get final losses
     final_val_loss = trainer.callback_metrics.get("val_loss_epoch")
