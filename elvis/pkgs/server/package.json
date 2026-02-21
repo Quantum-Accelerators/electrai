@@ -1,0 +1,16 @@
+{
+  "name": "@elvis/server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "lint": "echo 'no lint configured yet'"
+  },
+  "dependencies": {
+    "@elvis/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

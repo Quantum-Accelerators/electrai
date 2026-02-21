@@ -1,0 +1,73 @@
+.controls {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.controlTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #aaa;
+  word-break: break-all;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.controlLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.slider {
+  width: 100%;
+  accent-color: #4a9eff;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.toggle input[type="checkbox"] {
+  accent-color: #4a9eff;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #333;
+  margin: 4px 0;
+}
+
+.axisButtons {
+  display: flex;
+  gap: 4px;
+}
+
+.axisBtn {
+  flex: 1;
+  padding: 4px 0;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: transparent;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.axisBtn:hover {
+  background: #333;
+}
+
+.axisBtnActive {
+  background: #4a9eff;
+  color: #fff;
+  border-color: #4a9eff;
+}

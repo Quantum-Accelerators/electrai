@@ -1,0 +1,49 @@
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.viewer {
+  flex: 1;
+  position: relative;
+}
+
+.sidebar {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #333;
+  overflow-y: auto;
+}
+
+.dropZone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 40px;
+}
+
+.slicePanel {
+  height: 280px;
+  border-top: 1px solid #333;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.addFileBtn {
+  margin: 16px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px dashed #555;
+  border-radius: 6px;
+  color: #888;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.addFileBtn:hover {
+  border-color: #4a9eff;
+  color: #ccc;
+}

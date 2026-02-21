@@ -1,0 +1,16 @@
+{
+  "name": "elvis-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm -C pkgs/static dev",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
+    "lint": "pnpm -r lint"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
