@@ -22,6 +22,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform as platform_mod
@@ -204,13 +205,17 @@ def main(
         max_bytes = int(max_file_size * 1024 * 1024)
         for name, dataset in [("train", train_data), ("val", test_data)]:
             original = len(dataset.data)
-            dataset.data = [
-                (inp, lbl) for inp, lbl in dataset.data
-                if inp.stat().st_size <= max_bytes
-            ]
-            filtered = original - len(dataset.data)
+            kept = []
+            for inp, lbl in dataset.data:
+                size = inp.stat().st_size
+                if size > max_bytes:
+                    echo(f"  skip {inp.name} ({size / 1048576:.1f}MB > {max_file_size}MB)", err=True)
+                else:
+                    kept.append((inp, lbl))
+            dataset.data = kept
+            filtered = original - len(kept)
             if filtered > 0:
-                echo(f"Filtered {filtered}/{original} {name} samples > {max_file_size}MB")
+                echo(f"Filtered {filtered}/{original} {name} samples > {max_file_size}MB", err=True)
         if len(train_data) == 0 or len(test_data) == 0:
             echo("Error: no samples remain after filtering", err=True)
             sys.exit(1)
@@ -269,7 +274,18 @@ def main(
     if wandb_project:
         from lightning.pytorch.loggers import WandbLogger
 
+        # Collect sample IDs from train+val datasets
+        sample_ids = sorted(set(
+            Path(inp).stem
+            for dataset in [train_data, test_data]
+            for inp, _lbl in dataset.data
+        ))
+
+        # Auto-compute dataset version from sample IDs if not provided
         dataset_version = os.environ.get("DATASET_VERSION", "")
+        if not dataset_version:
+            dataset_version = hashlib.md5("|".join(sample_ids).encode()).hexdigest()[:8]
+
         wandb_tags = [platform, f"ch{channels}", f"blk{residual_blocks}"]
         if gpu:
             wandb_tags.append("gpu")
@@ -281,13 +297,6 @@ def main(
             wandb_tags.append(f"sha:{git_sha}")
         run_id = os.environ.get("GITHUB_RUN_ID", "")
         wandb_run_name = f"ci-{git_sha}" if git_sha else None
-
-        # Collect sample IDs from train+val datasets
-        sample_ids = sorted(set(
-            Path(inp).stem
-            for dataset in [train_data, test_data]
-            for inp, _lbl in dataset.data
-        ))
 
         repo = os.environ.get("GITHUB_REPOSITORY", "")
         logger = WandbLogger(

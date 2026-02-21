@@ -49,11 +49,11 @@ on:
         default: false
         type: boolean
       wandb_project:
-        description: 'WandB project name (empty=disabled)'
+        description: 'WandB project name (empty=use WANDB_PROJECT var or elf-net-ci)'
         default: ''
         type: string
       dataset_version:
-        description: 'Dataset version tag for WandB (e.g. oa-s3-v1, mp-gga-v2)'
+        description: 'Dataset version tag for WandB (auto=hash of sample IDs; override with e.g. oa-s3-v1)'
         default: ''
         type: string
       debug:
@@ -99,49 +99,12 @@ jobs:
 
       - name: Sync S3 training data
         if: (inputs.s3_samples || '10') != '0'
-        env:
-          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
-          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
-        run: |
-          echo "Syncing up to $S3_SAMPLES samples from S3 (max ${MAX_FILE_SIZE}MB)..."
-          mkdir -p /tmp/electrai/input /tmp/electrai/label
-
-          # List files with sizes, filter by max_file_size, take up to S3_SAMPLES
-          MAX_BYTES=$((MAX_FILE_SIZE * 1024 * 1024))
-          if [ "$MAX_FILE_SIZE" = "0" ]; then
-            MAX_BYTES=999999999999
-          fi
-
-          # Get file list with sizes using s3api (JSON for reliable parsing)
-          ENTRIES=$(aws s3api list-objects-v2 \
-            --bucket openathena \
-            --prefix electrai/input/ \
-            --query "Contents[?Size<=\`$MAX_BYTES\`].[Key,Size]" \
-            --output text | head -n "$S3_SAMPLES")
-
-          DOWNLOADED=0
-          SKIPPED=0
-          while IFS=$'\t' read -r key size; do
-            [ -z "$key" ] && continue
-            f=$(basename "$key")
-            SIZE_MB=$(echo "scale=1; $size / 1048576" | bc)
-            echo "  $f (${SIZE_MB}MB)"
-            aws s3 cp "s3://openathena/electrai/input/$f" /tmp/electrai/input/
-            aws s3 cp "s3://openathena/electrai/label/$f" /tmp/electrai/label/
-            DOWNLOADED=$((DOWNLOADED + 1))
-          done <<< "$ENTRIES"
-
-          echo ""
-          echo "Downloaded $DOWNLOADED samples (skipped files > ${MAX_FILE_SIZE}MB)"
-
-          # Create a map file with GGA key containing the downloaded sample IDs
-          echo "Creating map file..."
-          ls /tmp/electrai/input/*.CHGCAR | sed 's|.*/||; s|\.CHGCAR||' | \
-            python3 -c "import json,sys; ids=[s.strip() for s in sys.stdin]; print(json.dumps({'GGA': ids}))" | \
-            gzip > /tmp/electrai/map_subset.json.gz
-
-          echo "Input files: $(ls /tmp/electrai/input/ | wc -l)"
-          echo "Label files: $(ls /tmp/electrai/label/ | wc -l)"
+        id: s3
+        run: >
+          uv run scripts/s3_sync.py
+          -n "${{ inputs.s3_samples || '10' }}"
+          -M "${{ inputs.max_file_size || '25' }}"
+          -v
 
       - name: Run GPU benchmark
         id: gpu
@@ -150,7 +113,7 @@ jobs:
           MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
           WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
-          DATASET_VERSION: ${{ inputs.dataset_version }}
+          DATASET_VERSION: ${{ inputs.dataset_version || steps.s3.outputs.DATASET_HASH }}
           INSTANCE_TYPE: ${{ inputs.instance_type || 'g6.xlarge' }}
         run: |
           echo "=== GPU BENCHMARK ==="
@@ -159,7 +122,7 @@ jobs:
 
           DATA_ARGS=""
           if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
-            DATA_ARGS="--data-path /tmp/electrai/input --label-path /tmp/electrai/label --map-path /tmp/electrai/map_subset.json.gz"
+            DATA_ARGS="--data-path data/s3/input --label-path data/s3/label --map-path data/s3/map_subset.json.gz"
             echo "Using S3 data ($S3_SAMPLES samples)"
           else
             echo "Using repo test data (5 samples)"
@@ -209,7 +172,7 @@ jobs:
 
           DATA_ARGS=""
           if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
-            DATA_ARGS="--data-path /tmp/electrai/input --label-path /tmp/electrai/label --map-path /tmp/electrai/map_subset.json.gz"
+            DATA_ARGS="--data-path data/s3/input --label-path data/s3/label --map-path data/s3/map_subset.json.gz"
             echo "Using S3 data ($S3_SAMPLES samples)"
           else
             echo "Using repo test data (5 samples)"
@@ -257,7 +220,8 @@ jobs:
           echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
           WANDB_RUN_URL="${{ steps.gpu.outputs.WANDB_RUN_URL }}"
           if [ -n "$WANDB_RUN_URL" ]; then
-            echo "| WandB | [${WANDB_PROJECT}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
+            WANDB_RUN_ID=$(echo "$WANDB_RUN_URL" | grep -oP '[^/]+$')
+            echo "| WandB | [${WANDB_PROJECT}](https://wandb.ai/PrinceOA/$WANDB_PROJECT) run [${WANDB_RUN_ID}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
           elif [ -n "$WANDB_PROJECT" ]; then
             echo "| WandB | [$WANDB_PROJECT](https://wandb.ai/PrinceOA/$WANDB_PROJECT) |" >> $GITHUB_STEP_SUMMARY
           fi
