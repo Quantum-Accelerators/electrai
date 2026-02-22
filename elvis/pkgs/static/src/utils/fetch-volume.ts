@@ -54,7 +54,7 @@ export async function fetchVolumeFromS3(
   const { bucket, key } = parseS3Uri(uri)
 
   const client = new S3Client({
-    region: 'us-east-1',
+    region: creds.region ?? 'us-east-1',
     credentials: {
       accessKeyId: creds.accessKeyId,
       secretAccessKey: creds.secretAccessKey,

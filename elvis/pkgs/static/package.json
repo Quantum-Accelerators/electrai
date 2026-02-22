@@ -14,7 +14,9 @@
     "@elvis/core": "workspace:*",
     "@aws-sdk/client-s3": "^3.800.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "use-kbd": "https://github.com/runsascoded/use-kbd#a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce",
+    "aws-static-sso": "https://github.com/runsascoded/aws-static-sso#13075f68e82e86ed23156764922fb7333c912eea&path:/client"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

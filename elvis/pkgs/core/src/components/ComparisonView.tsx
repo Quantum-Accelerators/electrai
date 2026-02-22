@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import { DensityViewer } from './DensityViewer.tsx'
 import type { VolumeData } from '../types.ts'
 import styles from './ComparisonView.module.css'
@@ -8,9 +9,11 @@ interface ComparisonViewProps {
   opacity: number
   showAtoms: boolean
   showUnitCell: boolean
+  showWorldAxes: boolean
+  activeMovements?: RefObject<Set<string>>
 }
 
-export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showUnitCell }: ComparisonViewProps) {
+export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showUnitCell, showWorldAxes, activeMovements }: ComparisonViewProps) {
   return (
     <div className={styles.comparisonGrid}>
       {volumes.map(({ data, label }) => (
@@ -21,6 +24,8 @@ export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showUnit
             opacity={opacity}
             showAtoms={showAtoms}
             showUnitCell={showUnitCell}
+            showWorldAxes={showWorldAxes}
+            activeMovements={activeMovements}
             label={label}
           />
         </div>

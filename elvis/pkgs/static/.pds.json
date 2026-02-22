@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "use-kbd": {
+      "localPath": "../../../../../js/use-kbd",
+      "github": "runsascoded/use-kbd",
+      "npm": "use-kbd",
+      "distBranch": "dist"
+    },
+    "aws-static-sso": {
+      "localPath": "../../../../../aws-static-sso/client",
+      "github": "runsascoded/aws-static-sso",
+      "npm": "aws-static-sso",
+      "distBranch": "dist",
+      "subdir": "/client"
+    }
+  }
+}

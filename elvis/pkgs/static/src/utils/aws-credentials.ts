@@ -3,6 +3,7 @@ export interface AWSCredentials {
   secretAccessKey: string
   sessionToken?: string
   expiration?: string
+  region?: string
 }
 
 const STORAGE_KEY = 'elvis-aws-credentials'

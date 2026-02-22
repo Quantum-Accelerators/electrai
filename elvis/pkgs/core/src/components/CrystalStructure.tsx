@@ -9,11 +9,16 @@ interface CrystalStructureProps {
   volume: VolumeData
   showAtoms: boolean
   showUnitCell: boolean
+  showWorldAxes: boolean
 }
 
-// Lattice vector colors — warm/distinct tones, intentionally different from gizmo RGB
-const LATTICE_COLORS = ['#ff6644', '#44dd44', '#44aaff'] as const
+// Lattice vector colors — YOV (yellow, orange, violet), warm complement of gizmo RGB
+const LATTICE_COLORS = ['#ffcc00', '#ff8822', '#aa55ff'] as const
 const LATTICE_LABELS = ['a', 'b', 'c'] as const
+
+// World axis colors — match gizmo RGB
+const WORLD_COLORS = ['#ff3653', '#0adb50', '#2c8fff'] as const
+const WORLD_LABELS = ['X', 'Y', 'Z'] as const
 
 function AxisCylinder({ from, to, color }: {
   from: [number, number, number]
@@ -64,7 +69,7 @@ function AxisLabel({ position, label, color }: {
   )
 }
 
-export function CrystalStructure({ volume, showAtoms, showUnitCell }: CrystalStructureProps) {
+export function CrystalStructure({ volume, showAtoms, showUnitCell, showWorldAxes }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
   // Group atoms by element for instanced rendering
@@ -119,6 +124,26 @@ export function CrystalStructure({ volume, showAtoms, showUnitCell }: CrystalStr
 
   const cellLineMat = useMemo(() => new LineBasicMaterial({ color: 0xffffff, opacity: 0.35, transparent: true }), [])
 
+  // World axes: fixed-length XYZ arrows, scaled to match average lattice vector length
+  const worldAxesData = useMemo(() => {
+    const avgLen = axisEndpoints.reduce((sum, ep) => {
+      return sum + new Vector3(...ep).sub(new Vector3(...origin)).length()
+    }, 0) / 3
+    const len = avgLen * 0.6
+    const o = origin
+    const endpoints: [number, number, number][] = [
+      [o[0] + len, o[1], o[2]],
+      [o[0], o[1] + len, o[2]],
+      [o[0], o[1], o[2] + len],
+    ]
+    const labels = endpoints.map((ep, i) => {
+      const dir = new Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0)
+      const labelPos = new Vector3(...ep).add(dir.multiplyScalar(0.4))
+      return labelPos.toArray() as [number, number, number]
+    })
+    return { endpoints, labels }
+  }, [axisEndpoints, origin])
+
   return (
     <group>
       {showAtoms && Array.from(atomGroups.entries()).map(([element, positions]) => (
@@ -132,6 +157,16 @@ export function CrystalStructure({ volume, showAtoms, showUnitCell }: CrystalStr
           ))}
           {labelPositions.map((pos, i) => (
             <AxisLabel key={`label-${i}`} position={pos} label={LATTICE_LABELS[i]} color={LATTICE_COLORS[i]} />
+          ))}
+        </>
+      )}
+      {showWorldAxes && (
+        <>
+          {worldAxesData.endpoints.map((ep, i) => (
+            <AxisCylinder key={`world-${i}`} from={origin} to={ep} color={WORLD_COLORS[i]} />
+          ))}
+          {worldAxesData.labels.map((pos, i) => (
+            <AxisLabel key={`world-label-${i}`} position={pos} label={WORLD_LABELS[i]} color={WORLD_COLORS[i]} />
           ))}
         </>
       )}

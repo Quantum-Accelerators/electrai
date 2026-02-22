@@ -10,6 +10,8 @@ interface ControlsProps {
   onShowAtomsChange: (v: boolean) => void
   showUnitCell: boolean
   onShowUnitCellChange: (v: boolean) => void
+  showWorldAxes: boolean
+  onShowWorldAxesChange: (v: boolean) => void
   showSlice: boolean
   onShowSliceChange: (v: boolean) => void
   sliceAxis: 0 | 1 | 2
@@ -32,6 +34,8 @@ export function Controls({
   onShowAtomsChange,
   showUnitCell,
   onShowUnitCellChange,
+  showWorldAxes,
+  onShowWorldAxesChange,
   showSlice,
   onShowSliceChange,
   sliceAxis,
@@ -79,6 +83,11 @@ export function Controls({
       <label className={styles.toggle}>
         <input type="checkbox" checked={showUnitCell} onChange={e => onShowUnitCellChange(e.target.checked)} />
         Show unit cell
+      </label>
+
+      <label className={styles.toggle}>
+        <input type="checkbox" checked={showWorldAxes} onChange={e => onShowWorldAxesChange(e.target.checked)} />
+        Show XYZ axes
       </label>
 
       <hr className={styles.divider} />

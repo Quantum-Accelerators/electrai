@@ -75,12 +75,18 @@ importers:
       '@elvis/core':
         specifier: workspace:*
         version: link:../core
+      aws-static-sso:
+        specifier: https://github.com/runsascoded/aws-static-sso#13075f68e82e86ed23156764922fb7333c912eea&path:/client
+        version: https://codeload.github.com/runsascoded/aws-static-sso/tar.gz/13075f68e82e86ed23156764922fb7333c912eea#path:/client
       react:
         specifier: ^19.1.1
         version: 19.2.4
       react-dom:
         specifier: ^19.1.1
         version: 19.2.4(react@19.2.4)
+      use-kbd:
+        specifier: https://github.com/runsascoded/use-kbd#a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce
+        version: https://codeload.github.com/runsascoded/use-kbd/tar.gz/a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
     devDependencies:
       '@eslint/js':
         specifier: ^9.36.0
@@ -1137,6 +1143,10 @@ packages:
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
+  aws-static-sso@https://codeload.github.com/runsascoded/aws-static-sso/tar.gz/13075f68e82e86ed23156764922fb7333c912eea#path:/client:
+    resolution: {path: /client, tarball: https://codeload.github.com/runsascoded/aws-static-sso/tar.gz/13075f68e82e86ed23156764922fb7333c912eea}
+    version: 0.1.0-dist.5861105
+
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -1699,6 +1709,13 @@ packages:
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
+
+  use-kbd@https://codeload.github.com/runsascoded/use-kbd/tar.gz/a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce:
+    resolution: {tarball: https://codeload.github.com/runsascoded/use-kbd/tar.gz/a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce}
+    version: 0.9.0-dist.6fd6a13
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   use-sync-external-store@1.6.0:
     resolution: {integrity: sha512-Pp6GSwGP/NrPIrxVFAIkOQeyw8lFenOHijQWkUTrDvrF4ALqylP2C/KCkeS9dpUM3KvYRQhna5vt7IL95+ZQ9w==}
@@ -3233,6 +3250,8 @@ snapshots:
 
   argparse@2.0.1: {}
 
+  aws-static-sso@https://codeload.github.com/runsascoded/aws-static-sso/tar.gz/13075f68e82e86ed23156764922fb7333c912eea#path:/client: {}
+
   balanced-match@1.0.2: {}
 
   base64-js@1.5.1: {}
@@ -3782,6 +3801,11 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  use-kbd@https://codeload.github.com/runsascoded/use-kbd/tar.gz/a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
 
   use-sync-external-store@1.6.0(react@19.2.4):
     dependencies:

@@ -1,0 +1,3 @@
+packages:
+  - .
+  - ../../../../../aws-static-sso/client

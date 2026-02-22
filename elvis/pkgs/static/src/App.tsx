@@ -14,9 +14,13 @@ import {
   parseCHGCAR,
   useSettings,
 } from '@elvis/core'
+import { ShortcutsModal, Omnibar, SequenceModal, SpeedDial, useAction } from 'use-kbd'
+import type { SpeedDialAction } from 'use-kbd'
+import 'use-kbd/styles.css'
 import { OpfsVolumeStore, isOPFSSupported } from './storage/OpfsVolumeStore.ts'
 import { loadCredentials, saveCredentials } from './utils/aws-credentials.ts'
 import { fetchVolumeFromUrl, fetchVolumeFromS3 } from './utils/fetch-volume.ts'
+import { SSOAuthFlow } from './components/SSOAuthFlow.tsx'
 import type { FetchProgress } from './utils/fetch-volume.ts'
 import type { AWSCredentials } from './utils/aws-credentials.ts'
 import styles from './App.module.css'
@@ -42,12 +46,28 @@ function computeDefaultIsoLevel(data: Float32Array): number {
 
 const opfsStore = isOPFSSupported() ? new OpfsVolumeStore() : null
 
+const GithubIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+    <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+  </svg>
+)
+
+const speedDialActions: SpeedDialAction[] = [
+  {
+    key: 'github',
+    label: 'View source on GitHub',
+    icon: <GithubIcon />,
+    href: 'https://github.com/Quantum-Accelerators/electrai',
+  },
+]
+
 export default function App() {
   const [files, setFiles] = useState<LoadedFile[]>([])
   const [isoLevel, setIsoLevel] = useState(0)
   const [opacity, setOpacity] = useState(0.6)
   const [showAtoms, setShowAtoms] = useState(true)
   const [showUnitCell, setShowUnitCell] = useState(true)
+  const [showWorldAxes, setShowWorldAxes] = useState(false)
   const [showSlice, setShowSlice] = useState(false)
   const [sliceAxis, setSliceAxis] = useState<0 | 1 | 2>(2)
   const [sliceIndex, setSliceIndex] = useState(0)
@@ -72,6 +92,146 @@ export default function App() {
   } | null>(null)
   const addFileInputRef = useRef<HTMLInputElement>(null)
   const { settings, update: updateSettings } = useSettings()
+
+  // Camera movement state (shared with CameraController inside Canvas)
+  const activeMovements = useRef(new Set<string>())
+
+  const startMovement = useCallback((dir: string) => {
+    activeMovements.current.add(dir)
+  }, [])
+
+  const MOVEMENT_KEYS = useMemo(() => new Set([
+    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+    '-', '=', '[', ']', 'Shift',
+  ]), [])
+
+  useEffect(() => {
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (MOVEMENT_KEYS.has(e.key)) {
+        activeMovements.current.clear()
+      }
+    }
+    window.addEventListener('keyup', onKeyUp)
+    return () => window.removeEventListener('keyup', onKeyUp)
+  }, [MOVEMENT_KEYS])
+
+  // View toggles
+  useAction('view:toggle-atoms', {
+    label: 'Toggle atoms',
+    group: 'View',
+    defaultBindings: ['a'],
+    handler: () => setShowAtoms(v => !v),
+  })
+  useAction('view:toggle-unit-cell', {
+    label: 'Toggle unit cell',
+    group: 'View',
+    defaultBindings: ['u'],
+    handler: () => setShowUnitCell(v => !v),
+  })
+  useAction('view:toggle-world-axes', {
+    label: 'Toggle XYZ axes',
+    group: 'View',
+    defaultBindings: ['x'],
+    handler: () => setShowWorldAxes(v => !v),
+  })
+  useAction('view:toggle-slice', {
+    label: 'Toggle 2D slice',
+    group: 'View',
+    defaultBindings: ['s'],
+    handler: () => setShowSlice(v => !v),
+  })
+  useAction('slice:axis-x', {
+    label: 'Slice along X',
+    group: 'Slice',
+    defaultBindings: ['1'],
+    handler: () => { setShowSlice(true); setSliceAxis(0) },
+  })
+  useAction('slice:axis-y', {
+    label: 'Slice along Y',
+    group: 'Slice',
+    defaultBindings: ['2'],
+    handler: () => { setShowSlice(true); setSliceAxis(1) },
+  })
+  useAction('slice:axis-z', {
+    label: 'Slice along Z',
+    group: 'Slice',
+    defaultBindings: ['3'],
+    handler: () => { setShowSlice(true); setSliceAxis(2) },
+  })
+
+  // Camera navigation
+  useAction('nav:pan-left', {
+    label: 'Pan left',
+    group: 'Camera',
+    defaultBindings: ['arrowleft'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-left') },
+  })
+  useAction('nav:pan-right', {
+    label: 'Pan right',
+    group: 'Camera',
+    defaultBindings: ['arrowright'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-right') },
+  })
+  useAction('nav:pan-up', {
+    label: 'Pan up',
+    group: 'Camera',
+    defaultBindings: ['arrowup'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-up') },
+  })
+  useAction('nav:pan-down', {
+    label: 'Pan down',
+    group: 'Camera',
+    defaultBindings: ['arrowdown'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-down') },
+  })
+  useAction('nav:orbit-left', {
+    label: 'Orbit left',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowleft'],
+    handler: (e) => { if (e?.repeat) return; startMovement('orbit-left') },
+  })
+  useAction('nav:orbit-right', {
+    label: 'Orbit right',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowright'],
+    handler: (e) => { if (e?.repeat) return; startMovement('orbit-right') },
+  })
+  useAction('nav:orbit-up', {
+    label: 'Orbit up',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowup'],
+    handler: (e) => { if (e?.repeat) return; startMovement('orbit-up') },
+  })
+  useAction('nav:orbit-down', {
+    label: 'Orbit down',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowdown'],
+    handler: (e) => { if (e?.repeat) return; startMovement('orbit-down') },
+  })
+  useAction('nav:zoom-in', {
+    label: 'Zoom in',
+    group: 'Camera',
+    defaultBindings: ['='],
+    handler: (e) => { if (e?.repeat) return; startMovement('zoom-in') },
+  })
+  useAction('nav:zoom-out', {
+    label: 'Zoom out',
+    group: 'Camera',
+    defaultBindings: ['-'],
+    handler: (e) => { if (e?.repeat) return; startMovement('zoom-out') },
+  })
+  useAction('nav:roll-ccw', {
+    label: 'Roll CCW',
+    group: 'Camera',
+    defaultBindings: ['['],
+    handler: (e) => { if (e?.repeat) return; startMovement('roll-ccw') },
+  })
+  useAction('nav:roll-cw', {
+    label: 'Roll CW',
+    group: 'Camera',
+    defaultBindings: [']'],
+    handler: (e) => { if (e?.repeat) return; startMovement('roll-cw') },
+  })
 
   // Auto-restore last active volume from OPFS on mount
   useEffect(() => {
@@ -253,7 +413,14 @@ export default function App() {
           onClose={() => setAwsModalOpen(false)}
           onSave={(creds) => { saveCredentials(creds); setAwsCreds(creds) }}
           currentCreds={awsCreds}
+          ssoContent={
+            <SSOAuthFlow
+              onSave={(creds) => { saveCredentials(creds); setAwsCreds(creds) }}
+              onClose={() => setAwsModalOpen(false)}
+            />
+          }
         />
+        <SpeedDial actions={speedDialActions} />
       </div>
     )
   }
@@ -270,6 +437,8 @@ export default function App() {
             opacity={opacity}
             showAtoms={showAtoms}
             showUnitCell={showUnitCell}
+            showWorldAxes={showWorldAxes}
+            activeMovements={activeMovements}
           />
         ) : (
           <DensityViewer
@@ -278,6 +447,8 @@ export default function App() {
             opacity={opacity}
             showAtoms={showAtoms}
             showUnitCell={showUnitCell}
+            showWorldAxes={showWorldAxes}
+            activeMovements={activeMovements}
           />
         )}
         {showSlice && primaryFile && (
@@ -331,6 +502,8 @@ export default function App() {
           onShowAtomsChange={setShowAtoms}
           showUnitCell={showUnitCell}
           onShowUnitCellChange={setShowUnitCell}
+          showWorldAxes={showWorldAxes}
+          onShowWorldAxesChange={setShowWorldAxes}
           showSlice={showSlice}
           onShowSliceChange={setShowSlice}
           sliceAxis={sliceAxis}
@@ -371,6 +544,11 @@ export default function App() {
         onConfirm={handleSizeConfirm}
         onCancel={() => setSizeConfirm(null)}
       />
+
+      <ShortcutsModal editable />
+      <Omnibar />
+      <SequenceModal />
+      <SpeedDial actions={speedDialActions} />
     </div>
   )
 }

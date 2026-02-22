@@ -3,4 +3,5 @@ export interface AWSCredentials {
   secretAccessKey: string
   sessionToken?: string
   expiration?: string
+  region?: string
 }
