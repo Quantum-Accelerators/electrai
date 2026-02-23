@@ -139,8 +139,8 @@ export default function App() {
     }
   }, [primaryFile])
 
-  const snapCamera = useCallback((dir: [number, number, number], up: [number, number, number] = [0, 1, 0]) => {
-    cameraSnap.current = { direction: dir, up }
+  const snapCamera = useCallback((dir: [number, number, number]) => {
+    cameraSnap.current = { direction: dir }
   }, [])
 
   // View toggles (t _ chords)
@@ -261,13 +261,13 @@ export default function App() {
     label: 'Look down Y',
     group: 'Camera',
     defaultBindings: ['y'],
-    handler: () => snapCamera([0, 1, 0], [0, 0, -1]),
+    handler: () => snapCamera([0, 1, 0]),
   })
   useAction('cam:snap-y-neg', {
     label: 'Look down -Y',
     group: 'Camera',
     defaultBindings: ['shift+y'],
-    handler: () => snapCamera([0, -1, 0], [0, 0, 1]),
+    handler: () => snapCamera([0, -1, 0]),
   })
   useAction('cam:snap-z', {
     label: 'Look down Z',

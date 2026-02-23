@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
-import { Matrix4, Quaternion, Spherical, Vector3 } from 'three'
+import { Quaternion, Spherical, Vector3 } from 'three'
 import type { RefObject, MutableRefObject } from 'react'
 
 const ORBIT_SPEED = 1.5  // rad/s
@@ -20,8 +20,6 @@ const _viewDir = new Vector3()
 export interface CameraSnapTarget {
   /** Direction vector (camera offset from orbit target, will be normalized and scaled to current distance) */
   direction: [number, number, number]
-  /** Up vector for the camera */
-  up: [number, number, number]
 }
 
 interface CameraControllerProps {
@@ -38,8 +36,9 @@ interface SnapState {
   duration: number
 }
 
-const _lookAtMatrix = new Matrix4()
 const _snapQ = new Quaternion()
+const _rotQ = new Quaternion()
+const _axis = new Vector3()
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
@@ -60,15 +59,29 @@ export function CameraController({ activeMovements, cameraSnap, animationDuratio
       cameraSnap.current = null
       const radius = camera.position.distanceTo(target)
 
+      // Current and target offset directions (camera position relative to orbit target)
+      const currentDir = _offset.copy(camera.position).sub(target).normalize()
+      const targetDir = new Vector3(...snap.direction).normalize()
+      const dot = currentDir.dot(targetDir)
+
+      if (dot > 0.9999) return // already aligned, skip
+
       // Capture start orientation from current camera
       const startQuat = camera.quaternion.clone()
 
-      // Compute end orientation via lookAt matrix
-      const endDir = new Vector3(...snap.direction).normalize()
-      const endPos = new Vector3().copy(target).addScaledVector(endDir, radius)
-      const endUp = new Vector3(...snap.up)
-      _lookAtMatrix.lookAt(endPos, target, endUp)
-      const endQuat = new Quaternion().setFromRotationMatrix(_lookAtMatrix)
+      // Minimal rotation: rotate current viewing frame to align with target direction
+      if (dot < -0.9999) {
+        // Antiparallel: rotate 180° around camera up
+        _axis.copy(camera.up).normalize()
+        _rotQ.setFromAxisAngle(_axis, Math.PI)
+      } else {
+        // Shortest arc rotation from currentDir to targetDir
+        _axis.crossVectors(currentDir, targetDir).normalize()
+        _rotQ.setFromAxisAngle(_axis, Math.acos(Math.max(-1, Math.min(1, dot))))
+      }
+
+      // Apply rotation to current orientation: endQuat = rotQ * startQuat
+      const endQuat = new Quaternion().multiplyQuaternions(_rotQ, startQuat)
 
       snapState.current = { startQuat, endQuat, radius, elapsed: 0, duration: animationDuration }
     }
