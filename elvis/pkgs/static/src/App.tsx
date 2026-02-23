@@ -563,6 +563,13 @@ export default function App() {
             </button>
           </div>
         </div>
+        {opfsStore && (
+          <VolumeGallery
+            store={opfsStore}
+            currentVolumeId={currentVolumeId}
+            onSelect={handleGallerySelect}
+          />
+        )}
         <AWSCredentialsModal
           open={awsModalOpen}
           onClose={() => setAwsModalOpen(false)}

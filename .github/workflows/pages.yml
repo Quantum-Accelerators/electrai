@@ -33,7 +33,7 @@ jobs:
       - run: pnpm build
         working-directory: elvis
         env:
-          BASE_PATH: /electrai/
+          BASE_PATH: /
       - uses: actions/upload-pages-artifact@v3
         with:
           path: elvis/pkgs/static/dist

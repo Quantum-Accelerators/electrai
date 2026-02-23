@@ -58,7 +58,7 @@ export function CameraController({
   const camera = useThree(s => s.camera)
   const controls = useThree(s => s.controls) as { target: Vector3; update: () => void } | null
   const snapState = useRef<SnapState | null>(null)
-  const initializedRef = useRef(false)
+  const initFramesRef = useRef(0)
   const camSyncRef = useRef<{ lastChange: number; reported: boolean }>({ lastChange: 0, reported: true })
   const prevCamRef = useRef<[number, number, number, number, number, number] | null>(null)
 
@@ -66,26 +66,24 @@ export function CameraController({
     if (!controls) return
     const target = controls.target
 
-    // Initial camera setup from URL (one-time)
-    if (!initializedRef.current) {
-      initializedRef.current = true
-      if (initialCamera?.current) {
-        const [theta, phi, zoom, roll] = initialCamera.current
-        initialCamera.current = null
-        _spherical.set(zoom, MathUtils.degToRad(phi), MathUtils.degToRad(theta))
-        _offset.setFromSpherical(_spherical)
-        camera.position.copy(target).add(_offset)
-        camera.up.set(0, 1, 0)
+    // Initial camera setup from URL — re-apply for several frames to
+    // override OrbitControls which may reset orientation on early frames
+    if (initialCamera?.current && initFramesRef.current < 5) {
+      const [theta, phi, zoom, roll] = initialCamera.current
+      _spherical.set(zoom, MathUtils.degToRad(phi), MathUtils.degToRad(theta))
+      _offset.setFromSpherical(_spherical)
+      camera.position.copy(target).add(_offset)
+      camera.up.set(0, 1, 0)
+      camera.lookAt(target)
+      if (Math.abs(roll) > 0.05) {
+        camera.getWorldDirection(_viewDir)
+        camera.up.applyAxisAngle(_viewDir, MathUtils.degToRad(roll))
         camera.lookAt(target)
-        // Apply roll: rotate up-vector around viewing direction
-        if (Math.abs(roll) > 0.05) {
-          camera.getWorldDirection(_viewDir)
-          camera.up.applyAxisAngle(_viewDir, MathUtils.degToRad(roll))
-          camera.lookAt(target)
-        }
-        controls.update()
-        return
       }
+      controls.update()
+      initFramesRef.current++
+      if (initFramesRef.current >= 5) initialCamera.current = null
+      return
     }
 
     // Handle snap trigger
