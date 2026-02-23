@@ -70,11 +70,11 @@ class LossTracker:
 @option("-B", "--residual-blocks", default=2, help="Number of residual blocks (default: 2, production: 16)")
 @option("-C", "--channels", default=8, help="Number of model channels (default: 8, production: 32-64)")
 @option("-c", "--check/--no-check", default=True, help="Check val_loss against expected value")
-@option("-d", "--data-path", default=None, help="Path to input data (default: data/MP/chgcars/input)")
+@option("-d", "--data-path", default=None, help="Path to input data (default: s3/openathena/electrai/input)")
 @option("-e", "--epochs", default=5, help="Number of training epochs")
 @option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
 @option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
-@option("-l", "--label-path", default=None, help="Path to label data (default: data/MP/chgcars/label)")
+@option("-l", "--label-path", default=None, help="Path to label data (default: s3/openathena/electrai/label)")
 @option("-M", "--max-file-size", default=0, type=float, help="Skip input files larger than N MB (0=no limit)")
 @option("-m", "--map-path", default=None, help="Path to map file (default: data/MP/map/map_sample.json.gz)")
 @option("-s", "--seed", default=42, help="Random seed for reproducibility")
@@ -133,8 +133,8 @@ def main(
 
     # Dataset
     cfg.dataset_name = "mp"
-    cfg.data_path = data_path or str(repo_root / "data/MP/chgcars/input")
-    cfg.label_path = label_path or str(repo_root / "data/MP/chgcars/label")
+    cfg.data_path = data_path or str(repo_root / "s3/openathena/electrai/input")
+    cfg.label_path = label_path or str(repo_root / "s3/openathena/electrai/label")
     cfg.map_path = map_path or str(repo_root / "data/MP/map/map_sample.json.gz")
     cfg.rho_type = "chgcar"
     cfg.functional = "GGA"
