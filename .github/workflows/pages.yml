@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            elvis
+            .github
       - uses: pnpm/action-setup@v4
         with:
           version: 10
