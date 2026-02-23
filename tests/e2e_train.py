@@ -275,11 +275,11 @@ def main(
         from lightning.pytorch.loggers import WandbLogger
 
         # Collect sample IDs from train+val datasets
-        sample_ids = sorted(set(
+        sample_ids = sorted({
             Path(inp).stem
             for dataset in [train_data, test_data]
             for inp, _lbl in dataset.data
-        ))
+        })
 
         # Auto-compute dataset version from sample IDs if not provided
         dataset_version = os.environ.get("DATASET_VERSION", "")
