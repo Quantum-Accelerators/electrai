@@ -12,17 +12,19 @@ import {
   SizeConfirmModal,
   Settings,
   parseCHGCAR,
+  parsePymatgenChgcar,
   useSettings,
   fracToCart,
 } from '@elvis/core'
 import { ShortcutsModal, Omnibar, SequenceModal, SpeedDial, useAction } from 'use-kbd'
 import type { SpeedDialAction } from 'use-kbd'
 import 'use-kbd/styles.css'
-import { useUrlState, floatParam, boolParam, intParam } from 'use-prms'
+import { useUrlState, floatParam, boolParam, intParam, stringParam } from 'use-prms'
 import type { Param } from 'use-prms'
 import { OpfsVolumeStore, isOPFSSupported } from './storage/OpfsVolumeStore.ts'
 import { loadCredentials, saveCredentials } from './utils/aws-credentials.ts'
-import { fetchVolumeFromUrl, fetchVolumeFromS3 } from './utils/fetch-volume.ts'
+import { fetchVolumeFromUrl, fetchVolumeFromS3, s3UriToHttps, fetchVolumeJsonGz } from './utils/fetch-volume.ts'
+import { decompressGzip } from './utils/gzip.ts'
 import { SSOAuthFlow } from './components/SSOAuthFlow.tsx'
 import type { FetchProgress } from './utils/fetch-volume.ts'
 import type { AWSCredentials } from './utils/aws-credentials.ts'
@@ -77,6 +79,34 @@ const camParam: Param<CamState> = {
 
 const opfsStore = isOPFSSupported() ? new OpfsVolumeStore() : null
 
+async function parseBlob(blob: Blob, filename: string): Promise<VolumeData> {
+  if (filename.toLowerCase().endsWith('.json.gz')) {
+    const buf = await decompressGzip(blob)
+    const json = JSON.parse(new TextDecoder().decode(buf))
+    return parsePymatgenChgcar(json, filename)
+  }
+  return parseCHGCAR(await blob.text())
+}
+
+const MP_S3_PREFIX = 's3://materialsproject-parsed/chgcars/'
+
+/** Extract mp-XXXXXX ID from a filename or S3 URI, if present. */
+function extractMpId(s: string): string | undefined {
+  const m = s.match(/(mp-\d+)/)
+  return m?.[1]
+}
+
+/** Build the canonical MP S3 URI for a material ID. */
+function mpS3Uri(mpId: string): string {
+  return `${MP_S3_PREFIX}${mpId}.json.gz`
+}
+
+const EXAMPLES = [
+  { mpId: 'mp-1000020', label: 'Fe\u2082Cu\u2082O\u2084 (8 MB)' },
+  { mpId: 'mp-1828986', label: 'Na\u2082Al\u2082Si\u2084O\u2081\u2082 (10 MB)' },
+  { mpId: 'mp-1000005', label: '17 MB' },
+]
+
 const GithubIcon = () => (
   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
     <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
@@ -105,6 +135,7 @@ export default function App() {
   const [sliceIndex, setSliceIndex] = useUrlState('si', intParam(0), { debounce: 300 })
   const [discreteOrbit, setDiscreteOrbit] = useUrlState('do', boolParam)
   const [cam, setCam] = useUrlState('cam', camParam)
+  const [materialId, setMaterialId] = useUrlState('m', stringParam(''))
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
   )
@@ -398,10 +429,9 @@ export default function App() {
       if (!blob || cancelled) return
       const volumes = await opfsStore.list()
       const vol = volumes.find(v => v.id === currentVolumeId)
-      const text = await blob.text()
-      const data = parseCHGCAR(text)
-      if (cancelled) return
       const filename = vol?.filename ?? 'CHGCAR'
+      const data = await parseBlob(blob, filename)
+      if (cancelled) return
       setFiles([{ data, filename }])
       setIsoLevel(computeDefaultIsoLevel(data.grid.data))
       setSliceIndex(Math.floor(data.grid.dims[2] / 2))
@@ -410,6 +440,10 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoad = useCallback(async (data: VolumeData, filename: string, blob?: Blob) => {
+    // Best-effort set ?m= param from MP material ID in filename
+    const mpId = extractMpId(filename)
+    setMaterialId(mpId ?? '')
+
     setFiles(prev => {
       const next = [...prev, { data, filename }]
       if (prev.length === 0) {
@@ -442,26 +476,26 @@ export default function App() {
   }, [handleLoad])
 
   const handleGallerySelect = useCallback(async (_id: string, blob: Blob) => {
-    const text = await blob.text()
-    const data = parseCHGCAR(text)
-    setFiles([{ data, filename: '' }])
-    setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-    setSliceIndex(Math.floor(data.grid.dims[2] / 2))
-    setCurrentVolumeId(_id)
-    // Update filename from store metadata
+    // Get filename from store metadata first (needed for format detection)
+    let filename = ''
     if (opfsStore) {
       const volumes = await opfsStore.list()
       const vol = volumes.find(v => v.id === _id)
-      if (vol) {
-        setFiles([{ data, filename: vol.filename }])
-      }
+      if (vol) filename = vol.filename
     }
+    const data = await parseBlob(blob, filename)
+    setFiles([{ data, filename }])
+    setIsoLevel(computeDefaultIsoLevel(data.grid.data))
+    setSliceIndex(Math.floor(data.grid.dims[2] / 2))
+    setCurrentVolumeId(_id)
   }, [setCurrentVolumeId])
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setUrlLoading(true)
     setFetchStatus(null)
     try {
+      const isJsonGz = url.toLowerCase().endsWith('.json.gz')
+
       const onProgress = (p: FetchProgress) => {
         if (p.phase === 'head') setFetchStatus('Checking file...')
         else if (p.phase === 'header' && p.header) {
@@ -469,35 +503,76 @@ export default function App() {
           const elems = p.header.elements.join('-')
           const size = p.contentLength ? ` (${(p.contentLength / (1024 * 1024)).toFixed(1)} MB)` : ''
           setFetchStatus(`${elems} ${dims}${size} \u2014 downloading...`)
-        } else if (p.phase === 'downloading') setFetchStatus('Downloading...')
+        } else if (p.phase === 'downloading') {
+          const size = p.contentLength ? ` (${(p.contentLength / (1024 * 1024)).toFixed(1)} MB)` : ''
+          setFetchStatus(`Downloading${size}...`)
+        }
       }
 
-      let blob: Blob, filename: string
+      // Resolve fetch URL: s3:// → anonymous HTTPS for .json.gz, credentialed for others
+      let fetchUrl = url
       if (url.startsWith('s3://')) {
-        if (!awsCreds) {
-          setAwsModalOpen(true)
-          setUrlLoading(false)
+        if (isJsonGz) {
+          fetchUrl = s3UriToHttps(url)
+        } else {
+          if (!awsCreds) {
+            setAwsModalOpen(true)
+            setUrlLoading(false)
+            return
+          }
+          const result = await fetchVolumeFromS3(url, awsCreds, onProgress)
+          const text = await result.blob.text()
+          const data = parseCHGCAR(text)
+          handleLoad(data, result.filename, result.blob)
+          setFetchStatus(null)
           return
         }
-        const result = await fetchVolumeFromS3(url, awsCreds, onProgress)
-        blob = result.blob
-        filename = result.filename
-      } else {
-        const result = await fetchVolumeFromUrl(url, onProgress)
-        blob = result.blob
-        filename = result.filename
       }
 
-      const text = await blob.text()
-      const data = parseCHGCAR(text)
-      handleLoad(data, filename, blob)
+      if (isJsonGz) {
+        const { blob, json, filename } = await fetchVolumeJsonGz(fetchUrl, onProgress)
+        const data = parsePymatgenChgcar(json, filename)
+        handleLoad(data, filename, blob)
+      } else {
+        const result = await fetchVolumeFromUrl(fetchUrl, onProgress)
+        const text = await result.blob.text()
+        const data = parseCHGCAR(text)
+        handleLoad(data, result.filename, result.blob)
+      }
       setFetchStatus(null)
     } catch (e) {
+      // For s3:// .json.gz, if anonymous fetch fails (403), fall back to credentialed path
+      if (url.startsWith('s3://') && url.toLowerCase().endsWith('.json.gz')) {
+        if (awsCreds) {
+          try {
+            setFetchStatus('Anonymous access failed, trying with credentials...')
+            const onProgress = (p: FetchProgress) => {
+              if (p.phase === 'downloading') setFetchStatus('Downloading with credentials...')
+            }
+            const result = await fetchVolumeFromS3(url, awsCreds, onProgress)
+            const data = await parseBlob(result.blob, result.filename)
+            handleLoad(data, result.filename, result.blob)
+            setFetchStatus(null)
+            return
+          } catch (e2) {
+            setFetchStatus(`Error: ${e2 instanceof Error ? e2.message : String(e2)}`)
+            return
+          }
+        }
+      }
       setFetchStatus(`Error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setUrlLoading(false)
     }
   }, [awsCreds, handleLoad])
+
+  // Auto-load from ?m= URL param on mount
+  const materialIdRef = useRef(materialId)
+  useEffect(() => {
+    const m = materialIdRef.current
+    if (!m || files.length > 0) return
+    handleUrlSubmit(mpS3Uri(m))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSizeConfirm = useCallback(async (cache: boolean) => {
     if (!sizeConfirm || !opfsStore) return
@@ -511,8 +586,7 @@ export default function App() {
   const handleAddFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const text = await file.text()
-    const data = parseCHGCAR(text)
+    const data = await parseBlob(file, file.name)
     setFiles(prev => [...prev, { data, filename: file.name }])
     e.target.value = ''
   }, [])
@@ -546,6 +620,23 @@ export default function App() {
               {fetchStatus}
             </div>
           )}
+          <div style={{ padding: '4px 16px', fontSize: 12, color: '#666' }}>
+            Examples:
+            <ul style={{ margin: '4px 0 0', paddingLeft: 20, lineHeight: 1.8 }}>
+              {EXAMPLES.map(ex => (
+                <li key={ex.mpId}>
+                  <a
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); handleUrlSubmit(mpS3Uri(ex.mpId)) }}
+                    style={{ color: '#8ab', textDecoration: 'none' }}
+                  >
+                    {ex.mpId}
+                  </a>
+                  <span style={{ color: '#555' }}>{' \u2014 '}{ex.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
             <button
               onClick={() => setAwsModalOpen(true)}
@@ -692,7 +783,7 @@ export default function App() {
         <input
           ref={addFileInputRef}
           type="file"
-          accept=".CHGCAR,.ELFCAR,.npy"
+          accept=".CHGCAR,.ELFCAR,.npy,.json.gz"
           onChange={handleAddFile}
           style={{ display: 'none' }}
         />

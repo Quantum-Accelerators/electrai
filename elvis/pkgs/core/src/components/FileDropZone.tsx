@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { DragEvent, ChangeEvent } from 'react'
 import { parseCHGCAR } from '../parsers/chgcar.ts'
 import { parseNpy } from '../parsers/npy.ts'
+import { parsePymatgenChgcar } from '../parsers/pymatgen-chgcar.ts'
 import type { VolumeData } from '../types.ts'
 
 interface FileDropZoneProps {
@@ -19,7 +20,25 @@ export function FileDropZone({ onLoad }: FileDropZoneProps) {
     setLoading(true)
     try {
       const name = file.name.toLowerCase()
-      if (name.endsWith('.npy')) {
+      if (name.endsWith('.json.gz')) {
+        const buf = await file.arrayBuffer()
+        const ds = new DecompressionStream('gzip')
+        const reader = new Blob([buf]).stream().pipeThrough(ds).getReader()
+        const chunks: Uint8Array[] = []
+        let totalLen = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          chunks.push(value)
+          totalLen += value.byteLength
+        }
+        const combined = new Uint8Array(totalLen)
+        let off = 0
+        for (const chunk of chunks) { combined.set(chunk, off); off += chunk.byteLength }
+        const json = JSON.parse(new TextDecoder().decode(combined))
+        const volumeData = parsePymatgenChgcar(json, file.name)
+        onLoad(volumeData, file.name, file)
+      } else if (name.endsWith('.npy')) {
         const buf = await file.arrayBuffer()
         const { shape, data } = parseNpy(buf)
         if (shape.length !== 3) throw new Error(`Expected 3D array, got ${shape.length}D`)
@@ -86,7 +105,7 @@ export function FileDropZone({ onLoad }: FileDropZoneProps) {
       <input
         ref={inputRef}
         type="file"
-        accept=".CHGCAR,.ELFCAR,.npy"
+        accept=".CHGCAR,.ELFCAR,.npy,.json.gz"
         onChange={handleChange}
         style={{ display: 'none' }}
       />
@@ -95,7 +114,7 @@ export function FileDropZone({ onLoad }: FileDropZoneProps) {
       ) : (
         <>
           <p style={{ color: '#ccc', fontSize: 18, margin: 0 }}>
-            Drop a CHGCAR, ELFCAR, or .npy file here
+            Drop a CHGCAR, ELFCAR, .npy, or .json.gz file here
           </p>
           <p style={{ color: '#888', fontSize: 14, marginTop: 8 }}>
             or click to browse

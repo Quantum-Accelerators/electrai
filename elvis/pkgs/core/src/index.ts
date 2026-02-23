@@ -14,6 +14,7 @@ export type { StoredVolume, VolumeStore } from './storage/types.ts'
 export { parseCHGCAR, parseCHGCARHeader } from './parsers/chgcar.ts'
 export type { CHGCARHeader } from './parsers/chgcar.ts'
 export { parseNpy } from './parsers/npy.ts'
+export { parsePymatgenChgcar } from './parsers/pymatgen-chgcar.ts'
 
 // Utils
 export { marchingCubes, extendPeriodicGrid } from './utils/marching-cubes.ts'

@@ -2,6 +2,7 @@ import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s
 import { parseCHGCARHeader } from '@elvis/core'
 import type { CHGCARHeader } from '@elvis/core'
 import type { AWSCredentials } from './aws-credentials.ts'
+import { decompressGzip } from './gzip.ts'
 
 export interface FetchProgress {
   phase: 'head' | 'header' | 'downloading' | 'done'
@@ -13,6 +14,37 @@ function parseS3Uri(uri: string): { bucket: string; key: string } {
   const match = uri.match(/^s3:\/\/([^/]+)\/(.+)$/)
   if (!match) throw new Error(`Invalid S3 URI: ${uri}`)
   return { bucket: match[1], key: match[2] }
+}
+
+/** Convert s3://bucket/key → https://bucket.s3.amazonaws.com/key for anonymous access. */
+export function s3UriToHttps(uri: string): string {
+  const { bucket, key } = parseS3Uri(uri)
+  return `https://${bucket}.s3.amazonaws.com/${key}`
+}
+
+/** Fetch a .json.gz file, decompress, and parse JSON. Returns the blob (for caching), parsed JSON, and filename. */
+export async function fetchVolumeJsonGz(
+  url: string,
+  onProgress?: (progress: FetchProgress) => void,
+): Promise<{ blob: Blob; json: unknown; filename: string }> {
+  onProgress?.({ phase: 'head' })
+
+  // HEAD for content-length (no range-request preview for gzip)
+  const headResp = await fetch(url, { method: 'HEAD' })
+  const contentLength = headResp.ok
+    ? parseInt(headResp.headers.get('content-length') ?? '0', 10)
+    : undefined
+  onProgress?.({ phase: 'downloading', contentLength })
+
+  const resp = await fetch(url)
+  if (!resp.ok) throw new Error(`Failed to fetch: ${resp.status} ${resp.statusText}`)
+  const blob = await resp.blob()
+
+  onProgress?.({ phase: 'done', contentLength })
+  const buf = await decompressGzip(blob)
+  const json = JSON.parse(new TextDecoder().decode(buf))
+  const filename = url.split('/').pop() ?? 'chgcar.json.gz'
+  return { blob, json, filename }
 }
 
 export async function fetchVolumeFromUrl(
