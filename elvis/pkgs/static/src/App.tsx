@@ -122,7 +122,7 @@ const speedDialActions: SpeedDialAction[] = [
     key: 'github',
     label: 'View source on GitHub',
     icon: <GithubIcon />,
-    href: 'https://github.com/Quantum-Accelerators/electrai',
+    href: 'https://github.com/Quantum-Accelerators/electrai/tree/elvis/elvis#readme',
   },
 ]
 
