@@ -15,7 +15,7 @@
     "@aws-sdk/client-s3": "^3.800.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "use-kbd": "https://github.com/runsascoded/use-kbd#a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce",
+    "use-kbd": "^0.10.0",
     "aws-static-sso": "https://github.com/runsascoded/aws-static-sso#13075f68e82e86ed23156764922fb7333c912eea&path:/client",
     "use-prms": "https://github.com/runsascoded/use-prms#36c2ddcaa1d23d8c4901b2769bac3ce69528691a"
   },
