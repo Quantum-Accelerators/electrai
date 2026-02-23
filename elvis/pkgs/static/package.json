@@ -14,6 +14,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.800.0",
     "@elvis/core": "workspace:*",
+    "@tanstack/react-query": "^5.90.21",
     "aws-static-sso": "https://github.com/runsascoded/aws-static-sso#13075f68e82e86ed23156764922fb7333c912eea&path:/client",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { VolumeData, StoredVolume, CameraSnapTarget } from '@elvis/core'
 import {
-  FileDropZone,
   DensityViewer,
   ComparisonView,
   Controls,
@@ -103,6 +103,8 @@ function mpS3Uri(mpId: string): string {
   return `${MP_S3_PREFIX}${mpId}.json.gz`
 }
 
+const DEFAULT_MP_ID = 'mp-1000020'
+
 const EXAMPLES = [
   { mpId: 'mp-1000020', label: 'Fe\u2082Cu\u2082O\u2084 (8 MB)' },
   { mpId: 'mp-1828986', label: 'Na\u2082Al\u2082Si\u2084O\u2081\u2082 (10 MB)' },
@@ -139,7 +141,7 @@ export default function App() {
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [cam, setCam] = useUrlState('c', camParam)
-  const [materialId, setMaterialId] = useUrlState('m', stringParam(''))
+  const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID))
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
   )
@@ -443,55 +445,67 @@ export default function App() {
   })
 
   // Auto-restore on mount: ?m= param (OPFS cache → fetch) or last active OPFS volume
-  const materialIdRef = useRef(materialId)
-  useEffect(() => {
-    if (files.length > 0) return
-    let cancelled = false
-    ;(async () => {
-      const m = materialIdRef.current
+  const initialMaterialId = useRef(materialId)
+  const initialVolumeId = useRef(currentVolumeId)
+  const initialQuery = useQuery({
+    queryKey: ['initial-material', initialMaterialId.current],
+    queryFn: async (): Promise<{ data: VolumeData; filename: string; volumeId?: string } | null> => {
+      const m = initialMaterialId.current
       if (opfsStore) {
         const volumes = await opfsStore.list()
-        if (cancelled) return
-        // If ?m= is set, try to find a matching cached file first
         if (m) {
           const cachedFilename = `${m}.json.gz`
           const cached = volumes.find(v => v.filename === cachedFilename)
           if (cached) {
             const blob = await opfsStore.get(cached.id)
-            if (blob && !cancelled) {
+            if (blob) {
               const data = await parseBlob(blob, cached.filename)
-              if (cancelled) return
-              setFiles([{ data, filename: cached.filename }])
-              setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-              setSliceIndex(Math.floor(data.grid.dims[2] / 2))
-              setCurrentVolumeId(cached.id)
-              return
+              return { data, filename: cached.filename, volumeId: cached.id }
             }
           }
         }
-        // No ?m= or not cached — try restoring last active volume
-        if (!m && currentVolumeId) {
-          const vol = volumes.find(v => v.id === currentVolumeId)
+        if (!m && initialVolumeId.current) {
+          const vol = volumes.find(v => v.id === initialVolumeId.current)
           if (vol) {
             const blob = await opfsStore.get(vol.id)
-            if (blob && !cancelled) {
+            if (blob) {
               const data = await parseBlob(blob, vol.filename)
-              if (cancelled) return
-              setFiles([{ data, filename: vol.filename }])
-              setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-              setSliceIndex(Math.floor(data.grid.dims[2] / 2))
-              return
+              return { data, filename: vol.filename, volumeId: vol.id }
             }
           }
         }
       }
-      // ?m= set but not in cache — fetch from S3
-      if (m && !cancelled) {
-        handleUrlSubmit(mpS3Uri(m))
+      if (m) {
+        const fetchUrl = s3UriToHttps(mpS3Uri(m))
+        const { blob, json, filename } = await fetchVolumeJsonGz(fetchUrl)
+        const data = parsePymatgenChgcar(json, filename)
+        let volumeId: string | undefined
+        if (opfsStore) {
+          const meta = { filename, elements: data.structure.elements, atomCount: data.structure.atoms.length, gridDims: data.grid.dims }
+          const stored = await opfsStore.store(blob, filename, meta)
+          volumeId = stored.id
+        }
+        return { data, filename, volumeId }
       }
-    })()
-    return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      return null
+    },
+    staleTime: Infinity,
+    enabled: files.length === 0,
+  })
+
+  // Populate files from initial query result
+  useEffect(() => {
+    const result = initialQuery.data
+    if (result && files.length === 0) {
+      setFiles([{ data: result.data, filename: result.filename }])
+      setIsoLevel(computeDefaultIsoLevel(result.data.grid.data))
+      setSliceIndex(Math.floor(result.data.grid.dims[2] / 2))
+      if (result.volumeId) {
+        setCurrentVolumeId(result.volumeId)
+        setGalleryRefreshKey(k => k + 1)
+      }
+    }
+  }, [initialQuery.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoad = useCallback(async (data: VolumeData, filename: string, blob?: Blob) => {
     // Best-effort set ?m= param from MP material ID in filename
@@ -530,10 +544,6 @@ export default function App() {
       }
     }
   }, [settings, setCurrentVolumeId])
-
-  const handleFileLoad = useCallback(async (data: VolumeData, filename: string, file: File) => {
-    handleLoad(data, filename, file)
-  }, [handleLoad])
 
   const handleGallerySelect = useCallback(async (_id: string, blob: Blob) => {
     // Get filename from store metadata first (needed for format detection)
@@ -671,7 +681,7 @@ export default function App() {
         setExamplesOpen(open)
         sessionStorage.setItem('elvis-examples-open', String(open))
       }}
-      style={{ padding: '4px 16px', fontSize: 12, color: '#666' }}
+      style={{ padding: '4px 16px', fontSize: 12, color: '#999' }}
     >
       <summary style={{ cursor: 'pointer', userSelect: 'none' }}>Examples</summary>
       <ul style={{ margin: '4px 0 0', paddingLeft: 20, lineHeight: 1.8 }}>
@@ -686,7 +696,7 @@ export default function App() {
               >
                 {ex.mpId}
               </a>
-              <span style={{ color: '#555' }}>
+              <span style={{ color: '#888' }}>
                 {' \u2014 '}{ex.label}
                 {cached && <span style={{ color: '#6a8', marginLeft: 4 }}>{'\u2713'}</span>}
               </span>
@@ -697,115 +707,76 @@ export default function App() {
     </details>
   )
 
-  if (files.length === 0) {
-    return (
-      <div className={styles.dropZone}>
-        <div style={{ width: '100%', maxWidth: 600 }}>
-          <FileDropZone onLoad={handleFileLoad} />
-          <URLInput onSubmit={handleUrlSubmit} loading={urlLoading} />
-          {fetchStatus && (
-            <div style={{
-              padding: '8px 16px',
-              fontSize: 12,
-              color: fetchStatus.startsWith('Error') ? '#ff4444' : '#aaa',
-            }}>
-              {fetchStatus}
-            </div>
-          )}
-          {exampleLinks}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
-            <button
-              onClick={() => setAwsModalOpen(true)}
-              style={{
-                padding: '4px 12px',
-                background: 'transparent',
-                border: '1px solid #444',
-                borderRadius: 4,
-                color: awsCreds ? '#8bc' : '#888',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              {awsCreds ? 'AWS \u2713' : 'AWS Credentials'}
-            </button>
-          </div>
-        </div>
-        {opfsStore && (
-          <VolumeGallery
-            store={opfsStore}
-            currentVolumeId={currentVolumeId}
-            onSelect={handleGallerySelect}
-            refreshKey={galleryRefreshKey}
-          />
-        )}
-        <AWSCredentialsModal
-          open={awsModalOpen}
-          onClose={() => setAwsModalOpen(false)}
-          onSave={(creds) => { saveCredentials(creds); setAwsCreds(creds) }}
-          currentCreds={awsCreds}
-          ssoContent={
-            <SSOAuthFlow
-              onSave={(creds) => { saveCredentials(creds); setAwsCreds(creds) }}
-              onClose={() => setAwsModalOpen(false)}
-            />
-          }
-        />
-        <SpeedDial actions={speedDialActions} />
-      </div>
-    )
-  }
-
   const isComparison = files.length > 1
+  const isLoading = !primaryFile && (initialQuery.isPending || initialQuery.isFetching)
 
   return (
     <div className={styles.app}>
       <div className={styles.viewer}>
-        {isComparison ? (
-          <ComparisonView
-            volumes={files.map(f => ({ data: f.data, label: f.filename }))}
-            isoLevel={isoLevel}
-            opacity={opacity}
-            showAtoms={showAtoms}
-            showAbcCell={showAbcCell}
-            showXyzBox={showXyzBox}
-            showWorldAxes={showWorldAxes}
-            activeMovements={activeMovements}
-          />
+        {primaryFile ? (
+          <>
+            {isComparison ? (
+              <ComparisonView
+                volumes={files.map(f => ({ data: f.data, label: f.filename }))}
+                isoLevel={isoLevel}
+                opacity={opacity}
+                showAtoms={showAtoms}
+                showAbcCell={showAbcCell}
+                showXyzBox={showXyzBox}
+                showWorldAxes={showWorldAxes}
+                activeMovements={activeMovements}
+              />
+            ) : (
+              <DensityViewer
+                volume={primaryFile.data}
+                isoLevel={isoLevel}
+                opacity={opacity}
+                showAtoms={showAtoms}
+                showAbcCell={showAbcCell}
+                showXyzBox={showXyzBox}
+                showWorldAxes={showWorldAxes}
+                lineWidth={lineWidth}
+                activeMovements={activeMovements}
+                cameraSnap={cameraSnap}
+                animationDuration={animDuration || settings.animationDuration}
+                onCameraChange={handleCameraChange}
+                initialCamera={initialCamera}
+                showSlice={showSlice}
+                sliceAxis={sliceAxis}
+                sliceIndex={sliceIndex}
+              />
+            )}
+            {showSlice && (
+              <div className={styles.slicePanel} style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                width: 280,
+                background: '#1a1a2e',
+                borderTop: '1px solid #333',
+                borderRight: '1px solid #333',
+              }}>
+                <SliceViewer
+                  volume={primaryFile.data}
+                  axis={sliceAxis}
+                  sliceIndex={sliceIndex}
+                />
+              </div>
+            )}
+          </>
         ) : (
-          <DensityViewer
-            volume={primaryFile.data}
-            isoLevel={isoLevel}
-            opacity={opacity}
-            showAtoms={showAtoms}
-            showAbcCell={showAbcCell}
-            showXyzBox={showXyzBox}
-            showWorldAxes={showWorldAxes}
-            lineWidth={lineWidth}
-            activeMovements={activeMovements}
-            cameraSnap={cameraSnap}
-            animationDuration={animDuration || settings.animationDuration}
-            onCameraChange={handleCameraChange}
-            initialCamera={initialCamera}
-            showSlice={showSlice}
-            sliceAxis={sliceAxis}
-            sliceIndex={sliceIndex}
-          />
-        )}
-        {showSlice && primaryFile && (
-          <div className={styles.slicePanel} style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            width: 280,
-            background: '#1a1a2e',
-            borderTop: '1px solid #333',
-            borderRight: '1px solid #333',
-          }}>
-            <SliceViewer
-              volume={primaryFile.data}
-              axis={sliceAxis}
-              sliceIndex={sliceIndex}
-            />
+          <div className={styles.loadingViewer}>
+            {isLoading && (
+              <>
+                <div className={styles.spinner} />
+                <div className={styles.loadingText}>Loading density data...</div>
+              </>
+            )}
+            {initialQuery.error && (
+              <div className={styles.errorText}>
+                {initialQuery.error instanceof Error ? initialQuery.error.message : 'Failed to load'}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -838,33 +809,35 @@ export default function App() {
           </div>
         )}
         {exampleLinks}
-        <Controls
-          isoLevel={isoLevel}
-          defaultIsoLevel={defaultIsoLevel}
-          maxDensity={maxDensity}
-          onIsoLevelChange={setIsoLevel}
-          opacity={opacity}
-          onOpacityChange={setOpacity}
-          showAtoms={showAtoms}
-          onShowAtomsChange={setShowAtoms}
-          showAbcCell={showAbcCell}
-          onShowAbcCellChange={setShowAbcCell}
-          showXyzBox={showXyzBox}
-          onShowXyzBoxChange={setShowXyzBox}
-          showWorldAxes={showWorldAxes}
-          onShowWorldAxesChange={setShowWorldAxes}
-          discreteOrbit={discreteOrbit}
-          onDiscreteOrbitChange={setDiscreteOrbit}
-          showSlice={showSlice}
-          onShowSliceChange={setShowSlice}
-          sliceAxis={sliceAxis}
-          onSliceAxisChange={setSliceAxis}
-          sliceIndex={sliceIndex}
-          maxSliceIndex={maxSliceIndex}
-          onSliceIndexChange={setSliceIndex}
-          filename={primaryFile.filename}
-          elements={primaryFile.data.structure.elements}
-        />
+        {primaryFile && (
+          <Controls
+            isoLevel={isoLevel}
+            defaultIsoLevel={defaultIsoLevel}
+            maxDensity={maxDensity}
+            onIsoLevelChange={setIsoLevel}
+            opacity={opacity}
+            onOpacityChange={setOpacity}
+            showAtoms={showAtoms}
+            onShowAtomsChange={setShowAtoms}
+            showAbcCell={showAbcCell}
+            onShowAbcCellChange={setShowAbcCell}
+            showXyzBox={showXyzBox}
+            onShowXyzBoxChange={setShowXyzBox}
+            showWorldAxes={showWorldAxes}
+            onShowWorldAxesChange={setShowWorldAxes}
+            discreteOrbit={discreteOrbit}
+            onDiscreteOrbitChange={setDiscreteOrbit}
+            showSlice={showSlice}
+            onShowSliceChange={setShowSlice}
+            sliceAxis={sliceAxis}
+            onSliceAxisChange={setSliceAxis}
+            sliceIndex={sliceIndex}
+            maxSliceIndex={maxSliceIndex}
+            onSliceIndexChange={setSliceIndex}
+            filename={primaryFile.filename}
+            elements={primaryFile.data.structure.elements}
+          />
+        )}
         <input
           ref={addFileInputRef}
           type="file"
