@@ -34,7 +34,7 @@ import click
 
 
 def err(*a, **kw):
-    return print(*a, file=sys.stderr, **kw)
+    return print(*a, file=sys.stderr, **kw)  # noqa: T201
 
 
 # fmt: off
@@ -128,10 +128,10 @@ def main(
     # Write to $GITHUB_OUTPUT if in CI
     gh_output = os.environ.get("GITHUB_OUTPUT")
     if gh_output:
-        with open(gh_output, "a") as f:
+        with Path(gh_output).open("a") as f:
             f.write(f"DATASET_HASH={ds_hash}\n")
 
-    print(ds_hash)
+    print(ds_hash)  # noqa: T201
 
 
 if __name__ == "__main__":
