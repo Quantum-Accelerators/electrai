@@ -1,14 +1,15 @@
 import { useMemo, useRef, useEffect } from 'react'
-import { Object3D, Color, Vector3, BufferGeometry, Float32BufferAttribute, LineBasicMaterial, InstancedMesh } from 'three'
+import { Object3D, Color, Vector3, InstancedMesh } from 'three'
 import { Html } from '@react-three/drei'
 import type { VolumeData } from '../types.ts'
-import { fracToCart, unitCellEdges } from '../utils/lattice.ts'
+import { fracToCart, unitCellEdges, unitCellBoundingBox } from '../utils/lattice.ts'
 import { getElement } from '../utils/elements.ts'
 
 interface CrystalStructureProps {
   volume: VolumeData
   showAtoms: boolean
-  showUnitCell: boolean
+  showAbcCell: boolean
+  showXyzBox: boolean
   showWorldAxes: boolean
 }
 
@@ -20,10 +21,11 @@ const LATTICE_LABELS = ['a', 'b', 'c'] as const
 const WORLD_COLORS = ['#ff3653', '#0adb50', '#2c8fff'] as const
 const WORLD_LABELS = ['X', 'Y', 'Z'] as const
 
-function AxisCylinder({ from, to, color }: {
+function AxisCylinder({ from, to, color, radius = 0.06 }: {
   from: [number, number, number]
   to: [number, number, number]
   color: string
+  radius?: number
 }) {
   const { position, quaternion, length } = useMemo(() => {
     const a = new Vector3(...from)
@@ -31,10 +33,6 @@ function AxisCylinder({ from, to, color }: {
     const dir = new Vector3().subVectors(b, a)
     const len = dir.length()
     const mid = new Vector3().addVectors(a, b).multiplyScalar(0.5)
-    const quat = new Object3D()
-    quat.position.copy(mid)
-    quat.lookAt(b)
-    // CylinderGeometry is along Y by default, so rotate from Y to dir
     const yAxis = new Vector3(0, 1, 0)
     const q = new Object3D()
     q.quaternion.setFromUnitVectors(yAxis, dir.normalize())
@@ -43,7 +41,7 @@ function AxisCylinder({ from, to, color }: {
 
   return (
     <mesh position={position} quaternion={quaternion}>
-      <cylinderGeometry args={[0.06, 0.06, length, 6]} />
+      <cylinderGeometry args={[radius, radius, length, 6]} />
       <meshStandardMaterial color={color} />
     </mesh>
   )
@@ -55,7 +53,7 @@ function AxisLabel({ position, label, color }: {
   color: string
 }) {
   return (
-    <Html position={position} center style={{ pointerEvents: 'none' }}>
+    <Html position={position} center zIndexRange={[1, 0]} style={{ pointerEvents: 'none' }}>
       <span style={{
         color,
         fontSize: 13,
@@ -69,7 +67,7 @@ function AxisLabel({ position, label, color }: {
   )
 }
 
-export function CrystalStructure({ volume, showAtoms, showUnitCell, showWorldAxes }: CrystalStructureProps) {
+export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, showWorldAxes }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
   // Group atoms by element for instanced rendering
@@ -83,14 +81,33 @@ export function CrystalStructure({ volume, showAtoms, showUnitCell, showWorldAxe
     return groups
   }, [lattice, structure])
 
-  // Lattice axis endpoints from origin
+  const origin = useMemo(() => fracToCart(lattice, [0, 0, 0]), [lattice])
+
+  // All 12 unit cell edges, grouped by which basis vector they're parallel to
+  const cellEdgesByAxis = useMemo(() => {
+    const edges = unitCellEdges()
+    const grouped: [
+      Array<[[number, number, number], [number, number, number]]>,
+      Array<[[number, number, number], [number, number, number]]>,
+      Array<[[number, number, number], [number, number, number]]>,
+    ] = [[], [], []]
+    for (const [a, b] of edges) {
+      for (let d = 0; d < 3; d++) {
+        if (a[d] !== b[d]) {
+          grouped[d].push([a, b])
+          break
+        }
+      }
+    }
+    return grouped
+  }, [])
+
+  // Lattice axis endpoints from origin (for labels)
   const axisEndpoints = useMemo(() => [
     fracToCart(lattice, [1, 0, 0]),
     fracToCart(lattice, [0, 1, 0]),
     fracToCart(lattice, [0, 0, 1]),
   ], [lattice])
-
-  const origin = useMemo(() => fracToCart(lattice, [0, 0, 0]), [lattice])
 
   // Label positions: slightly past the endpoint
   const labelPositions = useMemo(() =>
@@ -101,28 +118,37 @@ export function CrystalStructure({ volume, showAtoms, showUnitCell, showWorldAxe
     }),
   [axisEndpoints, origin])
 
-  // Non-axis edges (all edges except the 3 from origin)
-  const remainingGeo = useMemo(() => {
-    const edges = unitCellEdges()
-    const axisTargets: [number, number, number][] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    const positions: number[] = []
-
-    for (const [a, b] of edges) {
-      const isOriginA = a[0] === 0 && a[1] === 0 && a[2] === 0
-      const isAxisEdge = isOriginA && axisTargets.some(t => t[0] === b[0] && t[1] === b[1] && t[2] === b[2])
-      if (!isAxisEdge) {
-        const ca = fracToCart(lattice, a)
-        const cb = fracToCart(lattice, b)
-        positions.push(...ca, ...cb)
+  // XYZ axis-aligned bounding box edges (12 edges, RGB-colored by axis)
+  const xyzBoxEdges = useMemo(() => {
+    const { min, max } = unitCellBoundingBox(lattice)
+    const corners: [number, number, number][] = []
+    for (let i = 0; i <= 1; i++) {
+      for (let j = 0; j <= 1; j++) {
+        for (let k = 0; k <= 1; k++) {
+          corners.push([
+            i ? max[0] : min[0],
+            j ? max[1] : min[1],
+            k ? max[2] : min[2],
+          ])
+        }
       }
     }
-
-    const geo = new BufferGeometry()
-    geo.setAttribute('position', new Float32BufferAttribute(new Float32Array(positions), 3))
-    return geo
+    // 12 edges: pairs of corners differing in exactly one coordinate
+    const edges: Array<{ from: [number, number, number]; to: [number, number, number]; axis: number }> = []
+    for (let a = 0; a < corners.length; a++) {
+      for (let b = a + 1; b < corners.length; b++) {
+        let diffAxis = -1
+        let diffCount = 0
+        for (let d = 0; d < 3; d++) {
+          if (corners[a][d] !== corners[b][d]) { diffAxis = d; diffCount++ }
+        }
+        if (diffCount === 1) {
+          edges.push({ from: corners[a], to: corners[b], axis: diffAxis })
+        }
+      }
+    }
+    return edges
   }, [lattice])
-
-  const cellLineMat = useMemo(() => new LineBasicMaterial({ color: 0xffffff, opacity: 0.35, transparent: true }), [])
 
   // World axes: fixed-length XYZ arrows, scaled to match average lattice vector length
   const worldAxesData = useMemo(() => {
@@ -149,17 +175,38 @@ export function CrystalStructure({ volume, showAtoms, showUnitCell, showWorldAxe
       {showAtoms && Array.from(atomGroups.entries()).map(([element, positions]) => (
         <AtomInstances key={element} element={element} positions={positions} />
       ))}
-      {showUnitCell && (
+      {showAbcCell && (
         <>
-          <lineSegments geometry={remainingGeo} material={cellLineMat} />
-          {axisEndpoints.map((ep, i) => (
-            <AxisCylinder key={i} from={origin} to={ep} color={LATTICE_COLORS[i]} />
-          ))}
+          {cellEdgesByAxis.map((edges, axisIdx) =>
+            edges.map(([a, b], edgeIdx) => {
+              const ca = fracToCart(lattice, a)
+              const cb = fracToCart(lattice, b)
+              const isFromOrigin = a[0] === 0 && a[1] === 0 && a[2] === 0
+              return (
+                <AxisCylinder
+                  key={`cell-${axisIdx}-${edgeIdx}`}
+                  from={ca}
+                  to={cb}
+                  color={LATTICE_COLORS[axisIdx]}
+                  radius={isFromOrigin ? 0.06 : 0.03}
+                />
+              )
+            })
+          )}
           {labelPositions.map((pos, i) => (
             <AxisLabel key={`label-${i}`} position={pos} label={LATTICE_LABELS[i]} color={LATTICE_COLORS[i]} />
           ))}
         </>
       )}
+      {showXyzBox && xyzBoxEdges.map((edge, i) => (
+        <AxisCylinder
+          key={`xyz-box-${i}`}
+          from={edge.from}
+          to={edge.to}
+          color={WORLD_COLORS[edge.axis]}
+          radius={0.03}
+        />
+      ))}
       {showWorldAxes && (
         <>
           {worldAxesData.endpoints.map((ep, i) => (

@@ -87,6 +87,9 @@ importers:
       use-kbd:
         specifier: https://github.com/runsascoded/use-kbd#a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce
         version: https://codeload.github.com/runsascoded/use-kbd/tar.gz/a1cf5d11b6f1bd1b9ef7fdb15066c4c4139ca2ce(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      use-prms:
+        specifier: https://github.com/runsascoded/use-prms#36c2ddcaa1d23d8c4901b2769bac3ce69528691a
+        version: https://codeload.github.com/runsascoded/use-prms/tar.gz/36c2ddcaa1d23d8c4901b2769bac3ce69528691a(react@19.2.4)
     devDependencies:
       '@eslint/js':
         specifier: ^9.36.0
@@ -1716,6 +1719,12 @@ packages:
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
+
+  use-prms@https://codeload.github.com/runsascoded/use-prms/tar.gz/36c2ddcaa1d23d8c4901b2769bac3ce69528691a:
+    resolution: {tarball: https://codeload.github.com/runsascoded/use-prms/tar.gz/36c2ddcaa1d23d8c4901b2769bac3ce69528691a}
+    version: 0.4.1-dist.cba8449
+    peerDependencies:
+      react: ^18.0.0
 
   use-sync-external-store@1.6.0:
     resolution: {integrity: sha512-Pp6GSwGP/NrPIrxVFAIkOQeyw8lFenOHijQWkUTrDvrF4ALqylP2C/KCkeS9dpUM3KvYRQhna5vt7IL95+ZQ9w==}
@@ -3806,6 +3815,10 @@ snapshots:
     dependencies:
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
+
+  use-prms@https://codeload.github.com/runsascoded/use-prms/tar.gz/36c2ddcaa1d23d8c4901b2769bac3ce69528691a(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   use-sync-external-store@1.6.0(react@19.2.4):
     dependencies:

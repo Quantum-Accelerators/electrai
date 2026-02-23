@@ -38,7 +38,7 @@ export function Settings({ settings, onUpdate, showCacheToggle = true }: Setting
         fontSize: 13,
         color: '#ccc',
       }}>
-        Max auto-cache size:
+        Prompt for files over
         <input
           type="number"
           value={settings.maxUploadSizeMB}
@@ -57,6 +57,25 @@ export function Settings({ settings, onUpdate, showCacheToggle = true }: Setting
           }}
         />
         MB
+      </label>
+      <label style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 13,
+        color: '#ccc',
+        marginTop: 6,
+      }}>
+        Animation: {settings.animationDuration.toFixed(1)}s
+        <input
+          type="range"
+          min={0.1}
+          max={2.0}
+          step={0.1}
+          value={settings.animationDuration}
+          onChange={e => onUpdate({ animationDuration: parseFloat(e.target.value) })}
+          style={{ flex: 1, accentColor: '#4a9eff' }}
+        />
       </label>
     </div>
   )

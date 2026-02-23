@@ -316,12 +316,36 @@ function lerp(v0: number, v1: number, iso: number): number {
 }
 
 /**
+ * Extend a periodic 3D grid by +1 in each dimension by wrapping boundary values.
+ * Turns an [nx, ny, nz] grid into [nx+1, ny+1, nz+1].
+ */
+export function extendPeriodicGrid(
+  data: Float32Array,
+  dims: [number, number, number],
+): { data: Float32Array; dims: [number, number, number] } {
+  const [nx, ny, nz] = dims
+  const enx = nx + 1, eny = ny + 1, enz = nz + 1
+  const extended = new Float32Array(enx * eny * enz)
+  for (let iz = 0; iz < enz; iz++) {
+    for (let iy = 0; iy < eny; iy++) {
+      for (let ix = 0; ix < enx; ix++) {
+        const srcX = ix % nx, srcY = iy % ny, srcZ = iz % nz
+        extended[ix + enx * (iy + eny * iz)] = data[srcX + nx * (srcY + ny * srcZ)]
+      }
+    }
+  }
+  return { data: extended, dims: [enx, eny, enz] }
+}
+
+/**
  * Run marching cubes on a 3D grid.
  *
  * @param data - Flat density values (VASP order: x fastest)
  * @param dims - Grid dimensions [nx, ny, nz]
  * @param isoLevel - Isosurface threshold
  * @param lattice - 3x3 lattice matrix for frac→cart conversion
+ * @param fracDims - Original grid dimensions for fractional coordinate mapping
+ *                   (use when data has been extended for periodic boundaries)
  * @returns BufferGeometry with positions and normals
  */
 export function marchingCubes(
@@ -329,26 +353,20 @@ export function marchingCubes(
   dims: [number, number, number],
   isoLevel: number,
   lattice: LatticeMatrix,
+  fracDims?: [number, number, number],
 ): BufferGeometry {
   const [nx, ny, nz] = dims
+  const [fx, fy, fz] = fracDims ?? dims
   const positions: number[] = []
 
-  // Helper to get data value at grid point (wrapping for periodic boundary)
-  function val(ix: number, iy: number, iz: number): number {
-    ix = ((ix % nx) + nx) % nx
-    iy = ((iy % ny) + ny) % ny
-    iz = ((iz % nz) + nz) % nz
-    return data[ix + nx * (iy + ny * iz)]
-  }
-
-  for (let iz = 0; iz < nz; iz++) {
-    for (let iy = 0; iy < ny; iy++) {
-      for (let ix = 0; ix < nx; ix++) {
-        // Get scalar values at 8 corners
+  for (let iz = 0; iz < nz - 1; iz++) {
+    for (let iy = 0; iy < ny - 1; iy++) {
+      for (let ix = 0; ix < nx - 1; ix++) {
+        // Get scalar values at 8 corners (direct index, no wrapping needed)
         const cornerVals: number[] = new Array(8)
         for (let c = 0; c < 8; c++) {
           const [dx, dy, dz] = CORNER_OFFSETS[c]
-          cornerVals[c] = val(ix + dx, iy + dy, iz + dz)
+          cornerVals[c] = data[(ix + dx) + nx * ((iy + dy) + ny * (iz + dz))]
         }
 
         // Compute cube index
@@ -368,11 +386,11 @@ export function marchingCubes(
           const t = lerp(cornerVals[c0], cornerVals[c1], isoLevel)
           const [dx0, dy0, dz0] = CORNER_OFFSETS[c0]
           const [dx1, dy1, dz1] = CORNER_OFFSETS[c1]
-          // Fractional coordinates (0..1 range mapped from grid indices)
+          // Fractional coordinates mapped using original dims
           vertList[e] = [
-            (ix + dx0 + t * (dx1 - dx0)) / nx,
-            (iy + dy0 + t * (dy1 - dy0)) / ny,
-            (iz + dz0 + t * (dz1 - dz0)) / nz,
+            (ix + dx0 + t * (dx1 - dx0)) / fx,
+            (iy + dy0 + t * (dy1 - dy0)) / fy,
+            (iz + dz0 + t * (dz1 - dz0)) / fz,
           ]
         }
 

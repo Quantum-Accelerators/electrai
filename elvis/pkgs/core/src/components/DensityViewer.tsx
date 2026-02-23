@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { RefObject } from 'react'
+import type { MutableRefObject, RefObject } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import { Vector3 } from 'three'
@@ -7,7 +7,10 @@ import type { VolumeData } from '../types.ts'
 import { IsosurfaceRenderer } from './IsosurfaceRenderer.tsx'
 import { CrystalStructure } from './CrystalStructure.tsx'
 import { LatticeGizmo } from './LatticeGizmo.tsx'
+import { ScreenOffsetGroup } from './ScreenOffsetGroup.tsx'
 import { CameraController } from './CameraController.tsx'
+import type { CameraSnapTarget } from './CameraController.tsx'
+import { SlicePlane3D } from './SlicePlane3D.tsx'
 import { fracToCart } from '../utils/lattice.ts'
 
 interface DensityViewerProps {
@@ -15,9 +18,15 @@ interface DensityViewerProps {
   isoLevel: number
   opacity: number
   showAtoms: boolean
-  showUnitCell: boolean
+  showAbcCell: boolean
+  showXyzBox: boolean
   showWorldAxes: boolean
   activeMovements?: RefObject<Set<string>>
+  cameraSnap?: MutableRefObject<CameraSnapTarget | null>
+  animationDuration?: number
+  showSlice?: boolean
+  sliceAxis?: 0 | 1 | 2
+  sliceIndex?: number
   label?: string
 }
 
@@ -26,9 +35,15 @@ export function DensityViewer({
   isoLevel,
   opacity,
   showAtoms,
-  showUnitCell,
+  showAbcCell,
+  showXyzBox,
   showWorldAxes,
   activeMovements,
+  cameraSnap,
+  animationDuration,
+  showSlice,
+  sliceAxis,
+  sliceIndex,
   label,
 }: DensityViewerProps) {
   const center = useMemo(() => {
@@ -66,16 +81,21 @@ export function DensityViewer({
         <directionalLight position={[-5, -5, 5]} intensity={0.3} />
 
         <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} />
-        <CrystalStructure volume={volume} showAtoms={showAtoms} showUnitCell={showUnitCell} showWorldAxes={showWorldAxes} />
+        <CrystalStructure volume={volume} showAtoms={showAtoms} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} />
+        {showSlice && sliceAxis !== undefined && sliceIndex !== undefined && (
+          <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} />
+        )}
 
-        {activeMovements && <CameraController activeMovements={activeMovements} />}
+        {activeMovements && <CameraController activeMovements={activeMovements} cameraSnap={cameraSnap} animationDuration={animationDuration} />}
 
         <OrbitControls makeDefault target={center.toArray()} />
-        <GizmoHelper alignment="bottom-right" margin={[36, 36]}>
+        <GizmoHelper alignment="bottom-right" margin={[80, 36]}>
           <GizmoViewport axisHeadScale={0.8} labelColor="white" />
-        </GizmoHelper>
-        <GizmoHelper alignment="bottom-left" margin={[36, 36]} renderPriority={2}>
-          <LatticeGizmo lattice={volume.lattice} />
+          <ScreenOffsetGroup offset={[-100, 0, 0]}>
+            <group scale={40}>
+              <LatticeGizmo lattice={volume.lattice} />
+            </group>
+          </ScreenOffsetGroup>
         </GizmoHelper>
       </Canvas>
     </div>

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import type { VolumeData, StoredVolume } from '@elvis/core'
+import type { VolumeData, StoredVolume, CameraSnapTarget } from '@elvis/core'
 import {
   FileDropZone,
   DensityViewer,
@@ -13,10 +13,13 @@ import {
   Settings,
   parseCHGCAR,
   useSettings,
+  fracToCart,
 } from '@elvis/core'
 import { ShortcutsModal, Omnibar, SequenceModal, SpeedDial, useAction } from 'use-kbd'
 import type { SpeedDialAction } from 'use-kbd'
 import 'use-kbd/styles.css'
+import { useUrlState, floatParam, boolParam, intParam } from 'use-prms'
+import type { Param } from 'use-prms'
 import { OpfsVolumeStore, isOPFSSupported } from './storage/OpfsVolumeStore.ts'
 import { loadCredentials, saveCredentials } from './utils/aws-credentials.ts'
 import { fetchVolumeFromUrl, fetchVolumeFromS3 } from './utils/fetch-volume.ts'
@@ -44,6 +47,12 @@ function computeDefaultIsoLevel(data: Float32Array): number {
   return mean + 2 * sigma
 }
 
+// Bool param defaulting to true (present in URL = disabled)
+const boolTrueParam: Param<boolean> = {
+  encode: (v) => v ? undefined : '',
+  decode: (e) => e === undefined,
+}
+
 const opfsStore = isOPFSSupported() ? new OpfsVolumeStore() : null
 
 const GithubIcon = () => (
@@ -63,14 +72,15 @@ const speedDialActions: SpeedDialAction[] = [
 
 export default function App() {
   const [files, setFiles] = useState<LoadedFile[]>([])
-  const [isoLevel, setIsoLevel] = useState(0)
-  const [opacity, setOpacity] = useState(0.6)
-  const [showAtoms, setShowAtoms] = useState(true)
-  const [showUnitCell, setShowUnitCell] = useState(true)
-  const [showWorldAxes, setShowWorldAxes] = useState(false)
-  const [showSlice, setShowSlice] = useState(false)
-  const [sliceAxis, setSliceAxis] = useState<0 | 1 | 2>(2)
-  const [sliceIndex, setSliceIndex] = useState(0)
+  const [isoLevel, setIsoLevel] = useUrlState('iso', floatParam({ default: 0, encoding: 'string', decimals: 1 }), { debounce: 300 })
+  const [opacity, setOpacity] = useUrlState('op', floatParam({ default: 0.6, encoding: 'string', decimals: 2 }), { debounce: 300 })
+  const [showAtoms, setShowAtoms] = useUrlState('ha', boolTrueParam)
+  const [showAbcCell, setShowAbcCell] = useUrlState('hc', boolTrueParam)
+  const [showXyzBox, setShowXyzBox] = useUrlState('xb', boolParam)
+  const [showWorldAxes, setShowWorldAxes] = useUrlState('xa', boolParam)
+  const [showSlice, setShowSlice] = useUrlState('sl', boolParam)
+  const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
+  const [sliceIndex, setSliceIndex] = useUrlState('si', intParam(0), { debounce: 300 })
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
   )
@@ -93,8 +103,9 @@ export default function App() {
   const addFileInputRef = useRef<HTMLInputElement>(null)
   const { settings, update: updateSettings } = useSettings()
 
-  // Camera movement state (shared with CameraController inside Canvas)
+  // Camera movement + snap state (shared with CameraController inside Canvas)
   const activeMovements = useRef(new Set<string>())
+  const cameraSnap = useRef<CameraSnapTarget | null>(null)
 
   const startMovement = useCallback((dir: string) => {
     activeMovements.current.add(dir)
@@ -115,30 +126,53 @@ export default function App() {
     return () => window.removeEventListener('keyup', onKeyUp)
   }, [MOVEMENT_KEYS])
 
-  // View toggles
+  const primaryFile = files[0] ?? null
+
+  // Lattice directions for abc camera snaps (computed from loaded file)
+  const latticeDirections = useMemo(() => {
+    if (!primaryFile) return null
+    const lat = primaryFile.data.lattice
+    return {
+      a: fracToCart(lat, [1, 0, 0]) as [number, number, number],
+      b: fracToCart(lat, [0, 1, 0]) as [number, number, number],
+      c: fracToCart(lat, [0, 0, 1]) as [number, number, number],
+    }
+  }, [primaryFile])
+
+  const snapCamera = useCallback((dir: [number, number, number], up: [number, number, number] = [0, 1, 0]) => {
+    cameraSnap.current = { direction: dir, up }
+  }, [])
+
+  // View toggles (t _ chords)
   useAction('view:toggle-atoms', {
     label: 'Toggle atoms',
     group: 'View',
-    defaultBindings: ['a'],
-    handler: () => setShowAtoms(v => !v),
+    defaultBindings: ['t a'],
+    handler: () => setShowAtoms(!showAtoms),
   })
-  useAction('view:toggle-unit-cell', {
-    label: 'Toggle unit cell',
+  useAction('view:toggle-abc-cell', {
+    label: 'Toggle abc cell',
     group: 'View',
-    defaultBindings: ['u'],
-    handler: () => setShowUnitCell(v => !v),
+    defaultBindings: ['t c'],
+    handler: () => setShowAbcCell(!showAbcCell),
+  })
+  useAction('view:toggle-xyz-box', {
+    label: 'Toggle XYZ box',
+    group: 'View',
+    defaultBindings: ['t b'],
+    handler: () => setShowXyzBox(!showXyzBox),
   })
   useAction('view:toggle-world-axes', {
     label: 'Toggle XYZ axes',
     group: 'View',
-    defaultBindings: ['x'],
-    handler: () => setShowWorldAxes(v => !v),
+    defaultBindings: ['t x'],
+    handler: () => setShowWorldAxes(!showWorldAxes),
   })
   useAction('view:toggle-slice', {
     label: 'Toggle 2D slice',
     group: 'View',
-    defaultBindings: ['s'],
-    handler: () => setShowSlice(v => !v),
+    defaultBindings: ['t s'],
+    handler: () => setShowSlice(!showSlice),
   })
   useAction('slice:axis-x', {
     label: 'Slice along X',
@@ -159,54 +193,143 @@ export default function App() {
     handler: () => { setShowSlice(true); setSliceAxis(2) },
   })
 
+  // Camera axis-snap (look down lattice vectors or world axes)
+  useAction('cam:snap-a', {
+    label: 'Look down a',
+    group: 'Camera',
+    defaultBindings: ['a'],
+    handler: () => { if (latticeDirections) snapCamera(latticeDirections.a) },
+  })
+  useAction('cam:snap-a-neg', {
+    label: 'Look down -a',
+    group: 'Camera',
+    defaultBindings: ['shift+a'],
+    handler: () => {
+      if (latticeDirections) {
+        const d = latticeDirections.a
+        snapCamera([-d[0], -d[1], -d[2]])
+      }
+    },
+  })
+  useAction('cam:snap-b', {
+    label: 'Look down b',
+    group: 'Camera',
+    defaultBindings: ['b'],
+    handler: () => { if (latticeDirections) snapCamera(latticeDirections.b) },
+  })
+  useAction('cam:snap-b-neg', {
+    label: 'Look down -b',
+    group: 'Camera',
+    defaultBindings: ['shift+b'],
+    handler: () => {
+      if (latticeDirections) {
+        const d = latticeDirections.b
+        snapCamera([-d[0], -d[1], -d[2]])
+      }
+    },
+  })
+  useAction('cam:snap-c', {
+    label: 'Look down c',
+    group: 'Camera',
+    defaultBindings: ['c'],
+    handler: () => { if (latticeDirections) snapCamera(latticeDirections.c) },
+  })
+  useAction('cam:snap-c-neg', {
+    label: 'Look down -c',
+    group: 'Camera',
+    defaultBindings: ['shift+c'],
+    handler: () => {
+      if (latticeDirections) {
+        const d = latticeDirections.c
+        snapCamera([-d[0], -d[1], -d[2]])
+      }
+    },
+  })
+  useAction('cam:snap-x', {
+    label: 'Look down X',
+    group: 'Camera',
+    defaultBindings: ['x'],
+    handler: () => snapCamera([1, 0, 0]),
+  })
+  useAction('cam:snap-x-neg', {
+    label: 'Look down -X',
+    group: 'Camera',
+    defaultBindings: ['shift+x'],
+    handler: () => snapCamera([-1, 0, 0]),
+  })
+  useAction('cam:snap-y', {
+    label: 'Look down Y',
+    group: 'Camera',
+    defaultBindings: ['y'],
+    handler: () => snapCamera([0, 1, 0], [0, 0, -1]),
+  })
+  useAction('cam:snap-y-neg', {
+    label: 'Look down -Y',
+    group: 'Camera',
+    defaultBindings: ['shift+y'],
+    handler: () => snapCamera([0, -1, 0], [0, 0, 1]),
+  })
+  useAction('cam:snap-z', {
+    label: 'Look down Z',
+    group: 'Camera',
+    defaultBindings: ['z'],
+    handler: () => snapCamera([0, 0, 1]),
+  })
+  useAction('cam:snap-z-neg', {
+    label: 'Look down -Z',
+    group: 'Camera',
+    defaultBindings: ['shift+z'],
+    handler: () => snapCamera([0, 0, -1]),
+  })
+
   // Camera navigation
-  useAction('nav:pan-left', {
-    label: 'Pan left',
-    group: 'Camera',
-    defaultBindings: ['arrowleft'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-left') },
-  })
-  useAction('nav:pan-right', {
-    label: 'Pan right',
-    group: 'Camera',
-    defaultBindings: ['arrowright'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-right') },
-  })
-  useAction('nav:pan-up', {
-    label: 'Pan up',
-    group: 'Camera',
-    defaultBindings: ['arrowup'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-up') },
-  })
-  useAction('nav:pan-down', {
-    label: 'Pan down',
-    group: 'Camera',
-    defaultBindings: ['arrowdown'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-down') },
-  })
   useAction('nav:orbit-left', {
     label: 'Orbit left',
     group: 'Camera',
-    defaultBindings: ['shift+arrowleft'],
+    defaultBindings: ['arrowleft'],
     handler: (e) => { if (e?.repeat) return; startMovement('orbit-left') },
   })
   useAction('nav:orbit-right', {
     label: 'Orbit right',
     group: 'Camera',
-    defaultBindings: ['shift+arrowright'],
+    defaultBindings: ['arrowright'],
     handler: (e) => { if (e?.repeat) return; startMovement('orbit-right') },
   })
   useAction('nav:orbit-up', {
     label: 'Orbit up',
     group: 'Camera',
-    defaultBindings: ['shift+arrowup'],
+    defaultBindings: ['arrowup'],
     handler: (e) => { if (e?.repeat) return; startMovement('orbit-up') },
   })
   useAction('nav:orbit-down', {
     label: 'Orbit down',
     group: 'Camera',
-    defaultBindings: ['shift+arrowdown'],
+    defaultBindings: ['arrowdown'],
     handler: (e) => { if (e?.repeat) return; startMovement('orbit-down') },
+  })
+  useAction('nav:pan-left', {
+    label: 'Pan left',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowleft'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-left') },
+  })
+  useAction('nav:pan-right', {
+    label: 'Pan right',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowright'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-right') },
+  })
+  useAction('nav:pan-up', {
+    label: 'Pan up',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowup'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-up') },
+  })
+  useAction('nav:pan-down', {
+    label: 'Pan down',
+    group: 'Camera',
+    defaultBindings: ['shift+arrowdown'],
+    handler: (e) => { if (e?.repeat) return; startMovement('pan-down') },
   })
   useAction('nav:zoom-in', {
     label: 'Zoom in',
@@ -361,7 +484,6 @@ export default function App() {
     e.target.value = ''
   }, [])
 
-  const primaryFile = files[0] ?? null
   const maxDensity = useMemo(() => {
     if (!primaryFile) return 1
     let max = 0
@@ -436,7 +558,8 @@ export default function App() {
             isoLevel={isoLevel}
             opacity={opacity}
             showAtoms={showAtoms}
-            showUnitCell={showUnitCell}
+            showAbcCell={showAbcCell}
+            showXyzBox={showXyzBox}
             showWorldAxes={showWorldAxes}
             activeMovements={activeMovements}
           />
@@ -446,9 +569,15 @@ export default function App() {
             isoLevel={isoLevel}
             opacity={opacity}
             showAtoms={showAtoms}
-            showUnitCell={showUnitCell}
+            showAbcCell={showAbcCell}
+            showXyzBox={showXyzBox}
             showWorldAxes={showWorldAxes}
             activeMovements={activeMovements}
+            cameraSnap={cameraSnap}
+            animationDuration={settings.animationDuration}
+            showSlice={showSlice}
+            sliceAxis={sliceAxis}
+            sliceIndex={sliceIndex}
           />
         )}
         {showSlice && primaryFile && (
@@ -500,8 +629,10 @@ export default function App() {
           onOpacityChange={setOpacity}
           showAtoms={showAtoms}
           onShowAtomsChange={setShowAtoms}
-          showUnitCell={showUnitCell}
-          onShowUnitCellChange={setShowUnitCell}
+          showAbcCell={showAbcCell}
+          onShowAbcCellChange={setShowAbcCell}
+          showXyzBox={showXyzBox}
+          onShowXyzBoxChange={setShowXyzBox}
           showWorldAxes={showWorldAxes}
           onShowWorldAxesChange={setShowWorldAxes}
           showSlice={showSlice}
@@ -512,6 +643,7 @@ export default function App() {
           maxSliceIndex={maxSliceIndex}
           onSliceIndexChange={setSliceIndex}
           filename={primaryFile.filename}
+          elements={primaryFile.data.structure.elements}
         />
         <input
           ref={addFileInputRef}
@@ -533,6 +665,12 @@ export default function App() {
         onClose={() => setAwsModalOpen(false)}
         onSave={(creds) => { saveCredentials(creds); setAwsCreds(creds) }}
         currentCreds={awsCreds}
+        ssoContent={
+          <SSOAuthFlow
+            onSave={(creds) => { saveCredentials(creds); setAwsCreds(creds) }}
+            onClose={() => setAwsModalOpen(false)}
+          />
+        }
       />
 
       <SizeConfirmModal

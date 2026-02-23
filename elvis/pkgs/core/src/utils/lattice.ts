@@ -60,6 +60,26 @@ export function unitCellEdges(): Array<[[number, number, number], [number, numbe
 }
 
 /**
+ * Compute the axis-aligned bounding box of the unit cell in Cartesian space.
+ */
+export function unitCellBoundingBox(lat: LatticeMatrix): { min: [number, number, number]; max: [number, number, number] } {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity]
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity]
+  for (let i = 0; i <= 1; i++) {
+    for (let j = 0; j <= 1; j++) {
+      for (let k = 0; k <= 1; k++) {
+        const c = fracToCart(lat, [i, j, k])
+        for (let d = 0; d < 3; d++) {
+          if (c[d] < min[d]) min[d] = c[d]
+          if (c[d] > max[d]) max[d] = c[d]
+        }
+      }
+    }
+  }
+  return { min, max }
+}
+
+/**
  * Transform a fractional coordinate to Cartesian using the lattice matrix.
  */
 export function fracToCart(lat: LatticeMatrix, frac: [number, number, number]): [number, number, number] {

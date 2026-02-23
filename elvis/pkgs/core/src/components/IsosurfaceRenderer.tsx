@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { VolumeData } from '../types.ts'
-import { marchingCubes } from '../utils/marching-cubes.ts'
+import { marchingCubes, extendPeriodicGrid } from '../utils/marching-cubes.ts'
 
 interface IsosurfaceRendererProps {
   volume: VolumeData
@@ -9,14 +9,20 @@ interface IsosurfaceRendererProps {
 }
 
 export function IsosurfaceRenderer({ volume, isoLevel, opacity }: IsosurfaceRendererProps) {
+  const extended = useMemo(
+    () => extendPeriodicGrid(volume.grid.data, volume.grid.dims),
+    [volume],
+  )
+
   const geometry = useMemo(() => {
     return marchingCubes(
-      volume.grid.data,
-      volume.grid.dims,
+      extended.data,
+      extended.dims,
       isoLevel,
       volume.lattice,
+      volume.grid.dims,
     )
-  }, [volume, isoLevel])
+  }, [extended, isoLevel, volume.lattice])
 
   if (geometry.getAttribute('position')?.count === 0) return null
 

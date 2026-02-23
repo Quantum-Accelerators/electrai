@@ -1,3 +1,4 @@
+import { getElement } from '../utils/elements.ts'
 import styles from './Controls.module.css'
 
 interface ControlsProps {
@@ -8,8 +9,10 @@ interface ControlsProps {
   onOpacityChange: (v: number) => void
   showAtoms: boolean
   onShowAtomsChange: (v: boolean) => void
-  showUnitCell: boolean
-  onShowUnitCellChange: (v: boolean) => void
+  showAbcCell: boolean
+  onShowAbcCellChange: (v: boolean) => void
+  showXyzBox: boolean
+  onShowXyzBoxChange: (v: boolean) => void
   showWorldAxes: boolean
   onShowWorldAxesChange: (v: boolean) => void
   showSlice: boolean
@@ -20,6 +23,7 @@ interface ControlsProps {
   maxSliceIndex: number
   onSliceIndexChange: (v: number) => void
   filename: string
+  elements?: string[]
 }
 
 const AXIS_LABELS = ['X', 'Y', 'Z'] as const
@@ -32,8 +36,10 @@ export function Controls({
   onOpacityChange,
   showAtoms,
   onShowAtomsChange,
-  showUnitCell,
-  onShowUnitCellChange,
+  showAbcCell,
+  onShowAbcCellChange,
+  showXyzBox,
+  onShowXyzBoxChange,
   showWorldAxes,
   onShowWorldAxesChange,
   showSlice,
@@ -44,10 +50,31 @@ export function Controls({
   maxSliceIndex,
   onSliceIndexChange,
   filename,
+  elements,
 }: ControlsProps) {
   return (
     <div className={styles.controls}>
       <div className={styles.controlTitle}>{filename}</div>
+      {elements && elements.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, padding: '2px 0 6px', flexWrap: 'wrap' }}>
+          {elements.map(el => {
+            const { color } = getElement(el)
+            return (
+              <span key={el} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#ccc' }}>
+                <span style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: color,
+                  display: 'inline-block',
+                  flexShrink: 0,
+                }} />
+                {el}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       <label className={styles.controlLabel}>
         Iso-level: {isoLevel.toFixed(1)}
@@ -81,8 +108,13 @@ export function Controls({
       </label>
 
       <label className={styles.toggle}>
-        <input type="checkbox" checked={showUnitCell} onChange={e => onShowUnitCellChange(e.target.checked)} />
-        Show unit cell
+        <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
+        Show abc cell
+      </label>
+
+      <label className={styles.toggle}>
+        <input type="checkbox" checked={showXyzBox} onChange={e => onShowXyzBoxChange(e.target.checked)} />
+        Show XYZ box
       </label>
 
       <label className={styles.toggle}>

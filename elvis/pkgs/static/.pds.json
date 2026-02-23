@@ -12,6 +12,12 @@
       "npm": "aws-static-sso",
       "distBranch": "dist",
       "subdir": "/client"
+    },
+    "use-prms": {
+      "localPath": "../../../../../js/use-prms",
+      "github": "runsascoded/use-prms",
+      "npm": "use-prms",
+      "distBranch": "dist"
     }
   }
 }

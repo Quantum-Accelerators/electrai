@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react'
 export interface ElvisSettings {
   cacheInOPFS: boolean
   maxUploadSizeMB: number
+  animationDuration: number
 }
 
 const STORAGE_KEY = 'elvis-settings'
@@ -10,6 +11,7 @@ const STORAGE_KEY = 'elvis-settings'
 const DEFAULTS: ElvisSettings = {
   cacheInOPFS: true,
   maxUploadSizeMB: 20,
+  animationDuration: 1.0,
 }
 
 function load(): ElvisSettings {

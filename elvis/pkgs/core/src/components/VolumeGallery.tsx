@@ -78,14 +78,14 @@ export function VolumeGallery({ store, currentVolumeId, onSelect }: VolumeGaller
           alignItems: 'center',
         }}
       >
-        <span>Cached Volumes ({volumes.length})</span>
+        <span>Cached Files ({volumes.length})</span>
         <span style={{ fontSize: 10 }}>{collapsed ? '\u25b6' : '\u25bc'}</span>
       </button>
       {!collapsed && (
         <div style={{ maxHeight: 240, overflowY: 'auto' }}>
           {volumes.length === 0 ? (
             <div style={{ padding: '8px 16px', color: '#666', fontSize: 12 }}>
-              No cached volumes
+              No cached files
             </div>
           ) : (
             volumes.map(vol => (

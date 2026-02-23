@@ -16,8 +16,8 @@ export type { CHGCARHeader } from './parsers/chgcar.ts'
 export { parseNpy } from './parsers/npy.ts'
 
 // Utils
-export { marchingCubes } from './utils/marching-cubes.ts'
-export { fracToCart, latticeToMatrix4, cellVolume, unitCellEdges } from './utils/lattice.ts'
+export { marchingCubes, extendPeriodicGrid } from './utils/marching-cubes.ts'
+export { fracToCart, latticeToMatrix4, cellVolume, unitCellEdges, unitCellBoundingBox } from './utils/lattice.ts'
 export { getElement, ELEMENTS } from './utils/elements.ts'
 export type { ElementData } from './utils/elements.ts'
 
@@ -28,6 +28,7 @@ export { IsosurfaceRenderer } from './components/IsosurfaceRenderer.tsx'
 export { CrystalStructure as CrystalStructureView } from './components/CrystalStructure.tsx'
 export { LatticeGizmo } from './components/LatticeGizmo.tsx'
 export { CameraController } from './components/CameraController.tsx'
+export type { CameraSnapTarget } from './components/CameraController.tsx'
 export { SliceViewer } from './components/SliceViewer.tsx'
 export { ComparisonView } from './components/ComparisonView.tsx'
 export { Controls } from './components/Controls.tsx'
