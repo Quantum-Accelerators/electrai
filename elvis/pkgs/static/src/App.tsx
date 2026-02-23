@@ -53,6 +53,22 @@ const boolTrueParam: Param<boolean> = {
   decode: (e) => e === undefined,
 }
 
+const camParam: Param<[number, number, number] | null> = {
+  encode: (v) => {
+    if (!v) return undefined
+    const fmtAngle = (n: number) => {
+      const s = n.toFixed(1)
+      return s.endsWith('.0') ? s.slice(0, -2) : s
+    }
+    return `${fmtAngle(v[0])},${fmtAngle(v[1])},${parseFloat(v[2].toPrecision(3))}`
+  },
+  decode: (e) => {
+    if (e === undefined) return null
+    const parts = e.split(',').map(Number)
+    return parts.length === 3 && parts.every(isFinite) ? parts as [number, number, number] : null
+  },
+}
+
 const opfsStore = isOPFSSupported() ? new OpfsVolumeStore() : null
 
 const GithubIcon = () => (
@@ -81,6 +97,8 @@ export default function App() {
   const [showSlice, setShowSlice] = useUrlState('sl', boolParam)
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
   const [sliceIndex, setSliceIndex] = useUrlState('si', intParam(0), { debounce: 300 })
+  const [discreteOrbit, setDiscreteOrbit] = useUrlState('do', boolParam)
+  const [cam, setCam] = useUrlState('cam', camParam)
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
   )
@@ -106,10 +124,15 @@ export default function App() {
   // Camera movement + snap state (shared with CameraController inside Canvas)
   const activeMovements = useRef(new Set<string>())
   const cameraSnap = useRef<CameraSnapTarget | null>(null)
+  const initialCamera = useRef<[number, number, number] | null>(cam)
 
   const startMovement = useCallback((dir: string) => {
     activeMovements.current.add(dir)
   }, [])
+
+  const handleCameraChange = useCallback((theta: number, phi: number, zoom: number) => {
+    setCam([theta, phi, zoom])
+  }, [setCam])
 
   const MOVEMENT_KEYS = useMemo(() => new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
@@ -139,8 +162,8 @@ export default function App() {
     }
   }, [primaryFile])
 
-  const snapCamera = useCallback((dir: [number, number, number]) => {
-    cameraSnap.current = { direction: dir }
+  const snapCamera = useCallback((snap: CameraSnapTarget) => {
+    cameraSnap.current = snap
   }, [])
 
   // View toggles (t _ chords)
@@ -174,6 +197,12 @@ export default function App() {
     defaultBindings: ['t s'],
     handler: () => setShowSlice(!showSlice),
   })
+  useAction('view:toggle-discrete-orbit', {
+    label: 'Toggle discrete orbit',
+    group: 'View',
+    defaultBindings: ['t o'],
+    handler: () => setDiscreteOrbit(!discreteOrbit),
+  })
   useAction('slice:axis-x', {
     label: 'Slice along X',
     group: 'Slice',
@@ -198,114 +227,111 @@ export default function App() {
     label: 'Look down a',
     group: 'Camera',
     defaultBindings: ['a'],
-    handler: () => { if (latticeDirections) snapCamera(latticeDirections.a) },
+    handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.a }) },
   })
-  useAction('cam:snap-a-neg', {
-    label: 'Look down -a',
+  useAction('cam:align-a', {
+    label: 'Align a up',
     group: 'Camera',
     defaultBindings: ['shift+a'],
-    handler: () => {
-      if (latticeDirections) {
-        const d = latticeDirections.a
-        snapCamera([-d[0], -d[1], -d[2]])
-      }
-    },
+    handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.a }) },
   })
   useAction('cam:snap-b', {
     label: 'Look down b',
     group: 'Camera',
     defaultBindings: ['b'],
-    handler: () => { if (latticeDirections) snapCamera(latticeDirections.b) },
+    handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.b }) },
   })
-  useAction('cam:snap-b-neg', {
-    label: 'Look down -b',
+  useAction('cam:align-b', {
+    label: 'Align b up',
     group: 'Camera',
     defaultBindings: ['shift+b'],
-    handler: () => {
-      if (latticeDirections) {
-        const d = latticeDirections.b
-        snapCamera([-d[0], -d[1], -d[2]])
-      }
-    },
+    handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.b }) },
   })
   useAction('cam:snap-c', {
     label: 'Look down c',
     group: 'Camera',
     defaultBindings: ['c'],
-    handler: () => { if (latticeDirections) snapCamera(latticeDirections.c) },
+    handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.c }) },
   })
-  useAction('cam:snap-c-neg', {
-    label: 'Look down -c',
+  useAction('cam:align-c', {
+    label: 'Align c up',
     group: 'Camera',
     defaultBindings: ['shift+c'],
-    handler: () => {
-      if (latticeDirections) {
-        const d = latticeDirections.c
-        snapCamera([-d[0], -d[1], -d[2]])
-      }
-    },
+    handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.c }) },
   })
   useAction('cam:snap-x', {
     label: 'Look down X',
     group: 'Camera',
     defaultBindings: ['x'],
-    handler: () => snapCamera([1, 0, 0]),
+    handler: () => snapCamera({ type: 'look-down', direction: [1, 0, 0] }),
   })
-  useAction('cam:snap-x-neg', {
-    label: 'Look down -X',
+  useAction('cam:align-x', {
+    label: 'Align X up',
     group: 'Camera',
     defaultBindings: ['shift+x'],
-    handler: () => snapCamera([-1, 0, 0]),
+    handler: () => snapCamera({ type: 'align-up', axis: [1, 0, 0] }),
   })
   useAction('cam:snap-y', {
     label: 'Look down Y',
     group: 'Camera',
     defaultBindings: ['y'],
-    handler: () => snapCamera([0, 1, 0]),
+    handler: () => snapCamera({ type: 'look-down', direction: [0, 1, 0] }),
   })
-  useAction('cam:snap-y-neg', {
-    label: 'Look down -Y',
+  useAction('cam:align-y', {
+    label: 'Align Y up',
     group: 'Camera',
     defaultBindings: ['shift+y'],
-    handler: () => snapCamera([0, -1, 0]),
+    handler: () => snapCamera({ type: 'align-up', axis: [0, 1, 0] }),
   })
   useAction('cam:snap-z', {
     label: 'Look down Z',
     group: 'Camera',
     defaultBindings: ['z'],
-    handler: () => snapCamera([0, 0, 1]),
+    handler: () => snapCamera({ type: 'look-down', direction: [0, 0, 1] }),
   })
-  useAction('cam:snap-z-neg', {
-    label: 'Look down -Z',
+  useAction('cam:align-z', {
+    label: 'Align Z up',
     group: 'Camera',
     defaultBindings: ['shift+z'],
-    handler: () => snapCamera([0, 0, -1]),
+    handler: () => snapCamera({ type: 'align-up', axis: [0, 0, 1] }),
   })
 
-  // Camera navigation
+  // Camera navigation (orbit: continuous or discrete 90-degree snaps)
   useAction('nav:orbit-left', {
     label: 'Orbit left',
     group: 'Camera',
     defaultBindings: ['arrowleft'],
-    handler: (e) => { if (e?.repeat) return; startMovement('orbit-left') },
+    handler: (e) => {
+      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'left' }) }
+      else { if (e?.repeat) return; startMovement('orbit-left') }
+    },
   })
   useAction('nav:orbit-right', {
     label: 'Orbit right',
     group: 'Camera',
     defaultBindings: ['arrowright'],
-    handler: (e) => { if (e?.repeat) return; startMovement('orbit-right') },
+    handler: (e) => {
+      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'right' }) }
+      else { if (e?.repeat) return; startMovement('orbit-right') }
+    },
   })
   useAction('nav:orbit-up', {
     label: 'Orbit up',
     group: 'Camera',
     defaultBindings: ['arrowup'],
-    handler: (e) => { if (e?.repeat) return; startMovement('orbit-up') },
+    handler: (e) => {
+      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'up' }) }
+      else { if (e?.repeat) return; startMovement('orbit-up') }
+    },
   })
   useAction('nav:orbit-down', {
     label: 'Orbit down',
     group: 'Camera',
     defaultBindings: ['arrowdown'],
-    handler: (e) => { if (e?.repeat) return; startMovement('orbit-down') },
+    handler: (e) => {
+      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'down' }) }
+      else { if (e?.repeat) return; startMovement('orbit-down') }
+    },
   })
   useAction('nav:pan-left', {
     label: 'Pan left',
@@ -575,6 +601,8 @@ export default function App() {
             activeMovements={activeMovements}
             cameraSnap={cameraSnap}
             animationDuration={settings.animationDuration}
+            onCameraChange={handleCameraChange}
+            initialCamera={initialCamera}
             showSlice={showSlice}
             sliceAxis={sliceAxis}
             sliceIndex={sliceIndex}

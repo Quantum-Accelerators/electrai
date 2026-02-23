@@ -24,6 +24,8 @@ interface DensityViewerProps {
   activeMovements?: RefObject<Set<string>>
   cameraSnap?: MutableRefObject<CameraSnapTarget | null>
   animationDuration?: number
+  onCameraChange?: (theta: number, phi: number, zoom: number) => void
+  initialCamera?: MutableRefObject<[number, number, number] | null>
   showSlice?: boolean
   sliceAxis?: 0 | 1 | 2
   sliceIndex?: number
@@ -41,6 +43,8 @@ export function DensityViewer({
   activeMovements,
   cameraSnap,
   animationDuration,
+  onCameraChange,
+  initialCamera,
   showSlice,
   sliceAxis,
   sliceIndex,
@@ -86,7 +90,7 @@ export function DensityViewer({
           <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} />
         )}
 
-        {activeMovements && <CameraController activeMovements={activeMovements} cameraSnap={cameraSnap} animationDuration={animationDuration} />}
+        {activeMovements && <CameraController activeMovements={activeMovements} cameraSnap={cameraSnap} animationDuration={animationDuration} onCameraChange={onCameraChange} initialCamera={initialCamera} />}
 
         <OrbitControls makeDefault target={center.toArray()} />
         <GizmoHelper alignment="bottom-right" margin={[80, 36]}>

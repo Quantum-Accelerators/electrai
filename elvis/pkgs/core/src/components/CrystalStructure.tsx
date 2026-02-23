@@ -150,25 +150,22 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
     return edges
   }, [lattice])
 
-  // World axes: fixed-length XYZ arrows, scaled to match average lattice vector length
+  // World axes: 3 edges of the XYZ bounding box from its min corner
   const worldAxesData = useMemo(() => {
-    const avgLen = axisEndpoints.reduce((sum, ep) => {
-      return sum + new Vector3(...ep).sub(new Vector3(...origin)).length()
-    }, 0) / 3
-    const len = avgLen * 0.6
-    const o = origin
+    const { min, max } = unitCellBoundingBox(lattice)
+    const o: [number, number, number] = [min[0], min[1], min[2]]
     const endpoints: [number, number, number][] = [
-      [o[0] + len, o[1], o[2]],
-      [o[0], o[1] + len, o[2]],
-      [o[0], o[1], o[2] + len],
+      [max[0], min[1], min[2]],
+      [min[0], max[1], min[2]],
+      [min[0], min[1], max[2]],
     ]
     const labels = endpoints.map((ep, i) => {
       const dir = new Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0)
       const labelPos = new Vector3(...ep).add(dir.multiplyScalar(0.4))
       return labelPos.toArray() as [number, number, number]
     })
-    return { endpoints, labels }
-  }, [axisEndpoints, origin])
+    return { origin: o, endpoints, labels }
+  }, [lattice])
 
   return (
     <group>
@@ -210,7 +207,7 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
       {showWorldAxes && (
         <>
           {worldAxesData.endpoints.map((ep, i) => (
-            <AxisCylinder key={`world-${i}`} from={origin} to={ep} color={WORLD_COLORS[i]} />
+            <AxisCylinder key={`world-${i}`} from={worldAxesData.origin} to={ep} color={WORLD_COLORS[i]} radius={0.06} />
           ))}
           {worldAxesData.labels.map((pos, i) => (
             <AxisLabel key={`world-label-${i}`} position={pos} label={WORLD_LABELS[i]} color={WORLD_COLORS[i]} />
