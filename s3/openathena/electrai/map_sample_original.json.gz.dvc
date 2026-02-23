@@ -5,6 +5,8 @@ deps:
   size: 792
   hash: md5
   path: s3://openathena/electrai/map_sample_original.json.gz
+  fs_config:
+    allow_anonymous_login: 'true'
 outs:
 - hash: md5
   path: map_sample_original.json.gz

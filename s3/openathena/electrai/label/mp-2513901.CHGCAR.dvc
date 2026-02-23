@@ -5,6 +5,8 @@ deps:
   size: 26846165
   hash: md5
   path: s3://openathena/electrai/label/mp-2513901.CHGCAR
+  fs_config:
+    allow_anonymous_login: 'true'
 outs:
 - hash: md5
   path: mp-2513901.CHGCAR
