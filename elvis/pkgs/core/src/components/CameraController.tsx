@@ -28,8 +28,8 @@ interface CameraControllerProps {
   activeMovements: RefObject<Set<string>>
   cameraSnap?: MutableRefObject<CameraSnapTarget | null>
   animationDuration?: number
-  onCameraChange?: (theta: number, phi: number, zoom: number) => void
-  initialCamera?: MutableRefObject<[number, number, number] | null>
+  onCameraChange?: (theta: number, phi: number, zoom: number, roll: number) => void
+  initialCamera?: MutableRefObject<[number, number, number, number] | null>
 }
 
 interface SnapState {
@@ -70,13 +70,19 @@ export function CameraController({
     if (!initializedRef.current) {
       initializedRef.current = true
       if (initialCamera?.current) {
-        const [theta, phi, zoom] = initialCamera.current
+        const [theta, phi, zoom, roll] = initialCamera.current
         initialCamera.current = null
         _spherical.set(zoom, MathUtils.degToRad(phi), MathUtils.degToRad(theta))
         _offset.setFromSpherical(_spherical)
         camera.position.copy(target).add(_offset)
         camera.up.set(0, 1, 0)
         camera.lookAt(target)
+        // Apply roll: rotate up-vector around viewing direction
+        if (Math.abs(roll) > 0.05) {
+          camera.getWorldDirection(_viewDir)
+          camera.up.applyAxisAngle(_viewDir, MathUtils.degToRad(roll))
+          camera.lookAt(target)
+        }
         controls.update()
         return
       }
@@ -237,10 +243,27 @@ export function CameraController({
           _offset.copy(camera.position).sub(target)
           _spherical.setFromVector3(_offset)
           if (_spherical.radius >= 0.001) {
+            // Compute roll: angle between default up (world-Y projected) and actual up
+            camera.getWorldDirection(_viewDir)
+            _upTarget.set(0, 1, 0)
+            const dv = _upTarget.dot(_viewDir)
+            _upTarget.addScaledVector(_viewDir, -dv)
+            let roll = 0
+            if (_upTarget.lengthSq() >= 0.0001) {
+              _upTarget.normalize()
+              _upCurrent.copy(camera.up)
+              const du = _upCurrent.dot(_viewDir)
+              _upCurrent.addScaledVector(_viewDir, -du).normalize()
+              _axis.crossVectors(_upTarget, _upCurrent)
+              const cosR = Math.max(-1, Math.min(1, _upTarget.dot(_upCurrent)))
+              const sinR = _axis.dot(_viewDir)
+              roll = Math.round(MathUtils.radToDeg(Math.atan2(sinR, cosR)) * 10) / 10
+            }
             onCameraChange(
               Math.round(MathUtils.radToDeg(_spherical.theta) * 10) / 10,
               Math.round(MathUtils.radToDeg(_spherical.phi) * 10) / 10,
               parseFloat(_spherical.radius.toPrecision(3)),
+              roll,
             )
           }
           camSyncRef.current.reported = true

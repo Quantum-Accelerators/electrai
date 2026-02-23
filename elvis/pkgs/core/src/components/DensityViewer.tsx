@@ -24,8 +24,8 @@ interface DensityViewerProps {
   activeMovements?: RefObject<Set<string>>
   cameraSnap?: MutableRefObject<CameraSnapTarget | null>
   animationDuration?: number
-  onCameraChange?: (theta: number, phi: number, zoom: number) => void
-  initialCamera?: MutableRefObject<[number, number, number] | null>
+  onCameraChange?: (theta: number, phi: number, zoom: number, roll: number) => void
+  initialCamera?: MutableRefObject<[number, number, number, number] | null>
   showSlice?: boolean
   sliceAxis?: 0 | 1 | 2
   sliceIndex?: number

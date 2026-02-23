@@ -15,6 +15,8 @@ interface ControlsProps {
   onShowXyzBoxChange: (v: boolean) => void
   showWorldAxes: boolean
   onShowWorldAxesChange: (v: boolean) => void
+  discreteOrbit: boolean
+  onDiscreteOrbitChange: (v: boolean) => void
   showSlice: boolean
   onShowSliceChange: (v: boolean) => void
   sliceAxis: 0 | 1 | 2
@@ -42,6 +44,8 @@ export function Controls({
   onShowXyzBoxChange,
   showWorldAxes,
   onShowWorldAxesChange,
+  discreteOrbit,
+  onDiscreteOrbitChange,
   showSlice,
   onShowSliceChange,
   sliceAxis,
@@ -120,6 +124,11 @@ export function Controls({
       <label className={styles.toggle}>
         <input type="checkbox" checked={showWorldAxes} onChange={e => onShowWorldAxesChange(e.target.checked)} />
         Show XYZ axes
+      </label>
+
+      <label className={styles.toggle}>
+        <input type="checkbox" checked={discreteOrbit} onChange={e => onDiscreteOrbitChange(e.target.checked)} />
+        90° orbit
       </label>
 
       <hr className={styles.divider} />

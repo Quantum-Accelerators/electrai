@@ -53,19 +53,25 @@ const boolTrueParam: Param<boolean> = {
   decode: (e) => e === undefined,
 }
 
-const camParam: Param<[number, number, number] | null> = {
+// Camera state: theta°, phi°, zoom, roll° (roll optional, defaults to 0)
+type CamState = [number, number, number, number] | null
+const camParam: Param<CamState> = {
   encode: (v) => {
     if (!v) return undefined
     const fmtAngle = (n: number) => {
       const s = n.toFixed(1)
       return s.endsWith('.0') ? s.slice(0, -2) : s
     }
-    return `${fmtAngle(v[0])},${fmtAngle(v[1])},${parseFloat(v[2].toPrecision(3))}`
+    const base = `${fmtAngle(v[0])},${fmtAngle(v[1])},${parseFloat(v[2].toPrecision(3))}`
+    return (Math.abs(v[3]) < 0.05) ? base : `${base},${fmtAngle(v[3])}`
   },
   decode: (e) => {
     if (e === undefined) return null
     const parts = e.split(',').map(Number)
-    return parts.length === 3 && parts.every(isFinite) ? parts as [number, number, number] : null
+    if (!parts.every(isFinite)) return null
+    if (parts.length === 3) return [parts[0], parts[1], parts[2], 0]
+    if (parts.length === 4) return parts as [number, number, number, number]
+    return null
   },
 }
 
@@ -124,14 +130,14 @@ export default function App() {
   // Camera movement + snap state (shared with CameraController inside Canvas)
   const activeMovements = useRef(new Set<string>())
   const cameraSnap = useRef<CameraSnapTarget | null>(null)
-  const initialCamera = useRef<[number, number, number] | null>(cam)
+  const initialCamera = useRef<CamState>(cam)
 
   const startMovement = useCallback((dir: string) => {
     activeMovements.current.add(dir)
   }, [])
 
-  const handleCameraChange = useCallback((theta: number, phi: number, zoom: number) => {
-    setCam([theta, phi, zoom])
+  const handleCameraChange = useCallback((theta: number, phi: number, zoom: number, roll: number) => {
+    setCam([theta, phi, zoom, roll])
   }, [setCam])
 
   const MOVEMENT_KEYS = useMemo(() => new Set([
@@ -197,8 +203,9 @@ export default function App() {
     defaultBindings: ['t s'],
     handler: () => setShowSlice(!showSlice),
   })
-  useAction('view:toggle-discrete-orbit', {
-    label: 'Toggle discrete orbit',
+  useAction('view:toggle-90-orbit', {
+    label: 'Toggle 90° orbit',
+    keywords: ['deg', '90deg', '90', 'discrete', 'step'],
     group: 'View',
     defaultBindings: ['t o'],
     handler: () => setDiscreteOrbit(!discreteOrbit),
@@ -663,6 +670,8 @@ export default function App() {
           onShowXyzBoxChange={setShowXyzBox}
           showWorldAxes={showWorldAxes}
           onShowWorldAxesChange={setShowWorldAxes}
+          discreteOrbit={discreteOrbit}
+          onDiscreteOrbitChange={setDiscreteOrbit}
           showSlice={showSlice}
           onShowSliceChange={setShowSlice}
           sliceAxis={sliceAxis}
