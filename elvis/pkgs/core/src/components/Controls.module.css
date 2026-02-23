@@ -22,6 +22,28 @@
   color: #ccc;
 }
 
+.sliderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.resetBtn {
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #999;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  line-height: 1.2;
+}
+
+.resetBtn:hover {
+  color: #ccc;
+  border-color: #888;
+}
+
 .slider {
   width: 100%;
   accent-color: #4a9eff;

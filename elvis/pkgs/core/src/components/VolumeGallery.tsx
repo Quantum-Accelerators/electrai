@@ -5,6 +5,8 @@ interface VolumeGalleryProps {
   store: VolumeStore
   currentVolumeId: string | null
   onSelect: (id: string, blob: Blob) => void
+  /** Increment to trigger a refresh of the file list */
+  refreshKey?: number
 }
 
 function formatBytes(bytes: number): string {
@@ -29,7 +31,7 @@ function compositionFormula(elements: string[], atomCount: number): string {
   return elements.join('-')
 }
 
-export function VolumeGallery({ store, currentVolumeId, onSelect }: VolumeGalleryProps) {
+export function VolumeGallery({ store, currentVolumeId, onSelect, refreshKey }: VolumeGalleryProps) {
   const [volumes, setVolumes] = useState<StoredVolume[]>([])
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem('elvis-gallery-collapsed') === 'true'
@@ -39,7 +41,7 @@ export function VolumeGallery({ store, currentVolumeId, onSelect }: VolumeGaller
     setVolumes(await store.list())
   }, [store])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { refresh() }, [refresh, refreshKey])
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed(prev => {

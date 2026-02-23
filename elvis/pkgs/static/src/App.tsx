@@ -56,6 +56,8 @@ const boolTrueParam: Param<boolean> = {
 }
 
 // Camera state: theta°, phi°, zoom, roll° (roll optional, defaults to 0)
+// Encoded as space-separated values: `?c=-90 150.1 23.5 72.8`
+// Spaces become `+` in query strings, so: `?c=-90+150.1+23.5+72.8`
 type CamState = [number, number, number, number] | null
 const camParam: Param<CamState> = {
   encode: (v) => {
@@ -64,12 +66,12 @@ const camParam: Param<CamState> = {
       const s = n.toFixed(1)
       return s.endsWith('.0') ? s.slice(0, -2) : s
     }
-    const base = `${fmtAngle(v[0])},${fmtAngle(v[1])},${parseFloat(v[2].toPrecision(3))}`
-    return (Math.abs(v[3]) < 0.05) ? base : `${base},${fmtAngle(v[3])}`
+    const base = `${fmtAngle(v[0])} ${fmtAngle(v[1])} ${parseFloat(v[2].toPrecision(3))}`
+    return (Math.abs(v[3]) < 0.05) ? base : `${base} ${fmtAngle(v[3])}`
   },
   decode: (e) => {
     if (e === undefined) return null
-    const parts = e.split(',').map(Number)
+    const parts = e.trim().split(/[\s,]+/).map(Number)
     if (!parts.every(isFinite)) return null
     if (parts.length === 3) return [parts[0], parts[1], parts[2], 0]
     if (parts.length === 4) return parts as [number, number, number, number]
@@ -134,7 +136,7 @@ export default function App() {
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
   const [sliceIndex, setSliceIndex] = useUrlState('si', intParam(0), { debounce: 300 })
   const [discreteOrbit, setDiscreteOrbit] = useUrlState('do', boolParam)
-  const [cam, setCam] = useUrlState('cam', camParam)
+  const [cam, setCam] = useUrlState('c', camParam)
   const [materialId, setMaterialId] = useUrlState('m', stringParam(''))
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
@@ -144,6 +146,7 @@ export default function App() {
     if (id) sessionStorage.setItem('elvis-active-volume', id)
     else sessionStorage.removeItem('elvis-active-volume')
   }, [])
+  const [galleryRefreshKey, setGalleryRefreshKey] = useState(0)
   const [urlLoading, setUrlLoading] = useState(false)
   const [fetchStatus, setFetchStatus] = useState<string | null>(null)
   const [awsModalOpen, setAwsModalOpen] = useState(false)
@@ -420,21 +423,53 @@ export default function App() {
     handler: (e) => { if (e?.repeat) return; startMovement('roll-cw') },
   })
 
-  // Auto-restore last active volume from OPFS on mount
+  // Auto-restore on mount: ?m= param (OPFS cache → fetch) or last active OPFS volume
+  const materialIdRef = useRef(materialId)
   useEffect(() => {
-    if (!opfsStore || !currentVolumeId || files.length > 0) return
+    if (files.length > 0) return
     let cancelled = false
     ;(async () => {
-      const blob = await opfsStore.get(currentVolumeId)
-      if (!blob || cancelled) return
-      const volumes = await opfsStore.list()
-      const vol = volumes.find(v => v.id === currentVolumeId)
-      const filename = vol?.filename ?? 'CHGCAR'
-      const data = await parseBlob(blob, filename)
-      if (cancelled) return
-      setFiles([{ data, filename }])
-      setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-      setSliceIndex(Math.floor(data.grid.dims[2] / 2))
+      const m = materialIdRef.current
+      if (opfsStore) {
+        const volumes = await opfsStore.list()
+        if (cancelled) return
+        // If ?m= is set, try to find a matching cached file first
+        if (m) {
+          const cachedFilename = `${m}.json.gz`
+          const cached = volumes.find(v => v.filename === cachedFilename)
+          if (cached) {
+            const blob = await opfsStore.get(cached.id)
+            if (blob && !cancelled) {
+              const data = await parseBlob(blob, cached.filename)
+              if (cancelled) return
+              setFiles([{ data, filename: cached.filename }])
+              setIsoLevel(computeDefaultIsoLevel(data.grid.data))
+              setSliceIndex(Math.floor(data.grid.dims[2] / 2))
+              setCurrentVolumeId(cached.id)
+              return
+            }
+          }
+        }
+        // No ?m= or not cached — try restoring last active volume
+        if (!m && currentVolumeId) {
+          const vol = volumes.find(v => v.id === currentVolumeId)
+          if (vol) {
+            const blob = await opfsStore.get(vol.id)
+            if (blob && !cancelled) {
+              const data = await parseBlob(blob, vol.filename)
+              if (cancelled) return
+              setFiles([{ data, filename: vol.filename }])
+              setIsoLevel(computeDefaultIsoLevel(data.grid.data))
+              setSliceIndex(Math.floor(data.grid.dims[2] / 2))
+              return
+            }
+          }
+        }
+      }
+      // ?m= set but not in cache — fetch from S3
+      if (m && !cancelled) {
+        handleUrlSubmit(mpS3Uri(m))
+      }
     })()
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -453,20 +488,26 @@ export default function App() {
       return next
     })
 
-    // Cache in OPFS if enabled
+    // Cache in OPFS if enabled (skip if same filename already cached)
     if (opfsStore && settings.cacheInOPFS && blob) {
-      const fileSizeMB = blob.size / (1024 * 1024)
-      const meta = {
-        filename,
-        elements: data.structure.elements,
-        atomCount: data.structure.atoms.length,
-        gridDims: data.grid.dims,
-      }
-      if (fileSizeMB > settings.maxUploadSizeMB) {
-        setSizeConfirm({ blob, filename, fileSizeMB, meta, data })
+      const existing = (await opfsStore.list()).find(v => v.filename === filename)
+      if (existing) {
+        setCurrentVolumeId(existing.id)
       } else {
-        const stored = await opfsStore.store(blob, filename, meta)
-        setCurrentVolumeId(stored.id)
+        const fileSizeMB = blob.size / (1024 * 1024)
+        const meta = {
+          filename,
+          elements: data.structure.elements,
+          atomCount: data.structure.atoms.length,
+          gridDims: data.grid.dims,
+        }
+        if (fileSizeMB > settings.maxUploadSizeMB) {
+          setSizeConfirm({ blob, filename, fileSizeMB, meta, data })
+        } else {
+          const stored = await opfsStore.store(blob, filename, meta)
+          setCurrentVolumeId(stored.id)
+          setGalleryRefreshKey(k => k + 1)
+        }
       }
     }
   }, [settings, setCurrentVolumeId])
@@ -566,19 +607,12 @@ export default function App() {
     }
   }, [awsCreds, handleLoad])
 
-  // Auto-load from ?m= URL param on mount
-  const materialIdRef = useRef(materialId)
-  useEffect(() => {
-    const m = materialIdRef.current
-    if (!m || files.length > 0) return
-    handleUrlSubmit(mpS3Uri(m))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleSizeConfirm = useCallback(async (cache: boolean) => {
     if (!sizeConfirm || !opfsStore) return
     if (cache) {
       const stored = await opfsStore.store(sizeConfirm.blob, sizeConfirm.filename, sizeConfirm.meta)
       setCurrentVolumeId(stored.id)
+      setGalleryRefreshKey(k => k + 1)
     }
     setSizeConfirm(null)
   }, [sizeConfirm, setCurrentVolumeId])
@@ -598,6 +632,11 @@ export default function App() {
       if (primaryFile.data.grid.data[i] > max) max = primaryFile.data.grid.data[i]
     }
     return max
+  }, [primaryFile])
+
+  const defaultIsoLevel = useMemo(() => {
+    if (!primaryFile) return 0
+    return computeDefaultIsoLevel(primaryFile.data.grid.data)
   }, [primaryFile])
 
   const maxSliceIndex = useMemo(() => {
@@ -659,6 +698,7 @@ export default function App() {
             store={opfsStore}
             currentVolumeId={currentVolumeId}
             onSelect={handleGallerySelect}
+            refreshKey={galleryRefreshKey}
           />
         )}
         <AWSCredentialsModal
@@ -737,6 +777,7 @@ export default function App() {
             store={opfsStore}
             currentVolumeId={currentVolumeId}
             onSelect={handleGallerySelect}
+            refreshKey={galleryRefreshKey}
           />
         )}
         <Settings
@@ -756,6 +797,7 @@ export default function App() {
         )}
         <Controls
           isoLevel={isoLevel}
+          defaultIsoLevel={defaultIsoLevel}
           maxDensity={maxDensity}
           onIsoLevelChange={setIsoLevel}
           opacity={opacity}

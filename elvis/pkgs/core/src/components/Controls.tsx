@@ -3,6 +3,7 @@ import styles from './Controls.module.css'
 
 interface ControlsProps {
   isoLevel: number
+  defaultIsoLevel: number
   maxDensity: number
   onIsoLevelChange: (v: number) => void
   opacity: number
@@ -32,6 +33,7 @@ const AXIS_LABELS = ['X', 'Y', 'Z'] as const
 
 export function Controls({
   isoLevel,
+  defaultIsoLevel,
   maxDensity,
   onIsoLevelChange,
   opacity,
@@ -80,8 +82,19 @@ export function Controls({
         </div>
       )}
 
-      <label className={styles.controlLabel}>
-        Iso-level: {isoLevel.toFixed(1)}
+      <div className={styles.controlLabel}>
+        <div className={styles.sliderHeader}>
+          <span>Iso-level: {isoLevel.toFixed(1)}</span>
+          {Math.abs(isoLevel - defaultIsoLevel) > 0.1 && (
+            <button
+              className={styles.resetBtn}
+              onClick={() => onIsoLevelChange(defaultIsoLevel)}
+              title={`Reset to ${defaultIsoLevel.toFixed(1)}`}
+            >
+              {'\u21ba'}
+            </button>
+          )}
+        </div>
         <input
           type="range"
           min={0}
@@ -91,10 +104,21 @@ export function Controls({
           onChange={e => onIsoLevelChange(parseFloat(e.target.value))}
           className={styles.slider}
         />
-      </label>
+      </div>
 
-      <label className={styles.controlLabel}>
-        Opacity: {opacity.toFixed(2)}
+      <div className={styles.controlLabel}>
+        <div className={styles.sliderHeader}>
+          <span>Opacity: {opacity.toFixed(2)}</span>
+          {Math.abs(opacity - 0.6) > 0.005 && (
+            <button
+              className={styles.resetBtn}
+              onClick={() => onOpacityChange(0.6)}
+              title="Reset to 0.60"
+            >
+              {'\u21ba'}
+            </button>
+          )}
+        </div>
         <input
           type="range"
           min={0.05}
@@ -104,7 +128,7 @@ export function Controls({
           onChange={e => onOpacityChange(parseFloat(e.target.value))}
           className={styles.slider}
         />
-      </label>
+      </div>
 
       <label className={styles.toggle}>
         <input type="checkbox" checked={showAtoms} onChange={e => onShowAtomsChange(e.target.checked)} />
