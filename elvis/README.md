@@ -1,4 +1,4 @@
-# Elvis – Electron Density Visualization
+# ELvis – Electron Density Visualization
 
 Interactive 3D electron density viewer for VASP CHGCAR/ELFCAR files and [Materials Project] data.
 
@@ -6,7 +6,7 @@ Interactive 3D electron density viewer for VASP CHGCAR/ELFCAR files and [Materia
 
 <p align="center">
   <a href="https://elvis.rbw.sh/?m=mp-1000020&xb&xa&do">
-    <img src="pkgs/static/public/scrns/orbit-updown.gif" alt="Elvis – 3D orbit of Fe₂Cu₂O₄ electron density" width="600" />
+    <img src="pkgs/static/public/scrns/orbit-updown.gif" alt="ELvis – 3D orbit of Fe₂Cu₂O₄ electron density" width="600" />
   </a>
 </p>
 
