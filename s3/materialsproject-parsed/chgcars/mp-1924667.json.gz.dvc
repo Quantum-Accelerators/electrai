@@ -1,0 +1,13 @@
+md5: 4cb9894ac88a553229e0c9aa71874679
+frozen: true
+deps:
+- etag: 71d1306333785f03ef71a1b03ff13522-2
+  size: 10719563
+  version_id: U_SOKZVou0J7D2Swn9UE7lFgb8cZAkSW
+  hash: md5
+  path: s3://materialsproject-parsed/chgcars/mp-1924667.json.gz
+  fs_config:
+    allow_anonymous_login: 'true'
+outs:
+- hash: md5
+  path: mp-1924667.json.gz

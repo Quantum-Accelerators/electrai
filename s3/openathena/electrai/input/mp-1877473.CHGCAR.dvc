@@ -1,0 +1,10 @@
+md5: a01d871cb2370444e0fb540b483858d5
+frozen: true
+deps:
+- etag: cda164a5a0211d25a960a8db7d9ad884-3
+  size: 24663511
+  hash: md5
+  path: s3://openathena/electrai/input/mp-1877473.CHGCAR
+outs:
+- hash: md5
+  path: mp-1877473.CHGCAR

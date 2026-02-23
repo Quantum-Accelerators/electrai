@@ -1,0 +1,10 @@
+md5: 0488e0969092462390b1efe69de81e41
+frozen: true
+deps:
+- etag: 13b28c027cf4a9a5a9c40f8c7bf19fed
+  size: 792
+  hash: md5
+  path: s3://openathena/electrai/map_sample_original.json.gz
+outs:
+- hash: md5
+  path: map_sample_original.json.gz
