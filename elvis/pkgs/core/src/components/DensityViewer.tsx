@@ -21,6 +21,7 @@ interface DensityViewerProps {
   showAbcCell: boolean
   showXyzBox: boolean
   showWorldAxes: boolean
+  lineWidth?: number
   activeMovements?: RefObject<Set<string>>
   cameraSnap?: MutableRefObject<CameraSnapTarget | null>
   animationDuration?: number
@@ -40,6 +41,7 @@ export function DensityViewer({
   showAbcCell,
   showXyzBox,
   showWorldAxes,
+  lineWidth = 1,
   activeMovements,
   cameraSnap,
   animationDuration,
@@ -78,14 +80,14 @@ export function DensityViewer({
       )}
       <Canvas
         camera={{ position: cameraPosition.toArray(), fov: 50, near: 0.1, far: 500 }}
-        style={{ background: '#1a1a2e' }}
+        style={{ background: '#000' }}
       >
-        <ambientLight intensity={0.4} />
+        <ambientLight intensity={0.6} />
         <directionalLight position={[10, 10, 10]} intensity={0.8} />
-        <directionalLight position={[-5, -5, 5]} intensity={0.3} />
+        <directionalLight position={[-5, -5, 5]} intensity={0.4} />
 
         <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} />
-        <CrystalStructure volume={volume} showAtoms={showAtoms} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} />
+        <CrystalStructure volume={volume} showAtoms={showAtoms} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} lineWidth={lineWidth} />
         {showSlice && sliceAxis !== undefined && sliceIndex !== undefined && (
           <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} />
         )}

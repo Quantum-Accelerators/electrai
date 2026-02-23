@@ -11,6 +11,7 @@ interface CrystalStructureProps {
   showAbcCell: boolean
   showXyzBox: boolean
   showWorldAxes: boolean
+  lineWidth?: number
 }
 
 // Lattice vector colors — YOV (yellow, orange, violet), warm complement of gizmo RGB
@@ -67,7 +68,7 @@ function AxisLabel({ position, label, color }: {
   )
 }
 
-export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, showWorldAxes }: CrystalStructureProps) {
+export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, showWorldAxes, lineWidth = 1 }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
   // Group atoms by element for instanced rendering
@@ -185,7 +186,7 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
                   from={ca}
                   to={cb}
                   color={LATTICE_COLORS[axisIdx]}
-                  radius={isFromOrigin ? 0.06 : 0.03}
+                  radius={(isFromOrigin ? 0.06 : 0.03) * lineWidth}
                 />
               )
             })
@@ -201,13 +202,13 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
           from={edge.from}
           to={edge.to}
           color={WORLD_COLORS[edge.axis]}
-          radius={0.03}
+          radius={0.03 * lineWidth}
         />
       ))}
       {showWorldAxes && (
         <>
           {worldAxesData.endpoints.map((ep, i) => (
-            <AxisCylinder key={`world-${i}`} from={worldAxesData.origin} to={ep} color={WORLD_COLORS[i]} radius={0.06} />
+            <AxisCylinder key={`world-${i}`} from={worldAxesData.origin} to={ep} color={WORLD_COLORS[i]} radius={0.06 * lineWidth} />
           ))}
           {worldAxesData.labels.map((pos, i) => (
             <AxisLabel key={`world-label-${i}`} position={pos} label={WORLD_LABELS[i]} color={WORLD_COLORS[i]} />

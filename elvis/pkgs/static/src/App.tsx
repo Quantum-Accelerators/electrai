@@ -136,6 +136,8 @@ export default function App() {
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
   const [sliceIndex, setSliceIndex] = useUrlState('si', intParam(0), { debounce: 300 })
   const [discreteOrbit, setDiscreteOrbit] = useUrlState('do', boolParam)
+  const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
+  const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [cam, setCam] = useUrlState('c', camParam)
   const [materialId, setMaterialId] = useUrlState('m', stringParam(''))
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
@@ -147,6 +149,10 @@ export default function App() {
     else sessionStorage.removeItem('elvis-active-volume')
   }, [])
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0)
+  const [cachedMpIds, setCachedMpIds] = useState<Set<string>>(new Set())
+  const [examplesOpen, setExamplesOpen] = useState(() => {
+    return sessionStorage.getItem('elvis-examples-open') === 'true'
+  })
   const [urlLoading, setUrlLoading] = useState(false)
   const [fetchStatus, setFetchStatus] = useState<string | null>(null)
   const [awsModalOpen, setAwsModalOpen] = useState(false)
@@ -160,6 +166,19 @@ export default function App() {
   } | null>(null)
   const addFileInputRef = useRef<HTMLInputElement>(null)
   const { settings, update: updateSettings } = useSettings()
+
+  // Derive cached material IDs from OPFS (refreshes when gallery changes)
+  useEffect(() => {
+    if (!opfsStore) return
+    opfsStore.list().then(volumes => {
+      const ids = new Set<string>()
+      for (const v of volumes) {
+        const mpId = extractMpId(v.filename)
+        if (mpId) ids.add(mpId)
+      }
+      setCachedMpIds(ids)
+    })
+  }, [galleryRefreshKey])
 
   // Camera movement + snap state (shared with CameraController inside Canvas)
   const activeMovements = useRef(new Set<string>())
@@ -644,6 +663,40 @@ export default function App() {
     return primaryFile.data.grid.dims[sliceAxis] - 1
   }, [primaryFile, sliceAxis])
 
+  const exampleLinks = (
+    <details
+      open={examplesOpen}
+      onToggle={e => {
+        const open = (e.target as HTMLDetailsElement).open
+        setExamplesOpen(open)
+        sessionStorage.setItem('elvis-examples-open', String(open))
+      }}
+      style={{ padding: '4px 16px', fontSize: 12, color: '#666' }}
+    >
+      <summary style={{ cursor: 'pointer', userSelect: 'none' }}>Examples</summary>
+      <ul style={{ margin: '4px 0 0', paddingLeft: 20, lineHeight: 1.8 }}>
+        {EXAMPLES.map(ex => {
+          const cached = cachedMpIds.has(ex.mpId)
+          return (
+            <li key={ex.mpId}>
+              <a
+                href="#"
+                onClick={(e) => { e.preventDefault(); handleUrlSubmit(mpS3Uri(ex.mpId)) }}
+                style={{ color: cached ? '#6a8' : '#8ab', textDecoration: 'none' }}
+              >
+                {ex.mpId}
+              </a>
+              <span style={{ color: '#555' }}>
+                {' \u2014 '}{ex.label}
+                {cached && <span style={{ color: '#6a8', marginLeft: 4 }}>{'\u2713'}</span>}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </details>
+  )
+
   if (files.length === 0) {
     return (
       <div className={styles.dropZone}>
@@ -659,23 +712,7 @@ export default function App() {
               {fetchStatus}
             </div>
           )}
-          <div style={{ padding: '4px 16px', fontSize: 12, color: '#666' }}>
-            Examples:
-            <ul style={{ margin: '4px 0 0', paddingLeft: 20, lineHeight: 1.8 }}>
-              {EXAMPLES.map(ex => (
-                <li key={ex.mpId}>
-                  <a
-                    href="#"
-                    onClick={(e) => { e.preventDefault(); handleUrlSubmit(mpS3Uri(ex.mpId)) }}
-                    style={{ color: '#8ab', textDecoration: 'none' }}
-                  >
-                    {ex.mpId}
-                  </a>
-                  <span style={{ color: '#555' }}>{' \u2014 '}{ex.label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {exampleLinks}
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
             <button
               onClick={() => setAwsModalOpen(true)}
@@ -743,9 +780,10 @@ export default function App() {
             showAbcCell={showAbcCell}
             showXyzBox={showXyzBox}
             showWorldAxes={showWorldAxes}
+            lineWidth={lineWidth}
             activeMovements={activeMovements}
             cameraSnap={cameraSnap}
-            animationDuration={settings.animationDuration}
+            animationDuration={animDuration || settings.animationDuration}
             onCameraChange={handleCameraChange}
             initialCamera={initialCamera}
             showSlice={showSlice}
@@ -784,6 +822,10 @@ export default function App() {
           settings={settings}
           onUpdate={updateSettings}
           showCacheToggle={!!opfsStore}
+          animDuration={animDuration}
+          onAnimDurationChange={setAnimDuration}
+          lineWidth={lineWidth}
+          onLineWidthChange={setLineWidth}
         />
         <URLInput onSubmit={handleUrlSubmit} loading={urlLoading} />
         {fetchStatus && (
@@ -795,6 +837,7 @@ export default function App() {
             {fetchStatus}
           </div>
         )}
+        {exampleLinks}
         <Controls
           isoLevel={isoLevel}
           defaultIsoLevel={defaultIsoLevel}

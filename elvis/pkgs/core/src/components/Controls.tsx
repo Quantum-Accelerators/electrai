@@ -1,6 +1,13 @@
 import { getElement } from '../utils/elements.ts'
 import styles from './Controls.module.css'
 
+const ResetIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M3.5 2.5v4h4" />
+    <path d="M3.5 6.5A5.5 5.5 0 1 1 2.5 9.5" />
+  </svg>
+)
+
 interface ControlsProps {
   isoLevel: number
   defaultIsoLevel: number
@@ -85,15 +92,14 @@ export function Controls({
       <div className={styles.controlLabel}>
         <div className={styles.sliderHeader}>
           <span>Iso-level: {isoLevel.toFixed(1)}</span>
-          {Math.abs(isoLevel - defaultIsoLevel) > 0.1 && (
-            <button
-              className={styles.resetBtn}
-              onClick={() => onIsoLevelChange(defaultIsoLevel)}
-              title={`Reset to ${defaultIsoLevel.toFixed(1)}`}
-            >
-              {'\u21ba'}
-            </button>
-          )}
+          <button
+            className={styles.resetBtn}
+            onClick={() => onIsoLevelChange(defaultIsoLevel)}
+            title={`Reset to ${defaultIsoLevel.toFixed(1)}`}
+            disabled={Math.abs(isoLevel - defaultIsoLevel) <= 0.1}
+          >
+            <ResetIcon />
+          </button>
         </div>
         <input
           type="range"
@@ -109,15 +115,14 @@ export function Controls({
       <div className={styles.controlLabel}>
         <div className={styles.sliderHeader}>
           <span>Opacity: {opacity.toFixed(2)}</span>
-          {Math.abs(opacity - 0.6) > 0.005 && (
-            <button
-              className={styles.resetBtn}
-              onClick={() => onOpacityChange(0.6)}
-              title="Reset to 0.60"
-            >
-              {'\u21ba'}
-            </button>
-          )}
+          <button
+            className={styles.resetBtn}
+            onClick={() => onOpacityChange(0.6)}
+            title="Reset to 0.60"
+            disabled={Math.abs(opacity - 0.6) <= 0.005}
+          >
+            <ResetIcon />
+          </button>
         </div>
         <input
           type="range"

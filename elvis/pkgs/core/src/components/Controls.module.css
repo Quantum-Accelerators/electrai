@@ -29,19 +29,22 @@
 }
 
 .resetBtn {
+  display: inline-flex;
+  align-items: center;
   background: transparent;
-  border: 1px solid #555;
-  border-radius: 3px;
-  color: #999;
+  border: none;
+  color: #ccc;
   cursor: pointer;
-  font-size: 13px;
-  padding: 0 4px;
-  line-height: 1.2;
+  padding: 0 2px;
 }
 
-.resetBtn:hover {
-  color: #ccc;
-  border-color: #888;
+.resetBtn:hover:not(:disabled) {
+  color: #fff;
+}
+
+.resetBtn:disabled {
+  color: #555;
+  cursor: default;
 }
 
 .slider {
