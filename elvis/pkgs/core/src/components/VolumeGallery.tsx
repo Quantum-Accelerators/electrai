@@ -136,7 +136,7 @@ export function VolumeGallery({ store, currentVolumeId, onSelect }: VolumeGaller
                   }}
                   title="Remove from cache"
                 >
-                  \u00d7
+                  {'\u00d7'}
                 </button>
               </div>
             ))
