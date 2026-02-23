@@ -6,7 +6,7 @@ const allowedHosts = process.env.VITE_ALLOWED_HOSTS?.split(',') ?? []
 
 export default defineConfig({
   plugins: [react()],
-  base: '/',
+  base: process.env.BASE_PATH || '/',
 
   define: {
     'process.env.AWS_STATIC_SSO_PROXY_URL': JSON.stringify(''),
