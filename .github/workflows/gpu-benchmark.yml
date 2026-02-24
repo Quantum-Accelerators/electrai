@@ -218,7 +218,14 @@ jobs:
           echo "| Channels | $CHANNELS |" >> $GITHUB_STEP_SUMMARY
           echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
           echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | [\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          COMMIT_LINK="[\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+          PR_NUM=$(curl -sf -H "Authorization: token ${{ github.token }}" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+            | python3 -c "import sys,json; ps=json.load(sys.stdin); print(ps[0]['number'] if ps else '')" 2>/dev/null || true)
+          if [ -n "$PR_NUM" ]; then
+            COMMIT_LINK="${COMMIT_LINK} ([#${PR_NUM}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUM}))"
+          fi
+          echo "| Commit | ${COMMIT_LINK} |" >> $GITHUB_STEP_SUMMARY
           WANDB_RUN_URL="${{ steps.gpu.outputs.WANDB_RUN_URL }}"
           if [ -n "$WANDB_RUN_URL" ]; then
             WANDB_RUN_ID=$(echo "$WANDB_RUN_URL" | grep -oP '[^/]+$')
