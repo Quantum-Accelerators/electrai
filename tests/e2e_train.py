@@ -296,7 +296,14 @@ def main(
         if git_sha:
             wandb_tags.append(f"sha:{git_sha}")
         run_id = os.environ.get("GITHUB_RUN_ID", "")
-        wandb_run_name = f"ci-{git_sha}" if git_sha else None
+        run_number = os.environ.get("GITHUB_RUN_NUMBER", "")
+        workflow_name = os.environ.get("GITHUB_WORKFLOW", "")
+        if workflow_name and run_number:
+            wandb_run_name = f"{workflow_name}#{run_number}"
+        elif git_sha:
+            wandb_run_name = f"ci-{git_sha}"
+        else:
+            wandb_run_name = None
 
         repo = os.environ.get("GITHUB_REPOSITORY", "")
         logger = WandbLogger(
