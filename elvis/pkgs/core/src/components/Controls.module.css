@@ -2,7 +2,7 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .controlTitle {
@@ -12,6 +12,33 @@
   word-break: break-all;
   padding-bottom: 4px;
   border-bottom: 1px solid #333;
+}
+
+.section {
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sectionTitle:hover {
+  color: #aaa;
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 10px 10px;
 }
 
 .controlLabel {
@@ -95,4 +122,12 @@
   background: #4a9eff;
   color: #fff;
   border-color: #4a9eff;
+}
+
+.camInfo {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: #777;
+  font-family: monospace;
 }

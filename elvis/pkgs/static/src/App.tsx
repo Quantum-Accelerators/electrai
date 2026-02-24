@@ -79,6 +79,19 @@ const camParam: Param<CamState> = {
   },
 }
 
+/** useUrlState with debounce, but local state drives the returned value immediately.
+ *  Fixes the use-prms issue where debounced values revert on unrelated re-renders. */
+function useDebouncedUrlState<T>(key: string, param: Param<T>, debounceMs: number): [T, (v: T) => void] {
+  const [urlValue, setUrlValue] = useUrlState(key, param, { debounce: debounceMs })
+  const [localValue, setLocalValue] = useState(urlValue)
+  useEffect(() => { setLocalValue(urlValue) }, [urlValue])
+  const setValue = useCallback((v: T) => {
+    setLocalValue(v)
+    setUrlValue(v)
+  }, [setUrlValue])
+  return [localValue, setValue]
+}
+
 const opfsStore = isOPFSSupported() ? new OpfsVolumeStore() : null
 
 async function parseBlob(blob: Blob, filename: string): Promise<VolumeData> {
@@ -128,16 +141,16 @@ const speedDialActions: SpeedDialAction[] = [
 
 export default function App() {
   const [files, setFiles] = useState<LoadedFile[]>([])
-  const [isoLevel, setIsoLevel] = useUrlState('iso', floatParam({ default: 0, encoding: 'string', decimals: 1 }), { debounce: 300 })
-  const [opacity, setOpacity] = useUrlState('op', floatParam({ default: 0.6, encoding: 'string', decimals: 2 }), { debounce: 300 })
+  const [isoLevel, setIsoLevel] = useDebouncedUrlState('iso', floatParam({ default: 0, encoding: 'string', decimals: 1 }), 300)
+  const [opacity, setOpacity] = useDebouncedUrlState('op', floatParam({ default: 0.6, encoding: 'string', decimals: 2 }), 300)
   const [showAtoms, setShowAtoms] = useUrlState('ha', boolTrueParam)
   const [showAbcCell, setShowAbcCell] = useUrlState('hc', boolTrueParam)
   const [showXyzBox, setShowXyzBox] = useUrlState('xb', boolParam)
   const [showWorldAxes, setShowWorldAxes] = useUrlState('xa', boolParam)
   const [showSlice, setShowSlice] = useUrlState('sl', boolParam)
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
-  const [sliceIndex, setSliceIndex] = useUrlState('si', intParam(0), { debounce: 300 })
-  const [discreteOrbit, setDiscreteOrbit] = useUrlState('do', boolParam)
+  const [sliceIndex, setSliceIndex] = useDebouncedUrlState('si', intParam(0), 300)
+  const [orbitDeg, setOrbitDeg] = useUrlState('od', intParam(0))
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [cam, setCam] = useUrlState('c', camParam)
@@ -228,29 +241,38 @@ export default function App() {
   }, [])
 
   // View toggles (t _ chords)
-  useAction('view:toggle-atoms', {
-    label: 'Toggle atoms',
-    group: 'View',
-    defaultBindings: ['t a'],
-    handler: () => setShowAtoms(!showAtoms),
-  })
-  useAction('view:toggle-abc-cell', {
-    label: 'Toggle abc cell',
-    group: 'View',
-    defaultBindings: ['t c'],
-    handler: () => setShowAbcCell(!showAbcCell),
-  })
-  useAction('view:toggle-xyz-box', {
-    label: 'Toggle XYZ box',
-    group: 'View',
-    defaultBindings: ['t b'],
-    handler: () => setShowXyzBox(!showXyzBox),
-  })
-  useAction('view:toggle-world-axes', {
-    label: 'Toggle XYZ axes',
+  // Group toggles: if either member is on, turn both off; if both off, turn both on
+  useAction('view:toggle-xyz', {
+    label: 'Toggle XYZ (axes + box)',
     group: 'View',
     defaultBindings: ['t x'],
+    handler: () => {
+      const anyOn = showXyzBox || showWorldAxes
+      setShowXyzBox(!anyOn)
+      setShowWorldAxes(!anyOn)
+    },
+  })
+  useAction('view:toggle-xyz-axes', {
+    label: 'Toggle XYZ axes',
+    group: 'View',
+    defaultBindings: ['t shift+x'],
     handler: () => setShowWorldAxes(!showWorldAxes),
+  })
+  useAction('view:toggle-abc', {
+    label: 'Toggle abc (cell + atoms)',
+    group: 'View',
+    defaultBindings: ['t a'],
+    handler: () => {
+      const anyOn = showAbcCell || showAtoms
+      setShowAbcCell(!anyOn)
+      setShowAtoms(!anyOn)
+    },
+  })
+  useAction('view:toggle-abc-atoms', {
+    label: 'Toggle atoms',
+    group: 'View',
+    defaultBindings: ['t shift+a'],
+    handler: () => setShowAtoms(!showAtoms),
   })
   useAction('view:toggle-slice', {
     label: 'Toggle 2D slice',
@@ -258,12 +280,21 @@ export default function App() {
     defaultBindings: ['t s'],
     handler: () => setShowSlice(!showSlice),
   })
-  useAction('view:toggle-90-orbit', {
-    label: 'Toggle 90° orbit',
-    keywords: ['deg', '90deg', '90', 'discrete', 'step'],
+  useAction('view:set-orbit-deg', {
+    label: 'Set orbit step',
+    keywords: ['deg', '90deg', '90', 'discrete', 'step', 'angle'],
+    group: 'View',
+    defaultBindings: ['\\d+ o'],
+    handler: (_e, captures) => {
+      setOrbitDeg(captures?.[0] ?? 90)
+    },
+  })
+  useAction('view:toggle-orbit', {
+    label: 'Toggle orbit step',
+    keywords: ['deg', 'discrete', 'step'],
     group: 'View',
     defaultBindings: ['t o'],
-    handler: () => setDiscreteOrbit(!discreteOrbit),
+    handler: () => setOrbitDeg(orbitDeg > 0 ? 0 : 90),
   })
   useAction('slice:axis-x', {
     label: 'Slice along X',
@@ -358,14 +389,16 @@ export default function App() {
     handler: () => snapCamera({ type: 'align-up', axis: [0, 0, 1] }),
   })
 
-  // Camera navigation (orbit: continuous or discrete 90-degree snaps)
+  // Camera navigation (orbit: continuous or discrete step snaps)
+  // In discrete mode, startMovement tracks held state so CameraController can chain snaps
   useAction('nav:orbit-left', {
     label: 'Orbit left',
     group: 'Camera',
     defaultBindings: ['arrowleft'],
     handler: (e) => {
-      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'left' }) }
-      else { if (e?.repeat) return; startMovement('orbit-left') }
+      if (e?.repeat) return
+      startMovement('orbit-left')
+      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'left', degrees: orbitDeg })
     },
   })
   useAction('nav:orbit-right', {
@@ -373,8 +406,9 @@ export default function App() {
     group: 'Camera',
     defaultBindings: ['arrowright'],
     handler: (e) => {
-      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'right' }) }
-      else { if (e?.repeat) return; startMovement('orbit-right') }
+      if (e?.repeat) return
+      startMovement('orbit-right')
+      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'right', degrees: orbitDeg })
     },
   })
   useAction('nav:orbit-up', {
@@ -382,8 +416,9 @@ export default function App() {
     group: 'Camera',
     defaultBindings: ['arrowup'],
     handler: (e) => {
-      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'up' }) }
-      else { if (e?.repeat) return; startMovement('orbit-up') }
+      if (e?.repeat) return
+      startMovement('orbit-up')
+      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'up', degrees: orbitDeg })
     },
   })
   useAction('nav:orbit-down', {
@@ -391,8 +426,9 @@ export default function App() {
     group: 'Camera',
     defaultBindings: ['arrowdown'],
     handler: (e) => {
-      if (discreteOrbit) { snapCamera({ type: 'orbit-step', direction: 'down' }) }
-      else { if (e?.repeat) return; startMovement('orbit-down') }
+      if (e?.repeat) return
+      startMovement('orbit-down')
+      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'down', degrees: orbitDeg })
     },
   })
   useAction('nav:pan-left', {
@@ -512,14 +548,9 @@ export default function App() {
     const mpId = extractMpId(filename)
     setMaterialId(mpId ?? '')
 
-    setFiles(prev => {
-      const next = [...prev, { data, filename }]
-      if (prev.length === 0) {
-        setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-        setSliceIndex(Math.floor(data.grid.dims[2] / 2))
-      }
-      return next
-    })
+    setFiles([{ data, filename }])
+    setIsoLevel(computeDefaultIsoLevel(data.grid.data))
+    setSliceIndex(Math.floor(data.grid.dims[2] / 2))
 
     // Cache in OPFS if enabled (skip if same filename already cached)
     if (opfsStore && settings.cacheInOPFS && blob) {
@@ -546,6 +577,9 @@ export default function App() {
   }, [settings, setCurrentVolumeId])
 
   const handleGallerySelect = useCallback(async (_id: string, blob: Blob) => {
+    // Show loading state while parsing
+    setFiles([])
+    setFetchStatus('Parsing volume...')
     // Get filename from store metadata first (needed for format detection)
     let filename = ''
     if (opfsStore) {
@@ -558,11 +592,13 @@ export default function App() {
     setIsoLevel(computeDefaultIsoLevel(data.grid.data))
     setSliceIndex(Math.floor(data.grid.dims[2] / 2))
     setCurrentVolumeId(_id)
+    setFetchStatus(null)
   }, [setCurrentVolumeId])
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setUrlLoading(true)
     setFetchStatus(null)
+    setFiles([])
     try {
       const isJsonGz = url.toLowerCase().endsWith('.json.gz')
 
@@ -708,7 +744,7 @@ export default function App() {
   )
 
   const isComparison = files.length > 1
-  const isLoading = !primaryFile && (initialQuery.isPending || initialQuery.isFetching)
+  const isLoading = !primaryFile && (initialQuery.isPending || initialQuery.isFetching || urlLoading || fetchStatus)
 
   return (
     <div className={styles.app}>
@@ -769,10 +805,12 @@ export default function App() {
             {isLoading && (
               <>
                 <div className={styles.spinner} />
-                <div className={styles.loadingText}>Loading density data...</div>
+                <div className={styles.loadingText}>
+                  {fetchStatus && !fetchStatus.startsWith('Error') ? fetchStatus : 'Loading density data...'}
+                </div>
               </>
             )}
-            {initialQuery.error && (
+            {initialQuery.error && !fetchStatus && (
               <div className={styles.errorText}>
                 {initialQuery.error instanceof Error ? initialQuery.error.message : 'Failed to load'}
               </div>
@@ -825,8 +863,8 @@ export default function App() {
             onShowXyzBoxChange={setShowXyzBox}
             showWorldAxes={showWorldAxes}
             onShowWorldAxesChange={setShowWorldAxes}
-            discreteOrbit={discreteOrbit}
-            onDiscreteOrbitChange={setDiscreteOrbit}
+            orbitDeg={orbitDeg}
+            onOrbitDegChange={setOrbitDeg}
             showSlice={showSlice}
             onShowSliceChange={setShowSlice}
             sliceAxis={sliceAxis}
@@ -834,6 +872,7 @@ export default function App() {
             sliceIndex={sliceIndex}
             maxSliceIndex={maxSliceIndex}
             onSliceIndexChange={setSliceIndex}
+            cam={cam}
             filename={primaryFile.filename}
             elements={primaryFile.data.structure.elements}
           />

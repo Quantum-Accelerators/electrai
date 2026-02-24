@@ -23,8 +23,8 @@ interface ControlsProps {
   onShowXyzBoxChange: (v: boolean) => void
   showWorldAxes: boolean
   onShowWorldAxesChange: (v: boolean) => void
-  discreteOrbit: boolean
-  onDiscreteOrbitChange: (v: boolean) => void
+  orbitDeg: number
+  onOrbitDegChange: (v: number) => void
   showSlice: boolean
   onShowSliceChange: (v: boolean) => void
   sliceAxis: 0 | 1 | 2
@@ -32,11 +32,17 @@ interface ControlsProps {
   sliceIndex: number
   maxSliceIndex: number
   onSliceIndexChange: (v: number) => void
+  cam: [number, number, number, number] | null
   filename: string
   elements?: string[]
 }
 
 const AXIS_LABELS = ['X', 'Y', 'Z'] as const
+
+function fmtAngle(n: number): string {
+  const s = n.toFixed(1)
+  return s.endsWith('.0') ? s.slice(0, -2) : s
+}
 
 export function Controls({
   isoLevel,
@@ -53,8 +59,8 @@ export function Controls({
   onShowXyzBoxChange,
   showWorldAxes,
   onShowWorldAxesChange,
-  discreteOrbit,
-  onDiscreteOrbitChange,
+  orbitDeg,
+  onOrbitDegChange,
   showSlice,
   onShowSliceChange,
   sliceAxis,
@@ -62,6 +68,7 @@ export function Controls({
   sliceIndex,
   maxSliceIndex,
   onSliceIndexChange,
+  cam,
   filename,
   elements,
 }: ControlsProps) {
@@ -72,13 +79,14 @@ export function Controls({
         <div style={{ display: 'flex', gap: 8, padding: '2px 0 6px', flexWrap: 'wrap' }}>
           {elements.map(el => {
             const { color } = getElement(el)
+            const css = `#${color.toString(16).padStart(6, '0')}`
             return (
               <span key={el} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#ccc' }}>
                 <span style={{
                   width: 10,
                   height: 10,
                   borderRadius: '50%',
-                  background: color,
+                  background: css,
                   display: 'inline-block',
                   flexShrink: 0,
                 }} />
@@ -89,111 +97,147 @@ export function Controls({
         </div>
       )}
 
-      <div className={styles.controlLabel}>
-        <div className={styles.sliderHeader}>
-          <span>Iso-level: {isoLevel.toFixed(1)}</span>
-          <button
-            className={styles.resetBtn}
-            onClick={() => onIsoLevelChange(defaultIsoLevel)}
-            title={`Reset to ${defaultIsoLevel.toFixed(1)}`}
-            disabled={Math.abs(isoLevel - defaultIsoLevel) <= 0.1}
-          >
-            <ResetIcon />
-          </button>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={maxDensity}
-          step={maxDensity / 500}
-          value={isoLevel}
-          onChange={e => onIsoLevelChange(parseFloat(e.target.value))}
-          className={styles.slider}
-        />
-      </div>
-
-      <div className={styles.controlLabel}>
-        <div className={styles.sliderHeader}>
-          <span>Opacity: {opacity.toFixed(2)}</span>
-          <button
-            className={styles.resetBtn}
-            onClick={() => onOpacityChange(0.6)}
-            title="Reset to 0.60"
-            disabled={Math.abs(opacity - 0.6) <= 0.005}
-          >
-            <ResetIcon />
-          </button>
-        </div>
-        <input
-          type="range"
-          min={0.05}
-          max={1}
-          step={0.01}
-          value={opacity}
-          onChange={e => onOpacityChange(parseFloat(e.target.value))}
-          className={styles.slider}
-        />
-      </div>
-
-      <label className={styles.toggle}>
-        <input type="checkbox" checked={showAtoms} onChange={e => onShowAtomsChange(e.target.checked)} />
-        Show atoms
-      </label>
-
-      <label className={styles.toggle}>
-        <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
-        Show abc cell
-      </label>
-
-      <label className={styles.toggle}>
-        <input type="checkbox" checked={showXyzBox} onChange={e => onShowXyzBoxChange(e.target.checked)} />
-        Show XYZ box
-      </label>
-
-      <label className={styles.toggle}>
-        <input type="checkbox" checked={showWorldAxes} onChange={e => onShowWorldAxesChange(e.target.checked)} />
-        Show XYZ axes
-      </label>
-
-      <label className={styles.toggle}>
-        <input type="checkbox" checked={discreteOrbit} onChange={e => onDiscreteOrbitChange(e.target.checked)} />
-        90° orbit
-      </label>
-
-      <hr className={styles.divider} />
-
-      <label className={styles.toggle}>
-        <input type="checkbox" checked={showSlice} onChange={e => onShowSliceChange(e.target.checked)} />
-        2D Slice
-      </label>
-
-      {showSlice && (
-        <>
-          <div className={styles.axisButtons}>
-            {AXIS_LABELS.map((label, i) => (
+      <details className={styles.section} open>
+        <summary className={styles.sectionTitle}>Surface</summary>
+        <div className={styles.sectionBody}>
+          <div className={styles.controlLabel}>
+            <div className={styles.sliderHeader}>
+              <span>Iso-level: {isoLevel.toFixed(1)}</span>
               <button
-                key={label}
-                className={`${styles.axisBtn} ${sliceAxis === i ? styles.axisBtnActive : ''}`}
-                onClick={() => onSliceAxisChange(i as 0 | 1 | 2)}
+                className={styles.resetBtn}
+                onClick={() => onIsoLevelChange(defaultIsoLevel)}
+                title={`Reset to ${defaultIsoLevel.toFixed(1)}`}
+                disabled={Math.abs(isoLevel - defaultIsoLevel) <= 0.1}
               >
-                {label}
+                <ResetIcon />
               </button>
-            ))}
-          </div>
-          <label className={styles.controlLabel}>
-            Slice: {sliceIndex} / {maxSliceIndex}
+            </div>
             <input
               type="range"
               min={0}
-              max={maxSliceIndex}
-              step={1}
-              value={sliceIndex}
-              onChange={e => onSliceIndexChange(parseInt(e.target.value))}
+              max={maxDensity}
+              step={maxDensity / 500}
+              value={isoLevel}
+              onChange={e => onIsoLevelChange(parseFloat(e.target.value))}
               className={styles.slider}
             />
+          </div>
+
+          <div className={styles.controlLabel}>
+            <div className={styles.sliderHeader}>
+              <span>Opacity: {opacity.toFixed(2)}</span>
+              <button
+                className={styles.resetBtn}
+                onClick={() => onOpacityChange(0.6)}
+                title="Reset to 0.60"
+                disabled={Math.abs(opacity - 0.6) <= 0.005}
+              >
+                <ResetIcon />
+              </button>
+            </div>
+            <input
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.01}
+              value={opacity}
+              onChange={e => onOpacityChange(parseFloat(e.target.value))}
+              className={styles.slider}
+            />
+          </div>
+        </div>
+      </details>
+
+      <details className={styles.section} open>
+        <summary className={styles.sectionTitle}>Display</summary>
+        <div className={styles.sectionBody}>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showAtoms} onChange={e => onShowAtomsChange(e.target.checked)} />
+            Show atoms
           </label>
-        </>
-      )}
+
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
+            Show abc cell
+          </label>
+
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showXyzBox} onChange={e => onShowXyzBoxChange(e.target.checked)} />
+            Show XYZ box
+          </label>
+
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showWorldAxes} onChange={e => onShowWorldAxesChange(e.target.checked)} />
+            Show XYZ axes
+          </label>
+        </div>
+      </details>
+
+      <details className={styles.section} open>
+        <summary className={styles.sectionTitle}>Camera</summary>
+        <div className={styles.sectionBody}>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={orbitDeg > 0} onChange={e => onOrbitDegChange(e.target.checked ? 90 : 0)} />
+            Orbit step{orbitDeg > 0 && <>:
+              <input
+                type="number"
+                min={1}
+                max={360}
+                value={orbitDeg}
+                onChange={e => { const v = parseInt(e.target.value); if (v > 0) onOrbitDegChange(v) }}
+                onClick={e => e.stopPropagation()}
+                style={{ width: 40, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
+              />°
+            </>}
+          </label>
+          {cam && (
+            <div className={styles.camInfo}>
+              <span title="Azimuth (theta)">θ {fmtAngle(cam[0])}°</span>
+              <span title="Elevation (phi)">φ {fmtAngle(cam[1])}°</span>
+              <span title="Distance">d {parseFloat(cam[2].toPrecision(3))}</span>
+              {Math.abs(cam[3]) >= 0.05 && <span title="Roll">↻ {fmtAngle(cam[3])}°</span>}
+            </div>
+          )}
+        </div>
+      </details>
+
+      <details className={styles.section} open>
+        <summary className={styles.sectionTitle}>Slice</summary>
+        <div className={styles.sectionBody}>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showSlice} onChange={e => onShowSliceChange(e.target.checked)} />
+            2D Slice
+          </label>
+
+          {showSlice && (
+            <>
+              <div className={styles.axisButtons}>
+                {AXIS_LABELS.map((label, i) => (
+                  <button
+                    key={label}
+                    className={`${styles.axisBtn} ${sliceAxis === i ? styles.axisBtnActive : ''}`}
+                    onClick={() => onSliceAxisChange(i as 0 | 1 | 2)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <label className={styles.controlLabel}>
+                Slice: {sliceIndex} / {maxSliceIndex}
+                <input
+                  type="range"
+                  min={0}
+                  max={maxSliceIndex}
+                  step={1}
+                  value={sliceIndex}
+                  onChange={e => onSliceIndexChange(parseInt(e.target.value))}
+                  className={styles.slider}
+                />
+              </label>
+            </>
+          )}
+        </div>
+      </details>
     </div>
   )
 }

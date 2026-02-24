@@ -22,7 +22,7 @@ const _upCurrent = new Vector3()
 export type CameraSnapTarget =
   | { type: 'look-down', direction: [number, number, number] }
   | { type: 'align-up', axis: [number, number, number] }
-  | { type: 'orbit-step', direction: 'left' | 'right' | 'up' | 'down' }
+  | { type: 'orbit-step', direction: 'left' | 'right' | 'up' | 'down', degrees: number }
 
 interface CameraControllerProps {
   activeMovements: RefObject<Set<string>>
@@ -58,6 +58,7 @@ export function CameraController({
   const camera = useThree(s => s.camera)
   const controls = useThree(s => s.controls) as { target: Vector3; update: () => void } | null
   const snapState = useRef<SnapState | null>(null)
+  const lastOrbitStepRef = useRef<CameraSnapTarget | null>(null)
   const initFramesRef = useRef(0)
   const camSyncRef = useRef<{ lastChange: number; reported: boolean }>({ lastChange: 0, reported: true })
   const prevCamRef = useRef<[number, number, number, number, number, number] | null>(null)
@@ -131,13 +132,16 @@ export function CameraController({
         camera.getWorldDirection(_viewDir)
         _right.crossVectors(_viewDir, camera.up).normalize()
         _up.crossVectors(_right, _viewDir).normalize()
-        const halfPi = Math.PI / 2
-        if (snap.direction === 'left') _rotQ.setFromAxisAngle(_up, -halfPi)
-        else if (snap.direction === 'right') _rotQ.setFromAxisAngle(_up, halfPi)
-        else if (snap.direction === 'up') _rotQ.setFromAxisAngle(_right, halfPi)
-        else _rotQ.setFromAxisAngle(_right, -halfPi)
+        const stepRad = snap.degrees * Math.PI / 180
+        if (snap.direction === 'left') _rotQ.setFromAxisAngle(_up, -stepRad)
+        else if (snap.direction === 'right') _rotQ.setFromAxisAngle(_up, stepRad)
+        else if (snap.direction === 'up') _rotQ.setFromAxisAngle(_right, -stepRad)
+        else _rotQ.setFromAxisAngle(_right, stepRad)
         endQuat = new Quaternion().multiplyQuaternions(_rotQ, startQuat)
       }
+
+      // Remember orbit-step snaps for key-hold chaining
+      lastOrbitStepRef.current = snap.type === 'orbit-step' ? snap : null
 
       if (endQuat) {
         snapState.current = { startQuat, endQuat, radius, elapsed: 0, duration: animationDuration }
@@ -146,6 +150,7 @@ export function CameraController({
 
     // Animate snap
     let isSnapping = false
+    let snapJustFinished = false
     if (snapState.current) {
       const s = snapState.current
       s.elapsed += delta
@@ -157,9 +162,25 @@ export function CameraController({
       camera.position.copy(target).add(_offset)
       camera.up.set(0, 1, 0).applyQuaternion(_snapQ)
       camera.lookAt(target)
+
       controls.update()
 
-      if (t >= 1) snapState.current = null
+      if (t >= 1) {
+        // Re-apply exact quaternion position after controls.update() —
+        // OrbitControls' spherical clamping drifts by ~0.5° at poles
+        _offset.set(0, 0, 1).applyQuaternion(s.endQuat).multiplyScalar(s.radius)
+        camera.position.copy(target).add(_offset)
+        camera.up.set(0, 1, 0).applyQuaternion(s.endQuat)
+        camera.lookAt(target)
+
+        snapState.current = null
+        snapJustFinished = true
+        // Chain orbit-step if key is still held
+        const lastStep = lastOrbitStepRef.current
+        if (lastStep?.type === 'orbit-step' && activeMovements.current?.has(`orbit-${lastStep.direction}`)) {
+          cameraSnap!.current = lastStep
+        }
+      }
       isSnapping = true
     }
 
@@ -168,6 +189,8 @@ export function CameraController({
       const movements = activeMovements.current
       if (movements?.size) {
         const dt = Math.min(delta, 0.05)
+        // Skip continuous orbit if a discrete orbit-step chain is pending
+        const discreteOrbit = cameraSnap?.current?.type === 'orbit-step'
 
         // Screen-relative orbit
         _offset.copy(camera.position).sub(target)
@@ -177,10 +200,12 @@ export function CameraController({
 
         let posChanged = false
 
-        if (movements.has('orbit-left'))  { _offset.applyAxisAngle(_up, -ORBIT_SPEED * dt); camera.up.applyAxisAngle(_up, -ORBIT_SPEED * dt); posChanged = true }
-        if (movements.has('orbit-right')) { _offset.applyAxisAngle(_up,  ORBIT_SPEED * dt); camera.up.applyAxisAngle(_up,  ORBIT_SPEED * dt); posChanged = true }
-        if (movements.has('orbit-up'))    { _offset.applyAxisAngle(_right,  ORBIT_SPEED * dt); camera.up.applyAxisAngle(_right,  ORBIT_SPEED * dt); posChanged = true }
-        if (movements.has('orbit-down'))  { _offset.applyAxisAngle(_right, -ORBIT_SPEED * dt); camera.up.applyAxisAngle(_right, -ORBIT_SPEED * dt); posChanged = true }
+        if (!discreteOrbit) {
+          if (movements.has('orbit-left'))  { _offset.applyAxisAngle(_up, -ORBIT_SPEED * dt); camera.up.applyAxisAngle(_up, -ORBIT_SPEED * dt); posChanged = true }
+          if (movements.has('orbit-right')) { _offset.applyAxisAngle(_up,  ORBIT_SPEED * dt); camera.up.applyAxisAngle(_up,  ORBIT_SPEED * dt); posChanged = true }
+          if (movements.has('orbit-up'))    { _offset.applyAxisAngle(_right, -ORBIT_SPEED * dt); camera.up.applyAxisAngle(_right, -ORBIT_SPEED * dt); posChanged = true }
+          if (movements.has('orbit-down'))  { _offset.applyAxisAngle(_right,  ORBIT_SPEED * dt); camera.up.applyAxisAngle(_right,  ORBIT_SPEED * dt); posChanged = true }
+        }
 
         if (movements.has('zoom-in')) {
           if (_offset.length() * (1 - ZOOM_SPEED * dt) >= 0.5) {
@@ -227,44 +252,54 @@ export function CameraController({
 
     // Camera change detection for URL sync (detects keyboard + mouse orbit changes)
     if (onCameraChange) {
-      const { x: px, y: py, z: pz } = camera.position
-      const { x: ux, y: uy, z: uz } = camera.up
-      const prev = prevCamRef.current
-      const changed = !prev ||
-        Math.abs(px - prev[0]) > 1e-6 || Math.abs(py - prev[1]) > 1e-6 || Math.abs(pz - prev[2]) > 1e-6 ||
-        Math.abs(ux - prev[3]) > 1e-6 || Math.abs(uy - prev[4]) > 1e-6 || Math.abs(uz - prev[5]) > 1e-6
-      prevCamRef.current = [px, py, pz, ux, uy, uz]
-      if (changed) {
-        camSyncRef.current = { lastChange: performance.now(), reported: false }
-      } else if (!camSyncRef.current.reported && !isSnapping) {
-        if (performance.now() - camSyncRef.current.lastChange >= 500) {
-          _offset.copy(camera.position).sub(target)
-          _spherical.setFromVector3(_offset)
-          if (_spherical.radius >= 0.001) {
-            // Compute roll: angle between default up (world-Y projected) and actual up
-            camera.getWorldDirection(_viewDir)
-            _upTarget.set(0, 1, 0)
-            const dv = _upTarget.dot(_viewDir)
-            _upTarget.addScaledVector(_viewDir, -dv)
-            let roll = 0
-            if (_upTarget.lengthSq() >= 0.0001) {
-              _upTarget.normalize()
-              _upCurrent.copy(camera.up)
-              const du = _upCurrent.dot(_viewDir)
-              _upCurrent.addScaledVector(_viewDir, -du).normalize()
-              _axis.crossVectors(_upTarget, _upCurrent)
-              const cosR = Math.max(-1, Math.min(1, _upTarget.dot(_upCurrent)))
-              const sinR = _axis.dot(_viewDir)
-              roll = Math.round(MathUtils.radToDeg(Math.atan2(sinR, cosR)) * 10) / 10
-            }
-            onCameraChange(
-              Math.round(MathUtils.radToDeg(_spherical.theta) * 10) / 10,
-              Math.round(MathUtils.radToDeg(_spherical.phi) * 10) / 10,
-              parseFloat(_spherical.radius.toPrecision(3)),
-              roll,
-            )
+      const reportCamera = () => {
+        _offset.copy(camera.position).sub(target)
+        _spherical.setFromVector3(_offset)
+        if (_spherical.radius >= 0.001) {
+          camera.getWorldDirection(_viewDir)
+          _upTarget.set(0, 1, 0)
+          const dv = _upTarget.dot(_viewDir)
+          _upTarget.addScaledVector(_viewDir, -dv)
+          let roll = 0
+          if (_upTarget.lengthSq() >= 0.0001) {
+            _upTarget.normalize()
+            _upCurrent.copy(camera.up)
+            const du = _upCurrent.dot(_viewDir)
+            _upCurrent.addScaledVector(_viewDir, -du).normalize()
+            _axis.crossVectors(_upTarget, _upCurrent)
+            const cosR = Math.max(-1, Math.min(1, _upTarget.dot(_upCurrent)))
+            const sinR = _axis.dot(_viewDir)
+            roll = Math.round(MathUtils.radToDeg(Math.atan2(sinR, cosR)) * 10) / 10
           }
-          camSyncRef.current.reported = true
+          onCameraChange(
+            Math.round(MathUtils.radToDeg(_spherical.theta) * 10) / 10,
+            Math.round(MathUtils.radToDeg(_spherical.phi) * 10) / 10,
+            parseFloat(_spherical.radius.toPrecision(3)),
+            roll,
+          )
+        }
+      }
+
+      // Report immediately when a snap animation just finished
+      if (snapJustFinished) {
+        reportCamera()
+        camSyncRef.current = { lastChange: performance.now(), reported: true }
+        prevCamRef.current = [camera.position.x, camera.position.y, camera.position.z, camera.up.x, camera.up.y, camera.up.z]
+      } else {
+        const { x: px, y: py, z: pz } = camera.position
+        const { x: ux, y: uy, z: uz } = camera.up
+        const prev = prevCamRef.current
+        const changed = !prev ||
+          Math.abs(px - prev[0]) > 1e-6 || Math.abs(py - prev[1]) > 1e-6 || Math.abs(pz - prev[2]) > 1e-6 ||
+          Math.abs(ux - prev[3]) > 1e-6 || Math.abs(uy - prev[4]) > 1e-6 || Math.abs(uz - prev[5]) > 1e-6
+        prevCamRef.current = [px, py, pz, ux, uy, uz]
+        if (changed) {
+          camSyncRef.current = { lastChange: performance.now(), reported: false }
+        } else if (!camSyncRef.current.reported && !isSnapping) {
+          if (performance.now() - camSyncRef.current.lastChange >= 500) {
+            reportCamera()
+            camSyncRef.current.reported = true
+          }
         }
       }
     }
