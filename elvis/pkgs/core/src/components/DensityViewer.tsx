@@ -89,7 +89,7 @@ export function DensityViewer({
         <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} />
         <CrystalStructure volume={volume} showAtoms={showAtoms} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} lineWidth={lineWidth} />
         {showSlice && sliceAxis !== undefined && sliceIndex !== undefined && (
-          <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} />
+          <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} data={volume.grid.data} />
         )}
 
         {activeMovements && <CameraController activeMovements={activeMovements} cameraSnap={cameraSnap} animationDuration={animationDuration} onCameraChange={onCameraChange} initialCamera={initialCamera} />}
