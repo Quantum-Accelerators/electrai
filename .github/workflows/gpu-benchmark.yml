@@ -6,7 +6,7 @@
 #   - CPU comparison: also run CPU for speedup comparison (use smaller configs)
 #
 # Examples:
-#   gh workflow run gpu-benchmark.yml                                          # GPU-only, 10 S3 samples
+#   gh workflow run gpu-benchmark.yml                                          # GPU-only, 25 S3 samples
 #   gh workflow run gpu-benchmark.yml -f s3_samples=0                          # GPU-only, repo test data
 #   gh workflow run gpu-benchmark.yml -f compare_cpu=true -f s3_samples=0      # GPU vs CPU comparison
 #   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16     # Production model
@@ -38,7 +38,7 @@ on:
         type: string
       s3_samples:
         description: 'Number of S3 samples to use (0=use repo test data, 10-200 for S3)'
-        default: '10'
+        default: '25'
         type: string
       max_file_size:
         description: 'Skip S3 samples larger than N MB (0=no limit, 25=safe for L4 24GB)'
@@ -98,18 +98,18 @@ jobs:
         run: uv sync
 
       - name: Sync S3 training data
-        if: (inputs.s3_samples || '10') != '0'
+        if: (inputs.s3_samples || '25') != '0'
         id: s3
         run: >
           uv run scripts/s3_sync.py
-          -n "${{ inputs.s3_samples || '10' }}"
+          -n "${{ inputs.s3_samples || '25' }}"
           -M "${{ inputs.max_file_size || '25' }}"
           -v
 
       - name: Run GPU benchmark
         id: gpu
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '25' }}
           MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
           WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
@@ -163,7 +163,7 @@ jobs:
         id: cpu
         if: inputs.compare_cpu
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '25' }}
           MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
         run: |
           echo "=== CPU BENCHMARK ==="
@@ -196,7 +196,7 @@ jobs:
 
       - name: Summary
         env:
-          S3_SAMPLES: ${{ inputs.s3_samples || '10' }}
+          S3_SAMPLES: ${{ inputs.s3_samples || '25' }}
           MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
           COMPARE_CPU: ${{ inputs.compare_cpu }}
           WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
