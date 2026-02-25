@@ -1,4 +1,4 @@
-ElectrAI is a PyTorch based super-resolution machine learning model for materials. Currently, it implements a ResNet neural network architecture using PyTorch Lightning.
+ElectrAI is a PyTorch based super-resolution machine learning model for materials. Currently, it implements a ResUNet neural network architecture using PyTorch Lightning.
 
 Begin with example training code in examples/MP/run.sh.
 
@@ -54,7 +54,7 @@ src/electrai/
 ├── dataloader/           # Data loading (mp.py, mp_zarr_s3_data.py, registry.py)
 ├── entrypoints/          # CLI entry points (train.py, main.py)
 ├── loggers/              # Logging utilities
-├── model/                # Neural network (srgan_layernorm_pbc.py) and losses
+├── model/                # Neural network (resunet.py, srgan_layernorm_pbc.py) and losses
 └── zarr_conversion/      # Data format conversion tools
 
 data/                     # Example data
@@ -64,6 +64,7 @@ tests/                    # pytest test suite
 
 Key files:
 - `lightning.py` - LightningGenerator class with train/val steps
+- `model/resunet.py` - ResUNet3D architecture (ResBlock3D, encoder-decoder with skip connections)
 - `model/srgan_layernorm_pbc.py` - GeneratorResNet architecture
 - `dataloader/mp.py` - Materials Project dataset loader
 - `dataloader/registry.py` - Dataset registration via @register_data decorator
