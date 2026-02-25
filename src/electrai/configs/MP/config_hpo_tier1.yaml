@@ -46,8 +46,8 @@ data:
   split_file: null
   precision: f32
   batch_size: 1  # fixed
-  # train_workers: 8
-  # val_workers: 2
+  train_workers: 8
+  val_workers: 2
   pin_memory: false
   val_frac: 0.1
   drop_last: false
