@@ -19,7 +19,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "use-kbd": "^0.10.0",
-    "use-prms": "https://github.com/runsascoded/use-prms#36c2ddcaa1d23d8c4901b2769bac3ce69528691a"
+    "use-prms": "https://github.com/runsascoded/use-prms#e8358bc09a3b2708c5dc41f7d489d1b512092811"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

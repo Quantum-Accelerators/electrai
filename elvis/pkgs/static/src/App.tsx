@@ -19,7 +19,7 @@ import {
 import { ShortcutsModal, Omnibar, SequenceModal, SpeedDial, useAction } from 'use-kbd'
 import type { SpeedDialAction } from 'use-kbd'
 import 'use-kbd/styles.css'
-import { useUrlState, floatParam, boolParam, intParam, stringParam } from 'use-prms'
+import { useUrlState, floatParam, optFloatParam, boolParam, intParam, optIntParam, stringParam } from 'use-prms'
 import type { Param } from 'use-prms'
 import { OpfsVolumeStore, isOPFSSupported } from './storage/OpfsVolumeStore.ts'
 import { loadCredentials, saveCredentials } from './utils/aws-credentials.ts'
@@ -79,19 +79,6 @@ const camParam: Param<CamState> = {
   },
 }
 
-/** useUrlState with debounce, but local state drives the returned value immediately.
- *  Fixes the use-prms issue where debounced values revert on unrelated re-renders. */
-function useDebouncedUrlState<T>(key: string, param: Param<T>, debounceMs: number): [T, (v: T) => void] {
-  const [urlValue, setUrlValue] = useUrlState(key, param, { debounce: debounceMs })
-  const [localValue, setLocalValue] = useState(urlValue)
-  useEffect(() => { setLocalValue(urlValue) }, [urlValue])
-  const setValue = useCallback((v: T) => {
-    setLocalValue(v)
-    setUrlValue(v)
-  }, [setUrlValue])
-  return [localValue, setValue]
-}
-
 const opfsStore = isOPFSSupported() ? new OpfsVolumeStore() : null
 
 async function parseBlob(blob: Blob, filename: string): Promise<VolumeData> {
@@ -141,17 +128,17 @@ const speedDialActions: SpeedDialAction[] = [
 
 export default function App() {
   const [files, setFiles] = useState<LoadedFile[]>([])
-  const [isoLevel, setIsoLevel] = useDebouncedUrlState('iso', floatParam({ default: 0, encoding: 'string', decimals: 1 }), 300)
-  const [opacity, setOpacity] = useDebouncedUrlState('op', floatParam({ default: 0.6, encoding: 'string', decimals: 2 }), 300)
+  const [isoLevel, setIsoLevel] = useUrlState('iso', optFloatParam({ encoding: 'string', decimals: 1 }), { debounce: 300 })
+  const [opacity, setOpacity] = useUrlState('op', floatParam({ default: 0.6, encoding: 'string', decimals: 2 }), { debounce: 300 })
   const [showAtoms, setShowAtoms] = useUrlState('ha', boolTrueParam)
   const [showAbcCell, setShowAbcCell] = useUrlState('hc', boolTrueParam)
   const [showXyzBox, setShowXyzBox] = useUrlState('xb', boolParam)
   const [showWorldAxes, setShowWorldAxes] = useUrlState('xa', boolParam)
   const [showSlice, setShowSlice] = useUrlState('sl', boolParam)
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
-  const [sliceIndex, setSliceIndex] = useDebouncedUrlState('si', intParam(0), 300)
-  const [orbitDeg, setOrbitDeg] = useUrlState('od', intParam(0))
-  const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
+  const [sliceIndex, setSliceIndex] = useUrlState('si', optIntParam, { debounce: 300 })
+  const [orbitDeg, setOrbitDeg] = useUrlState('od', intParam(30))
+  const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [cam, setCam] = useUrlState('c', camParam)
   const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID))
@@ -534,8 +521,9 @@ export default function App() {
     const result = initialQuery.data
     if (result && files.length === 0) {
       setFiles([{ data: result.data, filename: result.filename }])
-      setIsoLevel(computeDefaultIsoLevel(result.data.grid.data))
-      setSliceIndex(Math.floor(result.data.grid.dims[2] / 2))
+      // Only set iso/slice defaults when the URL didn't specify them
+      if (isoLevel === null) setIsoLevel(computeDefaultIsoLevel(result.data.grid.data))
+      if (sliceIndex === null) setSliceIndex(Math.floor(result.data.grid.dims[2] / 2))
       if (result.volumeId) {
         setCurrentVolumeId(result.volumeId)
         setGalleryRefreshKey(k => k + 1)
@@ -592,6 +580,7 @@ export default function App() {
     setIsoLevel(computeDefaultIsoLevel(data.grid.data))
     setSliceIndex(Math.floor(data.grid.dims[2] / 2))
     setCurrentVolumeId(_id)
+    setMaterialId(extractMpId(filename) ?? '')
     setFetchStatus(null)
   }, [setCurrentVolumeId])
 
@@ -754,7 +743,7 @@ export default function App() {
             {isComparison ? (
               <ComparisonView
                 volumes={files.map(f => ({ data: f.data, label: f.filename }))}
-                isoLevel={isoLevel}
+                isoLevel={isoLevel ?? 0}
                 opacity={opacity}
                 showAtoms={showAtoms}
                 showAbcCell={showAbcCell}
@@ -765,7 +754,7 @@ export default function App() {
             ) : (
               <DensityViewer
                 volume={primaryFile.data}
-                isoLevel={isoLevel}
+                isoLevel={isoLevel ?? 0}
                 opacity={opacity}
                 showAtoms={showAtoms}
                 showAbcCell={showAbcCell}
@@ -779,7 +768,7 @@ export default function App() {
                 initialCamera={initialCamera}
                 showSlice={showSlice}
                 sliceAxis={sliceAxis}
-                sliceIndex={sliceIndex}
+                sliceIndex={sliceIndex ?? 0}
               />
             )}
             {showSlice && (
@@ -795,7 +784,7 @@ export default function App() {
                 <SliceViewer
                   volume={primaryFile.data}
                   axis={sliceAxis}
-                  sliceIndex={sliceIndex}
+                  sliceIndex={sliceIndex ?? 0}
                 />
               </div>
             )}
@@ -849,7 +838,7 @@ export default function App() {
         {exampleLinks}
         {primaryFile && (
           <Controls
-            isoLevel={isoLevel}
+            isoLevel={isoLevel ?? 0}
             defaultIsoLevel={defaultIsoLevel}
             maxDensity={maxDensity}
             onIsoLevelChange={setIsoLevel}
@@ -869,7 +858,7 @@ export default function App() {
             onShowSliceChange={setShowSlice}
             sliceAxis={sliceAxis}
             onSliceAxisChange={setSliceAxis}
-            sliceIndex={sliceIndex}
+            sliceIndex={sliceIndex ?? 0}
             maxSliceIndex={maxSliceIndex}
             onSliceIndexChange={setSliceIndex}
             cam={cam}
