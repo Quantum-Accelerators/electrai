@@ -1,5 +1,9 @@
 """Hyperparameter optimization entrypoint using Optuna.
 
+Installation: This module requires the optional ``hpo`` extra (optuna and
+optuna-integration). Install with:
+    uv sync --extra hpo
+
 Run with regular python (NOT torchrun):
     uv run python src/electrai/entrypoints/hpo.py --config path/to/config.yaml
 
@@ -159,7 +163,7 @@ def create_objective(cfg_dict: dict, hpo_cfg: dict, args):
                     "trial_number": trial.number,
                     "num_devices": num_devices,
                 },
-                reinit=True,
+                reinit="finish_previous",
             )
         else:
             wandb_logger = None
