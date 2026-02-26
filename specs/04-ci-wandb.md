@@ -17,7 +17,7 @@ Two GPU workflows exist:
 - `gpu-e2e.yml`: deterministic test (5 repo samples, 5 epochs, checks exact loss values)
 - `gpu-benchmark.yml`: configurable benchmark (S3 data, variable model size, optional CPU comparison)
 
-Neither currently logs to WandB.
+`gpu-benchmark.yml` logs to WandB when `WANDB_API_KEY` is set (added in v1, see below).
 
 ## Architecture
 

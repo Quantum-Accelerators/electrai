@@ -18,9 +18,9 @@ The e2e test (`tests/e2e_train.py`) checks against platform-specific expected va
 
 Verifies deterministic training on both GPU and CPU on EC2.
 
-**Trigger:** Manual (`workflow_dispatch`)
+**Trigger:** PRs targeting `main`, manual (`workflow_dispatch`)
 
-**Runs on:** EC2 GPU instance (via [ec2-gha])
+**Runs on:** EC2 GPU instance (via [ec2-gha]). Skipped on fork PRs (no secrets).
 
 **Generates expected values for:** `linux`, `linux-gpu`
 
@@ -44,26 +44,28 @@ cp expected_values.json tests/
 
 ## gpu-benchmark.yml - GPU Benchmark
 
-Compares GPU vs CPU training time with production-size model.
+Runs GPU training benchmark with configurable model size and optional WandB logging.
 
-**Trigger:** Manual (`workflow_dispatch`)
+**Trigger:** Weekly (Monday 6am UTC), manual (`workflow_dispatch`)
 
 **Runs on:** EC2 GPU instance (via [ec2-gha])
 
 **What it does:**
-1. Runs training on GPU, measures time
-2. Runs training on CPU, measures time
-3. Reports speedup in workflow summary
+1. Syncs training data from S3 (via `scripts/s3_sync.py`)
+2. Runs GPU training, measures time
+3. Optionally logs metrics to WandB (when `WANDB_API_KEY` is set)
+4. Reports results in workflow summary (with commit SHA and PR link)
 
 **Inputs:**
 - `instance_type`: EC2 instance type (default: `g6.xlarge`)
 - `epochs`: Training epochs (default: `5`)
 - `channels`: Model channels - 8=tiny, 32=prod, 64=large (default: `32`)
 - `residual_blocks`: Residual blocks - 2=tiny, 16=prod (default: `16`)
-- `s3_samples`: Number of S3 samples to download (0=use repo test data, default: `0`)
+- `s3_samples`: Number of S3 samples (0=repo test data, default: `50`)
+- `max_file_size`: Skip samples larger than N MB (default: `25`)
+- `compare_cpu`: Also run CPU benchmark for speedup comparison (default: `false`)
+- `wandb_project`: WandB project name (default: `elf-net-ci`)
 - `debug`: Debug mode (default: `false`)
-
-**Note:** By default uses the 5-sample repo test data (`s3_samples=0`). Set `s3_samples=10` or higher to download samples from S3 for more realistic benchmarks.
 
 ## gen-expected.yml - Generate Expected Values (GHA Runners)
 
@@ -96,6 +98,7 @@ cp expected_values.json tests/
 
 For EC2 workflows (`gpu-e2e.yml`, `gpu-benchmark.yml`):
 - **Secret:** `GH_SA_TOKEN` - GitHub PAT for runner registration
+- **Secret:** `WANDB_API_KEY` - WandB API key (optional, for benchmark logging)
 - IAM role trust configured in [Open-Athena/ops] for OIDC authentication
 
 [ec2-gha]: https://github.com/Open-Athena/ec2-gha

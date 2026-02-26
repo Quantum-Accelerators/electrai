@@ -113,9 +113,6 @@ def main(
     repo_root = Path(__file__).parent.parent
     expected_values_file = Path(__file__).parent / "expected_values.json"
 
-    # Platform detection (includes GPU suffix for linux-gpu)
-    platform = get_platform(gpu=gpu)
-
     # Force deterministic behavior (skip if WandB logging, which implies benchmark mode)
     if not wandb_project:
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -190,6 +187,9 @@ def main(
             accelerator = "cpu"
     else:
         accelerator = "cpu"
+
+    # Platform detection based on resolved accelerator (not just --gpu flag)
+    platform = get_platform(gpu=(accelerator == "cuda"))
 
     if verbose:
         echo(f"Platform: {platform}")

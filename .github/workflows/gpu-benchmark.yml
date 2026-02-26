@@ -129,9 +129,11 @@ jobs:
           fi
 
           WANDB_ARGS=""
-          if [ -n "$WANDB_PROJECT" ]; then
+          if [ -n "$WANDB_API_KEY" ] && [ -n "$WANDB_PROJECT" ]; then
             WANDB_ARGS="--wandb-project $WANDB_PROJECT"
             echo "WandB logging: $WANDB_PROJECT"
+          else
+            echo "WandB logging: disabled (no API key)"
           fi
 
           START=$(date +%s)

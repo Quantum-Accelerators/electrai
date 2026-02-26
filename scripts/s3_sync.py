@@ -90,7 +90,8 @@ def main(
     size_note = f" ≤{max_file_size}MB" if max_bytes else ""
     err(f"Found {len(candidates)} eligible samples{size_note} ({skipped} skipped)")
 
-    # Take up to num_samples
+    # ListObjectsV2 returns keys in UTF-8 lexicographic order:
+    # https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
     selected = candidates[:num_samples]
     if len(candidates) > num_samples:
         err(f"Using first {num_samples} of {len(candidates)}")
