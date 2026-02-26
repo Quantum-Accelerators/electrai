@@ -107,7 +107,13 @@ class ResUNet3D(nn.Module):
 
         for up, dec in zip(self.ups, self.dec_blocks, strict=False):
             out = up(out)
-            out = torch.cat([out, skips.pop()], dim=1)
+            skip = skips.pop()
+            # Handle size mismatch from odd input dimensions
+            if out.shape[2:] != skip.shape[2:]:
+                out = F.interpolate(
+                    out, size=skip.shape[2:], mode="trilinear", align_corners=False
+                )
+            out = torch.cat([out, skip], dim=1)
             out = dec(out)
         out = self.out_conv(out)
         out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
