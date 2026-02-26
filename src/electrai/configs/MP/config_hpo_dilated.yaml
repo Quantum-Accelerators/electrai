@@ -1,0 +1,73 @@
+# HPO config for dilated bottleneck experiments
+# Searches over dilation configurations alongside depth and learning rate
+# Uses priors from previous HPO: n_channels=32, n_residual_blocks=1, kernel_size=5
+
+hpo:
+  study_name: resunet_hpo_dilated
+  n_trials: 20
+  timeout: null
+  storage: sqlite:///hpo_dilated.db
+  direction: minimize
+  pruner:
+    type: median
+    n_startup_trials: 5
+    n_warmup_steps: 3
+  sampler:
+    type: tpe
+
+  search_space:
+    depth:
+      type: int
+      low: 2
+      high: 3
+    bottleneck_dilations:
+      type: categorical
+      choices:
+        - "none"      # baseline: 2 * n_residual_blocks standard blocks
+        - "1,2,4"     # 3 blocks, progressive dilation
+        - "1,2,4,8"   # 4 blocks, wider receptive field
+        - "1,1,2,4"   # 4 blocks, extra local context before dilation
+    lr:
+      type: float
+      low: 1.0e-3
+      high: 1.0e-2
+      log: true
+
+# Fixed parameters (winners from previous HPO)
+data:
+  _target_: electrai.dataloader.dataset.RhoRead
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
+  split_file: null
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  val_frac: 0.1
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+
+model:
+  _target_: electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 32
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+
+precision: 32
+epochs: 15
+lr: 0.001
+weight_decay: 0.0
+warmup_length: 5
+gradient_clip_value: 5.0
+beta1: 0.9
+beta2: 0.99
+
+wandb_mode: online
+entity: PrinceOA
+wb_pname: mp-hpo-dilated
+
+ckpt_path: ./hpo_dilated_checkpoints
