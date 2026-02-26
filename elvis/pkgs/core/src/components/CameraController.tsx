@@ -23,6 +23,8 @@ export type CameraSnapTarget =
   | { type: 'look-down', direction: [number, number, number] }
   | { type: 'align-up', axis: [number, number, number] }
   | { type: 'orbit-step', direction: 'left' | 'right' | 'up' | 'down', degrees: number }
+  | { type: 'zoom-step', direction: 'in' | 'out', factor: number }
+  | { type: 'pan-step', direction: 'left' | 'right' | 'up' | 'down', distance: number }
 
 interface CameraControllerProps {
   activeMovements: RefObject<Set<string>>
@@ -35,7 +37,10 @@ interface CameraControllerProps {
 interface SnapState {
   startQuat: Quaternion
   endQuat: Quaternion
-  radius: number
+  startRadius: number
+  endRadius: number
+  startTarget?: Vector3
+  endTarget?: Vector3
   elapsed: number
   duration: number
 }
@@ -43,6 +48,7 @@ interface SnapState {
 const _snapQ = new Quaternion()
 const _rotQ = new Quaternion()
 const _axis = new Vector3()
+const _snapTarget = new Vector3()
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
@@ -58,7 +64,7 @@ export function CameraController({
   const camera = useThree(s => s.camera)
   const controls = useThree(s => s.controls) as { target: Vector3; update: () => void } | null
   const snapState = useRef<SnapState | null>(null)
-  const lastOrbitStepRef = useRef<CameraSnapTarget | null>(null)
+  const lastStepRef = useRef<CameraSnapTarget | null>(null)
   const initFramesRef = useRef(0)
   const camSyncRef = useRef<{ lastChange: number; reported: boolean }>({ lastChange: 0, reported: true })
   const prevCamRef = useRef<[number, number, number, number, number, number] | null>(null)
@@ -92,8 +98,11 @@ export function CameraController({
       const snap = cameraSnap.current
       cameraSnap.current = null
       const radius = camera.position.distanceTo(target)
+      let endRadius = radius
       const startQuat = camera.quaternion.clone()
       let endQuat: Quaternion | null = null
+      let startTarget: Vector3 | undefined
+      let endTarget: Vector3 | undefined
 
       if (snap.type === 'look-down') {
         const currentDir = _offset.copy(camera.position).sub(target).normalize()
@@ -138,13 +147,32 @@ export function CameraController({
         else if (snap.direction === 'up') _rotQ.setFromAxisAngle(_right, -stepRad)
         else _rotQ.setFromAxisAngle(_right, stepRad)
         endQuat = new Quaternion().multiplyQuaternions(_rotQ, startQuat)
+      } else if (snap.type === 'zoom-step') {
+        endQuat = startQuat.clone()
+        endRadius = snap.direction === 'in' ? radius / snap.factor : radius * snap.factor
+        if (snap.direction === 'in') endRadius = Math.max(0.5, endRadius)
+      } else if (snap.type === 'pan-step') {
+        endQuat = startQuat.clone()
+        camera.getWorldDirection(_viewDir)
+        _right.crossVectors(_viewDir, camera.up).normalize()
+        _up.crossVectors(_right, _viewDir).normalize()
+        const d = snap.distance
+        const startT = target.clone()
+        const endT = startT.clone()
+        if (snap.direction === 'left')  endT.addScaledVector(_right, -d)
+        else if (snap.direction === 'right') endT.addScaledVector(_right, d)
+        else if (snap.direction === 'up')    endT.addScaledVector(_up, d)
+        else endT.addScaledVector(_up, -d)
+        startTarget = startT
+        endTarget = endT
       }
 
-      // Remember orbit-step snaps for key-hold chaining
-      lastOrbitStepRef.current = snap.type === 'orbit-step' ? snap : null
+      // Remember step snaps for key-hold chaining
+      const isStep = snap.type === 'orbit-step' || snap.type === 'zoom-step' || snap.type === 'pan-step'
+      lastStepRef.current = isStep ? snap : null
 
       if (endQuat) {
-        snapState.current = { startQuat, endQuat, radius, elapsed: 0, duration: animationDuration }
+        snapState.current = { startQuat, endQuat, startRadius: radius, endRadius, elapsed: 0, duration: animationDuration, startTarget, endTarget }
       }
     }
 
@@ -158,7 +186,15 @@ export function CameraController({
       const e = easeInOutCubic(t)
 
       _snapQ.copy(s.startQuat).slerp(s.endQuat, e)
-      _offset.set(0, 0, 1).applyQuaternion(_snapQ).multiplyScalar(s.radius)
+      const r = s.startRadius + (s.endRadius - s.startRadius) * e
+
+      // Interpolate target if pan-step
+      if (s.startTarget && s.endTarget) {
+        _snapTarget.lerpVectors(s.startTarget, s.endTarget, e)
+        target.copy(_snapTarget)
+      }
+
+      _offset.set(0, 0, 1).applyQuaternion(_snapQ).multiplyScalar(r)
       camera.position.copy(target).add(_offset)
       camera.up.set(0, 1, 0).applyQuaternion(_snapQ)
       camera.lookAt(target)
@@ -166,19 +202,25 @@ export function CameraController({
       controls.update()
 
       if (t >= 1) {
-        // Re-apply exact quaternion position after controls.update() —
-        // OrbitControls' spherical clamping drifts by ~0.5° at poles
-        _offset.set(0, 0, 1).applyQuaternion(s.endQuat).multiplyScalar(s.radius)
+        // Re-apply exact end state after controls.update()
+        if (s.startTarget && s.endTarget) target.copy(s.endTarget)
+        _offset.set(0, 0, 1).applyQuaternion(s.endQuat).multiplyScalar(s.endRadius)
         camera.position.copy(target).add(_offset)
         camera.up.set(0, 1, 0).applyQuaternion(s.endQuat)
         camera.lookAt(target)
 
         snapState.current = null
         snapJustFinished = true
-        // Chain orbit-step if key is still held
-        const lastStep = lastOrbitStepRef.current
-        if (lastStep?.type === 'orbit-step' && activeMovements.current?.has(`orbit-${lastStep.direction}`)) {
-          cameraSnap!.current = lastStep
+        // Chain step if key is still held
+        const last = lastStepRef.current
+        if (last && activeMovements.current) {
+          let key: string | null = null
+          if (last.type === 'orbit-step') key = `orbit-${last.direction}`
+          else if (last.type === 'zoom-step') key = `zoom-${last.direction}`
+          else if (last.type === 'pan-step') key = `pan-${last.direction}`
+          if (key && activeMovements.current.has(key)) {
+            cameraSnap!.current = last
+          }
         }
       }
       isSnapping = true
@@ -189,8 +231,11 @@ export function CameraController({
       const movements = activeMovements.current
       if (movements?.size) {
         const dt = Math.min(delta, 0.05)
-        // Skip continuous orbit if a discrete orbit-step chain is pending
-        const discreteOrbit = cameraSnap?.current?.type === 'orbit-step'
+        // Skip continuous movement if a discrete step chain is pending
+        const pendingSnap = cameraSnap?.current?.type
+        const discreteOrbit = pendingSnap === 'orbit-step'
+        const discreteZoom = pendingSnap === 'zoom-step'
+        const discretePan = pendingSnap === 'pan-step'
 
         // Screen-relative orbit
         _offset.copy(camera.position).sub(target)
@@ -207,13 +252,15 @@ export function CameraController({
           if (movements.has('orbit-down'))  { _offset.applyAxisAngle(_right,  ORBIT_SPEED * dt); camera.up.applyAxisAngle(_right,  ORBIT_SPEED * dt); posChanged = true }
         }
 
-        if (movements.has('zoom-in')) {
-          if (_offset.length() * (1 - ZOOM_SPEED * dt) >= 0.5) {
-            _offset.multiplyScalar(1 - ZOOM_SPEED * dt)
-            posChanged = true
+        if (!discreteZoom) {
+          if (movements.has('zoom-in')) {
+            if (_offset.length() * (1 - ZOOM_SPEED * dt) >= 0.5) {
+              _offset.multiplyScalar(1 - ZOOM_SPEED * dt)
+              posChanged = true
+            }
           }
+          if (movements.has('zoom-out')) { _offset.multiplyScalar(1 + ZOOM_SPEED * dt); posChanged = true }
         }
-        if (movements.has('zoom-out')) { _offset.multiplyScalar(1 + ZOOM_SPEED * dt); posChanged = true }
 
         if (posChanged) {
           camera.position.copy(target).add(_offset)
@@ -221,8 +268,8 @@ export function CameraController({
         }
 
         // Pan: move both camera and target in screen-relative direction
-        if (movements.has('pan-left') || movements.has('pan-right') ||
-            movements.has('pan-up') || movements.has('pan-down')) {
+        if (!discretePan && (movements.has('pan-left') || movements.has('pan-right') ||
+            movements.has('pan-up') || movements.has('pan-down'))) {
           camera.getWorldDirection(_forward)
           _right.crossVectors(_forward, camera.up).normalize()
           _up.crossVectors(_right, _forward).normalize()

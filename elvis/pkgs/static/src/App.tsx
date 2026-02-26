@@ -90,7 +90,8 @@ async function parseBlob(blob: Blob, filename: string): Promise<VolumeData> {
   return parseCHGCAR(await blob.text())
 }
 
-const MP_S3_PREFIX = 's3://materialsproject-parsed/chgcars/'
+type MpSource = 'chgcars' | 'elfcars'
+const MP_S3_BUCKET = 's3://materialsproject-parsed'
 
 /** Extract mp-XXXXXX ID from a filename or S3 URI, if present. */
 function extractMpId(s: string): string | undefined {
@@ -99,16 +100,21 @@ function extractMpId(s: string): string | undefined {
 }
 
 /** Build the canonical MP S3 URI for a material ID. */
-function mpS3Uri(mpId: string): string {
-  return `${MP_S3_PREFIX}${mpId}.json.gz`
+function mpS3Uri(mpId: string, source: MpSource = 'chgcars'): string {
+  return `${MP_S3_BUCKET}/${source}/${mpId}.json.gz`
 }
 
 const DEFAULT_MP_ID = 'mp-1000020'
 
-const EXAMPLES = [
+interface Example { mpId: string; label: string; source?: MpSource }
+
+const EXAMPLES: Example[] = [
   { mpId: 'mp-1000020', label: 'Fe\u2082Cu\u2082O\u2084 (8 MB)' },
   { mpId: 'mp-1828986', label: 'Na\u2082Al\u2082Si\u2084O\u2081\u2082 (10 MB)' },
   { mpId: 'mp-1000005', label: '17 MB' },
+  { mpId: 'mp-1523390', label: 'Au\u2083Li ELF (172 KB)', source: 'elfcars' },
+  { mpId: 'mp-1524033', label: 'Ag\u2082Lu ELF (304 KB)', source: 'elfcars' },
+  { mpId: 'mp-2049718', label: 'Pt\u2084P\u2088 ELF (519 KB)', source: 'elfcars' },
 ]
 
 const GithubIcon = () => (
@@ -138,6 +144,8 @@ export default function App() {
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
   const [sliceIndex, setSliceIndex] = useUrlState('si', optIntParam, { debounce: 300 })
   const [orbitDeg, setOrbitDeg] = useUrlState('od', intParam(30))
+  const [zoomPct, setZoomPct] = useUrlState('zd', intParam(0))
+  const [panStep, setPanStep] = useUrlState('pd', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [cam, setCam] = useUrlState('c', camParam)
@@ -283,6 +291,34 @@ export default function App() {
     defaultBindings: ['t o'],
     handler: () => setOrbitDeg(orbitDeg > 0 ? 0 : 90),
   })
+  useAction('view:set-zoom-step', {
+    label: 'Set zoom step %',
+    keywords: ['discrete', 'step', 'zoom'],
+    group: 'View',
+    defaultBindings: ['\\d+ z'],
+    handler: (_e, captures) => setZoomPct(captures?.[0] ?? 20),
+  })
+  useAction('view:toggle-zoom-step', {
+    label: 'Toggle zoom step',
+    keywords: ['discrete', 'step', 'zoom'],
+    group: 'View',
+    defaultBindings: ['t z'],
+    handler: () => setZoomPct(zoomPct > 0 ? 0 : 20),
+  })
+  useAction('view:set-pan-step', {
+    label: 'Set pan step',
+    keywords: ['discrete', 'step', 'pan'],
+    group: 'View',
+    defaultBindings: ['\\d+ p'],
+    handler: (_e, captures) => setPanStep(captures?.[0] ?? 1),
+  })
+  useAction('view:toggle-pan-step', {
+    label: 'Toggle pan step',
+    keywords: ['discrete', 'step', 'pan'],
+    group: 'View',
+    defaultBindings: ['t p'],
+    handler: () => setPanStep(panStep > 0 ? 0 : 1),
+  })
   useAction('slice:axis-x', {
     label: 'Slice along X',
     group: 'Slice',
@@ -300,6 +336,61 @@ export default function App() {
     group: 'Slice',
     defaultBindings: ['3'],
     handler: () => { setShowSlice(true); setSliceAxis(2) },
+  })
+
+  // Slice animation: sweep sliceIndex to start or end
+  const sliceAnimRef = useRef<{ target: number; raf: number } | null>(null)
+  const cancelSliceAnim = useCallback(() => {
+    if (sliceAnimRef.current) {
+      cancelAnimationFrame(sliceAnimRef.current.raf)
+      sliceAnimRef.current = null
+    }
+  }, [])
+
+  const animateSliceTo = useCallback((target: number) => {
+    cancelSliceAnim()
+    const SLICES_PER_SECOND = 120
+    let last = performance.now()
+    let current = sliceIndex ?? 0
+    const step = target > current ? 1 : -1
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000
+      last = now
+      const advance = Math.max(1, Math.round(SLICES_PER_SECOND * dt))
+      const remaining = Math.abs(target - current)
+      if (remaining <= 0) { sliceAnimRef.current = null; return }
+      const move = Math.min(advance, remaining)
+      current += step * move
+      setSliceIndex(current)
+      if (current === target) { sliceAnimRef.current = null; return }
+      sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
+    }
+    sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
+  }, [sliceIndex, cancelSliceAnim, setSliceIndex])
+
+  useAction('slice:animate-start', {
+    label: 'Animate slice to start',
+    group: 'Slice',
+    defaultBindings: ['meta+arrowleft'],
+    handler: () => { setShowSlice(true); animateSliceTo(0) },
+  })
+  useAction('slice:animate-end', {
+    label: 'Animate slice to end',
+    group: 'Slice',
+    defaultBindings: ['meta+arrowright'],
+    handler: () => { setShowSlice(true); animateSliceTo(maxSliceIndex) },
+  })
+  useAction('slice:jump-start', {
+    label: 'Jump slice to start',
+    group: 'Slice',
+    defaultBindings: ['meta+shift+arrowleft'],
+    handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(0) },
+  })
+  useAction('slice:jump-end', {
+    label: 'Jump slice to end',
+    group: 'Slice',
+    defaultBindings: ['meta+shift+arrowright'],
+    handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndex) },
   })
 
   // Camera axis-snap (look down lattice vectors or world axes)
@@ -422,37 +513,61 @@ export default function App() {
     label: 'Pan left',
     group: 'Camera',
     defaultBindings: ['shift+arrowleft'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-left') },
+    handler: (e) => {
+      if (e?.repeat) return
+      startMovement('pan-left')
+      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'left', distance: panStep })
+    },
   })
   useAction('nav:pan-right', {
     label: 'Pan right',
     group: 'Camera',
     defaultBindings: ['shift+arrowright'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-right') },
+    handler: (e) => {
+      if (e?.repeat) return
+      startMovement('pan-right')
+      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStep })
+    },
   })
   useAction('nav:pan-up', {
     label: 'Pan up',
     group: 'Camera',
     defaultBindings: ['shift+arrowup'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-up') },
+    handler: (e) => {
+      if (e?.repeat) return
+      startMovement('pan-up')
+      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'up', distance: panStep })
+    },
   })
   useAction('nav:pan-down', {
     label: 'Pan down',
     group: 'Camera',
     defaultBindings: ['shift+arrowdown'],
-    handler: (e) => { if (e?.repeat) return; startMovement('pan-down') },
+    handler: (e) => {
+      if (e?.repeat) return
+      startMovement('pan-down')
+      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down', distance: panStep })
+    },
   })
   useAction('nav:zoom-in', {
     label: 'Zoom in',
     group: 'Camera',
     defaultBindings: ['='],
-    handler: (e) => { if (e?.repeat) return; startMovement('zoom-in') },
+    handler: (e) => {
+      if (e?.repeat) return
+      startMovement('zoom-in')
+      if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'in', factor: 1 + zoomPct / 100 })
+    },
   })
   useAction('nav:zoom-out', {
     label: 'Zoom out',
     group: 'Camera',
     defaultBindings: ['-'],
-    handler: (e) => { if (e?.repeat) return; startMovement('zoom-out') },
+    handler: (e) => {
+      if (e?.repeat) return
+      startMovement('zoom-out')
+      if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'out', factor: 1 + zoomPct / 100 })
+    },
   })
   useAction('nav:roll-ccw', {
     label: 'Roll CCW',
@@ -713,10 +828,10 @@ export default function App() {
         {EXAMPLES.map(ex => {
           const cached = cachedMpIds.has(ex.mpId)
           return (
-            <li key={ex.mpId}>
+            <li key={`${ex.source ?? 'chgcars'}-${ex.mpId}`}>
               <a
                 href="#"
-                onClick={(e) => { e.preventDefault(); handleUrlSubmit(mpS3Uri(ex.mpId)) }}
+                onClick={(e) => { e.preventDefault(); handleUrlSubmit(mpS3Uri(ex.mpId, ex.source)) }}
                 style={{ color: cached ? '#6a8' : '#8ab', textDecoration: 'none' }}
               >
                 {ex.mpId}
