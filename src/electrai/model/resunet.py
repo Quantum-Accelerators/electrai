@@ -6,16 +6,43 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 
+def _circular_pad_3d(x, pad_size):
+    """Circular padding that handles wrapping more than once.
+
+    PyTorch's built-in circular padding fails when the padding exceeds the
+    spatial dimension. This uses modular indexing to handle arbitrary pad sizes.
+    """
+    for dim in (-3, -2, -1):
+        size = x.shape[dim]
+        indices = torch.arange(-pad_size, size + pad_size, device=x.device) % size
+        x = x.index_select(dim, indices)
+    return x
+
+
+class _CircularConv3d(nn.Module):
+    """Conv3d with circular padding that supports large dilation values."""
+
+    def __init__(self, cin, cout, k, dilation=1):
+        super().__init__()
+        self.pad_size = dilation * (k // 2)
+        self.conv = nn.Conv3d(cin, cout, k, dilation=dilation, padding=0)
+
+    def forward(self, x):
+        return self.conv(_circular_pad_3d(x, self.pad_size))
+
+
 class ResBlock3D(nn.Module):
-    def __init__(self, cin, cout, k, use_checkpoint=True):
+    def __init__(self, cin, cout, k, dilation=1, use_checkpoint=True):
         super().__init__()
         self.use_checkpoint = use_checkpoint
+        if dilation == 1:
+            conv1 = nn.Conv3d(cin, cout, k, padding=k // 2, padding_mode="circular")
+            conv2 = nn.Conv3d(cout, cout, k, padding=k // 2, padding_mode="circular")
+        else:
+            conv1 = _CircularConv3d(cin, cout, k, dilation=dilation)
+            conv2 = _CircularConv3d(cout, cout, k, dilation=dilation)
         self.conv_block = nn.Sequential(
-            nn.Conv3d(cin, cout, k, padding=k // 2, padding_mode="circular"),
-            nn.InstanceNorm3d(cout),
-            nn.PReLU(),
-            nn.Conv3d(cout, cout, k, padding=k // 2, padding_mode="circular"),
-            nn.InstanceNorm3d(cout),
+            conv1, nn.InstanceNorm3d(cout), nn.PReLU(), conv2, nn.InstanceNorm3d(cout)
         )
         self.act = nn.PReLU()
 
@@ -43,6 +70,7 @@ class ResUNet3D(nn.Module):
         n_residual_blocks,
         kernel_size,
         use_checkpoint=True,
+        bottleneck_dilations=None,
     ):
         super().__init__()
         self.in_conv = ResBlock3D(
@@ -67,12 +95,22 @@ class ResUNet3D(nn.Module):
             ch *= 2
 
         # -------- Bottleneck --------
-        self.mid = nn.Sequential(
-            *[
-                ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
-                for _ in range(2 * n_residual_blocks)
-            ]
-        )
+        if bottleneck_dilations is not None:
+            self.mid = nn.Sequential(
+                *[
+                    ResBlock3D(
+                        ch, ch, kernel_size, dilation=d, use_checkpoint=use_checkpoint
+                    )
+                    for d in bottleneck_dilations
+                ]
+            )
+        else:
+            self.mid = nn.Sequential(
+                *[
+                    ResBlock3D(ch, ch, kernel_size, use_checkpoint=use_checkpoint)
+                    for _ in range(2 * n_residual_blocks)
+                ]
+            )
 
         # -------- Decoder --------
         self.ups = nn.ModuleList()
@@ -107,7 +145,13 @@ class ResUNet3D(nn.Module):
 
         for up, dec in zip(self.ups, self.dec_blocks, strict=False):
             out = up(out)
-            out = torch.cat([out, skips.pop()], dim=1)
+            skip = skips.pop()
+            # Handle size mismatch from odd input dimensions
+            if out.shape[2:] != skip.shape[2:]:
+                out = F.interpolate(
+                    out, size=skip.shape[2:], mode="trilinear", align_corners=False
+                )
+            out = torch.cat([out, skip], dim=1)
             out = dec(out)
         out = self.out_conv(out)
         out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
