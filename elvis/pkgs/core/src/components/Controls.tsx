@@ -32,9 +32,15 @@ interface ControlsProps {
   sliceIndex: number
   maxSliceIndex: number
   onSliceIndexChange: (v: number) => void
+  animDuration: number
+  onAnimDurationChange: (v: number) => void
+  sliceSpeed: number
+  onSliceSpeedChange: (v: number) => void
   cam: [number, number, number, number] | null
   filename: string
   elements?: string[]
+  counts?: number[]
+  abcIsXyz?: boolean
 }
 
 const AXIS_LABELS = ['X', 'Y', 'Z'] as const
@@ -68,18 +74,25 @@ export function Controls({
   sliceIndex,
   maxSliceIndex,
   onSliceIndexChange,
+  animDuration,
+  onAnimDurationChange,
+  sliceSpeed,
+  onSliceSpeedChange,
   cam,
   filename,
   elements,
+  counts,
+  abcIsXyz,
 }: ControlsProps) {
   return (
     <div className={styles.controls}>
       <div className={styles.controlTitle}>{filename}</div>
       {elements && elements.length > 0 && (
         <div style={{ display: 'flex', gap: 8, padding: '2px 0 6px', flexWrap: 'wrap' }}>
-          {elements.map(el => {
+          {elements.map((el, i) => {
             const { color } = getElement(el)
             const css = `#${color.toString(16).padStart(6, '0')}`
+            const count = counts?.[i]
             return (
               <span key={el} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#ccc' }}>
                 <span style={{
@@ -90,7 +103,7 @@ export function Controls({
                   display: 'inline-block',
                   flexShrink: 0,
                 }} />
-                {el}
+                {el}{count != null && count > 1 && <sub>{count}</sub>}
               </span>
             )
           })}
@@ -156,10 +169,12 @@ export function Controls({
             Show atoms
           </label>
 
-          <label className={styles.toggle}>
-            <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
-            Show abc cell
-          </label>
+          {!abcIsXyz && (
+            <label className={styles.toggle}>
+              <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
+              Show abc cell
+            </label>
+          )}
 
           <label className={styles.toggle}>
             <input type="checkbox" checked={showXyzBox} onChange={e => onShowXyzBoxChange(e.target.checked)} />
@@ -186,9 +201,21 @@ export function Controls({
                 value={orbitDeg}
                 onChange={e => { const v = parseInt(e.target.value); if (v > 0) onOrbitDegChange(v) }}
                 onClick={e => e.stopPropagation()}
-                style={{ width: 40, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
-              />°
+                style={{ width: 32, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
+              /><span style={{ marginLeft: 1 }}>°</span>
             </>}
+          </label>
+          <label className={styles.controlLabel}>
+            Animation: {animDuration.toFixed(1)}s
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={animDuration}
+              onChange={e => onAnimDurationChange(parseFloat(e.target.value))}
+              className={styles.slider}
+            />
           </label>
           {cam && (
             <div className={styles.camInfo}>
@@ -231,6 +258,18 @@ export function Controls({
                   step={1}
                   value={sliceIndex}
                   onChange={e => onSliceIndexChange(parseInt(e.target.value))}
+                  className={styles.slider}
+                />
+              </label>
+              <label className={styles.controlLabel}>
+                Sweep: {sliceSpeed} slices/s
+                <input
+                  type="range"
+                  min={10}
+                  max={500}
+                  step={10}
+                  value={sliceSpeed}
+                  onChange={e => onSliceSpeedChange(parseInt(e.target.value))}
                   className={styles.slider}
                 />
               </label>

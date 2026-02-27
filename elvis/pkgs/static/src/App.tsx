@@ -147,6 +147,7 @@ export default function App() {
   const [zoomPct, setZoomPct] = useUrlState('zd', intParam(0))
   const [panStep, setPanStep] = useUrlState('pd', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
+  const [sliceSpeed, setSliceSpeed] = useUrlState('ss', intParam(120))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [cam, setCam] = useUrlState('c', camParam)
   const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID))
@@ -231,6 +232,26 @@ export default function App() {
     }
   }, [primaryFile])
 
+  // Detect axis-aligned (orthogonal) lattice: abc ≡ xyz when off-diagonal elements are ~0
+  const abcIsXyz = useMemo(() => {
+    if (!primaryFile) return false
+    const lat = primaryFile.data.lattice
+    // lat is row-major [a0,a1,a2, b0,b1,b2, c0,c1,c2]
+    // Off-diagonal: a1,a2, b0,b2, c0,c1
+    const eps = 1e-6
+    return Math.abs(lat[1]) < eps && Math.abs(lat[2]) < eps &&
+           Math.abs(lat[3]) < eps && Math.abs(lat[5]) < eps &&
+           Math.abs(lat[6]) < eps && Math.abs(lat[7]) < eps
+  }, [primaryFile])
+
+  // Auto-hide abc cell when lattice is axis-aligned (abc ≡ xyz)
+  useEffect(() => {
+    if (abcIsXyz && showAbcCell) {
+      setShowAbcCell(false)
+      if (!showXyzBox) setShowXyzBox(true)
+    }
+  }, [abcIsXyz]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const snapCamera = useCallback((snap: CameraSnapTarget) => {
     cameraSnap.current = snap
   }, [])
@@ -257,6 +278,7 @@ export default function App() {
     label: 'Toggle abc (cell + atoms)',
     group: 'View',
     defaultBindings: ['t a'],
+    enabled: !abcIsXyz,
     handler: () => {
       const anyOn = showAbcCell || showAtoms
       setShowAbcCell(!anyOn)
@@ -319,6 +341,20 @@ export default function App() {
     defaultBindings: ['t p'],
     handler: () => setPanStep(panStep > 0 ? 0 : 1),
   })
+  useAction('view:set-anim-speed', {
+    label: 'Set animation speed (seconds)',
+    keywords: ['duration', 'animation', 'speed'],
+    group: 'View',
+    defaultBindings: ['\\f s'],
+    handler: (_e, captures) => setAnimDuration(captures?.[0] ?? 0.5),
+  })
+  useAction('view:set-slice-speed', {
+    label: 'Set slice speed (slices/sec)',
+    keywords: ['slice', 'animation', 'speed', 'sweep'],
+    group: 'View',
+    defaultBindings: ['\\d+ shift+s'],
+    handler: (_e, captures) => setSliceSpeed(captures?.[0] ?? 120),
+  })
   useAction('slice:axis-x', {
     label: 'Slice along X',
     group: 'Slice',
@@ -349,14 +385,13 @@ export default function App() {
 
   const animateSliceTo = useCallback((target: number) => {
     cancelSliceAnim()
-    const SLICES_PER_SECOND = 120
     let last = performance.now()
     let current = sliceIndex ?? 0
     const step = target > current ? 1 : -1
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      const advance = Math.max(1, Math.round(SLICES_PER_SECOND * dt))
+      const advance = Math.max(1, Math.round(sliceSpeed * dt))
       const remaining = Math.abs(target - current)
       if (remaining <= 0) { sliceAnimRef.current = null; return }
       const move = Math.min(advance, remaining)
@@ -366,7 +401,7 @@ export default function App() {
       sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
     }
     sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
-  }, [sliceIndex, cancelSliceAnim, setSliceIndex])
+  }, [sliceIndex, sliceSpeed, cancelSliceAnim, setSliceIndex])
 
   useAction('slice:animate-start', {
     label: 'Animate slice to start',
@@ -398,36 +433,42 @@ export default function App() {
     label: 'Look down a',
     group: 'Camera',
     defaultBindings: ['a'],
+    enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.a }) },
   })
   useAction('cam:align-a', {
     label: 'Align a up',
     group: 'Camera',
     defaultBindings: ['shift+a'],
+    enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.a }) },
   })
   useAction('cam:snap-b', {
     label: 'Look down b',
     group: 'Camera',
     defaultBindings: ['b'],
+    enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.b }) },
   })
   useAction('cam:align-b', {
     label: 'Align b up',
     group: 'Camera',
     defaultBindings: ['shift+b'],
+    enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.b }) },
   })
   useAction('cam:snap-c', {
     label: 'Look down c',
     group: 'Camera',
     defaultBindings: ['c'],
+    enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.c }) },
   })
   useAction('cam:align-c', {
     label: 'Align c up',
     group: 'Camera',
     defaultBindings: ['shift+c'],
+    enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.c }) },
   })
   useAction('cam:snap-x', {
@@ -619,7 +660,7 @@ export default function App() {
         const data = parsePymatgenChgcar(json, filename)
         let volumeId: string | undefined
         if (opfsStore) {
-          const meta = { filename, elements: data.structure.elements, atomCount: data.structure.atoms.length, gridDims: data.grid.dims }
+          const meta = { filename, elements: data.structure.elements, counts: data.structure.counts, atomCount: data.structure.atoms.length, gridDims: data.grid.dims }
           const stored = await opfsStore.store(blob, filename, meta)
           volumeId = stored.id
         }
@@ -665,6 +706,7 @@ export default function App() {
         const meta = {
           filename,
           elements: data.structure.elements,
+          counts: data.structure.counts,
           atomCount: data.structure.atoms.length,
           gridDims: data.grid.dims,
         }
@@ -935,8 +977,6 @@ export default function App() {
           settings={settings}
           onUpdate={updateSettings}
           showCacheToggle={!!opfsStore}
-          animDuration={animDuration}
-          onAnimDurationChange={setAnimDuration}
           lineWidth={lineWidth}
           onLineWidthChange={setLineWidth}
         />
@@ -976,9 +1016,15 @@ export default function App() {
             sliceIndex={sliceIndex ?? 0}
             maxSliceIndex={maxSliceIndex}
             onSliceIndexChange={setSliceIndex}
+            animDuration={animDuration}
+            onAnimDurationChange={setAnimDuration}
+            sliceSpeed={sliceSpeed}
+            onSliceSpeedChange={setSliceSpeed}
             cam={cam}
             filename={primaryFile.filename}
             elements={primaryFile.data.structure.elements}
+            counts={primaryFile.data.structure.counts}
+            abcIsXyz={abcIsXyz}
           />
         )}
         <input

@@ -2,6 +2,7 @@ export interface StoredVolume {
   id: string
   filename: string
   elements: string[]
+  counts?: number[]
   atomCount: number
   gridDims: [number, number, number]
   fileSize: number

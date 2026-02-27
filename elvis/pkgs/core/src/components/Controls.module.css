@@ -124,6 +124,16 @@
   border-color: #4a9eff;
 }
 
+/* Hide number input spinners */
+.controls input[type="number"]::-webkit-inner-spin-button,
+.controls input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.controls input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .camInfo {
   display: flex;
   gap: 10px;

@@ -26,9 +26,18 @@ function relativeTime(timestamp: number): string {
   return `${days}d ago`
 }
 
-function compositionFormula(elements: string[], atomCount: number): string {
+const SUBSCRIPT_DIGITS = '\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089'
+function toSubscript(n: number): string {
+  return String(n).replace(/\d/g, d => SUBSCRIPT_DIGITS[+d])
+}
+
+function compositionFormula(elements: string[], atomCount: number, counts?: number[]): string {
   if (elements.length === 0) return `${atomCount} atoms`
-  return elements.join('-')
+  if (!counts) return elements.join('-')
+  return elements.map((el, i) => {
+    const c = counts[i]
+    return c > 1 ? `${el}${toSubscript(c)}` : el
+  }).join('-')
 }
 
 export function VolumeGallery({ store, currentVolumeId, onSelect, refreshKey }: VolumeGalleryProps) {
@@ -116,7 +125,7 @@ export function VolumeGallery({ store, currentVolumeId, onSelect, refreshKey }: 
                     {vol.filename}
                   </div>
                   <div style={{ fontSize: 11, color: '#888' }}>
-                    {compositionFormula(vol.elements, vol.atomCount)}
+                    {compositionFormula(vol.elements, vol.atomCount, vol.counts)}
                     {' \u00b7 '}
                     {vol.gridDims.join('\u00d7')}
                     {' \u00b7 '}
