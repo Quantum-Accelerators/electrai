@@ -57,14 +57,6 @@ def get_platform(gpu: bool = False) -> str:
         return f"{sys.platform}-{machine}"
 
 
-class LossTracker:
-    """Callback to track per-epoch losses."""
-
-    def __init__(self):
-        self.epoch_train_losses: list[float] = []
-        self.epoch_val_losses: list[float] = []
-
-
 # fmt: off
 @command()
 @option("-B", "--residual-blocks", default=2, help="Number of residual blocks (default: 2, production: 16)")
@@ -101,6 +93,8 @@ def main(
     wandb_project: str | None,
 ):
     """Run deterministic e2e training test."""
+    from time import monotonic
+
     import torch
     from lightning.pytorch import Callback, Trainer, seed_everything
     from torch.utils.data import DataLoader
@@ -308,7 +302,7 @@ def main(
         repo = os.environ.get("GITHUB_REPOSITORY", "")
         logger = WandbLogger(
             project=wandb_project,
-            entity="PrinceOA",
+            entity=os.environ.get("WANDB_ENTITY", "PrinceOA"),
             name=wandb_run_name,
             tags=wandb_tags,
             config={
@@ -349,11 +343,9 @@ def main(
     )
 
     # Train
-    import time as _time
-
-    t0 = _time.monotonic()
+    t0 = monotonic()
     trainer.fit(model, train_loader, test_loader)
-    train_wallclock = _time.monotonic() - t0
+    train_wallclock = monotonic() - t0
 
     # Log summary metrics + wallclock to WandB
     if wandb_project and logger.experiment:

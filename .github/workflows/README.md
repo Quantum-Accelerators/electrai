@@ -38,8 +38,9 @@ Verifies deterministic training on both GPU and CPU on EC2.
 ```bash
 gh workflow run gpu-e2e.yml -f update_expected=true
 # After completion:
-gh run download <run-id> -n expected-linux-gpu
+gh run download <run-id> -n expected-linux
 cp expected_values.json tests/
+# (expected-linux contains both linux + linux-gpu values)
 ```
 
 ## gpu-benchmark.yml - GPU Benchmark

@@ -9,7 +9,7 @@ import sys
 def test_e2e_training():
     """Run deterministic e2e training and verify loss matches expected."""
     result = subprocess.run(
-        [sys.executable, "tests/e2e_train.py", "--epochs", "3"],
+        [sys.executable, "tests/e2e_train.py", "--epochs", "5"],
         check=False,
         capture_output=True,
         text=True,

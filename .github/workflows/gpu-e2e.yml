@@ -8,8 +8,9 @@
 #
 # To regenerate expected values:
 #   gh workflow run gpu-e2e.yml -f update_expected=true
-#   gh run download <run-id> -n expected-linux-gpu
+#   gh run download <run-id> -n expected-linux
 #   cp expected_values.json tests/
+# (expected-linux contains both linux + linux-gpu values)
 
 name: GPU E2E Training Test
 

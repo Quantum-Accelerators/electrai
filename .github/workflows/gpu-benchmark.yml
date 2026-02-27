@@ -232,8 +232,6 @@ jobs:
           if [ -n "$WANDB_RUN_URL" ]; then
             WANDB_RUN_ID=$(echo "$WANDB_RUN_URL" | grep -oP '[^/]+$')
             echo "| WandB | [${WANDB_PROJECT}](https://wandb.ai/PrinceOA/$WANDB_PROJECT) run [${WANDB_RUN_ID}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
-          elif [ -n "$WANDB_PROJECT" ]; then
-            echo "| WandB | [$WANDB_PROJECT](https://wandb.ai/PrinceOA/$WANDB_PROJECT) |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Results" >> $GITHUB_STEP_SUMMARY
