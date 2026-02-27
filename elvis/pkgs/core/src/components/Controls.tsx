@@ -49,6 +49,10 @@ interface ControlsProps {
   elements?: string[]
   counts?: number[]
   abcIsXyz?: boolean
+  tilePadding?: number
+  onTilePaddingChange?: (v: number) => void
+  tileFade?: boolean
+  onTileFadeChange?: (v: boolean) => void
 }
 
 const AXIS_LABELS = ['X', 'Y', 'Z'] as const
@@ -99,7 +103,14 @@ export function Controls({
   elements,
   counts,
   abcIsXyz,
+  tilePadding,
+  onTilePaddingChange,
+  tileFade,
+  onTileFadeChange,
 }: ControlsProps) {
+  const tp = tilePadding ?? 0
+  const hasTiling = tp > 0
+
   return (
     <div className={styles.controls}>
       <div className={styles.controlTitle}>{filename}</div>
@@ -214,6 +225,42 @@ export function Controls({
         </div>
       </details>
 
+      {onTilePaddingChange && (
+        <details className={styles.section} open={hasTiling}>
+          <summary className={styles.sectionTitle}>Tiling</summary>
+          <div className={styles.sectionBody}>
+            <label className={styles.controlLabel}>
+              <div className={styles.sliderHeader}>
+                <span>Padding: {tp.toFixed(2)}</span>
+                <button
+                  className={styles.resetBtn}
+                  onClick={() => onTilePaddingChange(0)}
+                  title="Reset to 0"
+                  disabled={tp === 0}
+                >
+                  <ResetIcon />
+                </button>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={tp}
+                onChange={e => onTilePaddingChange(parseFloat(e.target.value))}
+                className={styles.slider}
+              />
+            </label>
+            {hasTiling && onTileFadeChange && (
+              <label className={styles.toggle}>
+                <input type="checkbox" checked={tileFade ?? true} onChange={e => onTileFadeChange(e.target.checked)} />
+                Fade
+              </label>
+            )}
+          </div>
+        </details>
+      )}
+
       <details className={styles.section} open>
         <summary className={styles.sectionTitle}>Camera</summary>
         <div className={styles.sectionBody}>
@@ -320,9 +367,9 @@ export function Controls({
                 Sweep: {sliceSpeed} slices/s
                 <input
                   type="range"
-                  min={10}
+                  min={5}
                   max={500}
-                  step={10}
+                  step={5}
                   value={sliceSpeed}
                   onChange={e => onSliceSpeedChange(parseInt(e.target.value))}
                   className={styles.slider}

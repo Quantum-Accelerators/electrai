@@ -4,6 +4,9 @@ import { Html, Billboard, Text } from '@react-three/drei'
 import type { VolumeData } from '../types.ts'
 import { fracToCart, unitCellEdges, unitCellBoundingBox } from '../utils/lattice.ts'
 import { getElement } from '../utils/elements.ts'
+import { atomOpacity } from '../utils/tiling.ts'
+import type { TileInfo } from '../utils/tiling.ts'
+import { tileFadeCompile } from '../utils/tile-fade.ts'
 
 interface CrystalStructureProps {
   volume: VolumeData
@@ -14,6 +17,9 @@ interface CrystalStructureProps {
   showWorldAxes: boolean
   dashedLines: boolean
   lineWidth?: number
+  tiles?: TileInfo[]
+  tilePadding?: number
+  tileFade?: boolean
 }
 
 // Lattice vector colors — YOV (yellow, orange, violet), warm complement of gizmo RGB
@@ -24,11 +30,14 @@ const LATTICE_LABELS = ['a', 'b', 'c'] as const
 const WORLD_COLORS = ['#ff3653', '#0adb50', '#2c8fff'] as const
 const WORLD_LABELS = ['X', 'Y', 'Z'] as const
 
-function AxisCylinder({ from, to, color, radius = 0.06 }: {
+function AxisCylinder({ from, to, color, radius = 0.06, opacity = 1, fadeCompile, fadeKey }: {
   from: [number, number, number]
   to: [number, number, number]
   color: string
   radius?: number
+  opacity?: number
+  fadeCompile?: (shader: any) => void
+  fadeKey?: string
 }) {
   const { position, quaternion, length } = useMemo(() => {
     const a = new Vector3(...from)
@@ -42,10 +51,11 @@ function AxisCylinder({ from, to, color, radius = 0.06 }: {
     return { position: mid, quaternion: q.quaternion, length: len }
   }, [from, to])
 
+  const transparent = opacity < 1 || !!fadeCompile
   return (
     <mesh position={position} quaternion={quaternion}>
       <cylinderGeometry args={[radius, radius, length, 6]} />
-      <meshStandardMaterial color={color} />
+      <meshStandardMaterial key={fadeKey} color={color} transparent={transparent} opacity={opacity} depthWrite={!transparent} onBeforeCompile={fadeCompile} />
     </mesh>
   )
 }
@@ -70,19 +80,23 @@ function AxisLabel({ position, label, color }: {
   )
 }
 
-function DashedEdge({ from, to, color }: {
+function DashedEdge({ from, to, color, opacity = 1, fadeCompile }: {
   from: [number, number, number]
   to: [number, number, number]
   color: string
+  opacity?: number
+  fadeCompile?: (shader: any) => void
 }) {
   const groupRef = useRef<Object3D>(null!)
   const line = useMemo(() => {
     const geo = new BufferGeometry().setFromPoints([new Vector3(...from), new Vector3(...to)])
-    const mat = new LineDashedMaterial({ color, dashSize: 0.15, gapSize: 0.08 })
+    const transparent = opacity < 1 || !!fadeCompile
+    const mat = new LineDashedMaterial({ color, dashSize: 0.15, gapSize: 0.08, transparent, opacity })
+    if (fadeCompile) mat.onBeforeCompile = fadeCompile
     const l = new ThreeLine(geo, mat)
     l.computeLineDistances()
     return l
-  }, [from, to, color])
+  }, [from, to, color, opacity, fadeCompile])
   useEffect(() => {
     groupRef.current.add(line)
     return () => { groupRef.current?.remove(line) }
@@ -90,19 +104,54 @@ function DashedEdge({ from, to, color }: {
   return <group ref={groupRef} />
 }
 
-export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, lineWidth = 1 }: CrystalStructureProps) {
+/** Quantize opacity to 0.05 steps to reduce instanced mesh count */
+function quantizeOpacity(o: number): number {
+  return Math.round(o * 20) / 20
+}
+
+export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, lineWidth = 1, tiles, tilePadding = 0, tileFade = true }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
-  // Group atoms by element for instanced rendering
-  const atomGroups = useMemo(() => {
+  // Group atoms by (element, quantized opacity) for tiled instanced rendering
+  // When tilePadding > 0, per-atom opacity is computed from fractional-coordinate distance
+  const { atomGroups, primaryAtomGroups } = useMemo(() => {
     const groups = new Map<string, Array<[number, number, number]>>()
-    for (const atom of structure.atoms) {
-      const arr = groups.get(atom.element) ?? []
-      arr.push(fracToCart(lattice, atom.fracCoords))
-      groups.set(atom.element, arr)
+    const primaryGroups = new Map<string, Array<[number, number, number]>>()
+    const tileList = tiles ?? [{ fracOffset: [0, 0, 0] as [number, number, number], cartOffset: [0, 0, 0] as [number, number, number], opacity: 1, isPrimary: true }]
+
+    for (const tile of tileList) {
+      if (tile.opacity <= 0) continue
+      for (const atom of structure.atoms) {
+        // Compute per-atom opacity from actual fractional position
+        const fracPos: [number, number, number] = [
+          atom.fracCoords[0] + tile.fracOffset[0],
+          atom.fracCoords[1] + tile.fracOffset[1],
+          atom.fracCoords[2] + tile.fracOffset[2],
+        ]
+        const opacity = tile.isPrimary ? 1 : atomOpacity(fracPos, tilePadding, tileFade)
+        if (opacity <= 0) continue
+
+        const qo = quantizeOpacity(opacity)
+        const basePos = fracToCart(lattice, atom.fracCoords)
+        const pos: [number, number, number] = [
+          basePos[0] + tile.cartOffset[0],
+          basePos[1] + tile.cartOffset[1],
+          basePos[2] + tile.cartOffset[2],
+        ]
+        const key = `${atom.element}:${qo}`
+        const arr = groups.get(key) ?? []
+        arr.push(pos)
+        groups.set(key, arr)
+
+        if (tile.isPrimary) {
+          const pArr = primaryGroups.get(atom.element) ?? []
+          pArr.push(pos)
+          primaryGroups.set(atom.element, pArr)
+        }
+      }
     }
-    return groups
-  }, [lattice, structure])
+    return { atomGroups: groups, primaryAtomGroups: primaryGroups }
+  }, [lattice, structure, tiles, tilePadding, tileFade])
 
   const origin = useMemo(() => fracToCart(lattice, [0, 0, 0]), [lattice])
 
@@ -190,12 +239,25 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
     return { origin: o, endpoints, labels }
   }, [lattice])
 
+  // Effective tile list (default: single primary tile)
+  const tileList = tiles ?? [{ fracOffset: [0, 0, 0] as [number, number, number], cartOffset: [0, 0, 0] as [number, number, number], opacity: 1, isPrimary: true }]
+
+  const fadeCompile = useMemo(() => {
+    if (tilePadding <= 0) return undefined
+    return tileFadeCompile(lattice, tilePadding, tileFade)
+  }, [lattice, tilePadding, tileFade])
+  const fadeKey = tilePadding > 0 ? `fade-${tilePadding}-${tileFade}` : undefined
+
   return (
     <group>
-      {showAtoms && Array.from(atomGroups.entries()).map(([element, positions]) => (
-        <AtomInstances key={element} element={element} positions={positions} />
-      ))}
-      {showAtoms && showAtomLabels && Array.from(atomGroups.entries()).map(([element, positions]) => {
+      {showAtoms && Array.from(atomGroups.entries()).map(([key, positions]) => {
+        const [element, opStr] = key.split(':')
+        const opacity = parseFloat(opStr)
+        return (
+          <AtomInstances key={key} element={element} positions={positions} opacity={opacity} />
+        )
+      })}
+      {showAtoms && showAtomLabels && Array.from(primaryAtomGroups.entries()).map(([element, positions]) => {
         const { color, radius } = getElement(element)
         const css = `#${color.toString(16).padStart(6, '0')}`
         return positions.map((pos, i) => (
@@ -208,29 +270,41 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
       })}
       {showAbcCell && (
         <>
-          {cellEdgesByAxis.map((edges, axisIdx) =>
-            edges.map(([a, b], edgeIdx) => {
-              const ca = fracToCart(lattice, a)
-              const cb = fracToCart(lattice, b)
-              const isFromOrigin = a[0] === 0 && a[1] === 0 && a[2] === 0
-              return dashedLines ? (
-                <DashedEdge
-                  key={`cell-${axisIdx}-${edgeIdx}`}
-                  from={ca}
-                  to={cb}
-                  color={LATTICE_COLORS[axisIdx]}
-                />
-              ) : (
-                <AxisCylinder
-                  key={`cell-${axisIdx}-${edgeIdx}`}
-                  from={ca}
-                  to={cb}
-                  color={LATTICE_COLORS[axisIdx]}
-                  radius={(isFromOrigin ? 0.06 : 0.03) * lineWidth}
-                />
-              )
-            })
-          )}
+          {tileList.map((tile, tileIdx) => {
+            if (tile.opacity <= 0) return null
+            return (
+              <group key={`cell-tile-${tileIdx}`} position={tile.cartOffset}>
+                {cellEdgesByAxis.map((edges, axisIdx) =>
+                  edges.map(([a, b], edgeIdx) => {
+                    const ca = fracToCart(lattice, a)
+                    const cb = fracToCart(lattice, b)
+                    const isFromOrigin = a[0] === 0 && a[1] === 0 && a[2] === 0
+                    return dashedLines ? (
+                      <DashedEdge
+                        key={`cell-${axisIdx}-${edgeIdx}`}
+                        from={ca}
+                        to={cb}
+                        color={LATTICE_COLORS[axisIdx]}
+                        opacity={fadeCompile ? 1 : tile.opacity}
+                        fadeCompile={fadeCompile}
+                      />
+                    ) : (
+                      <AxisCylinder
+                        key={`cell-${axisIdx}-${edgeIdx}`}
+                        from={ca}
+                        to={cb}
+                        color={LATTICE_COLORS[axisIdx]}
+                        radius={(isFromOrigin && tile.isPrimary ? 0.06 : 0.03) * lineWidth}
+                        opacity={fadeCompile ? 1 : tile.opacity}
+                        fadeCompile={fadeCompile}
+                        fadeKey={fadeKey}
+                      />
+                    )
+                  })
+                )}
+              </group>
+            )
+          })}
           {labelPositions.map((pos, i) => (
             <AxisLabel key={`label-${i}`} position={pos} label={LATTICE_LABELS[i]} color={LATTICE_COLORS[i]} />
           ))}
@@ -268,7 +342,7 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
   )
 }
 
-function AtomInstances({ element, positions }: { element: string; positions: Array<[number, number, number]> }) {
+function AtomInstances({ element, positions, opacity = 1 }: { element: string; positions: Array<[number, number, number]>; opacity?: number }) {
   const meshRef = useRef<InstancedMesh>(null!)
   const { color, radius } = getElement(element)
   const dummy = useMemo(() => new Object3D(), [])
@@ -285,7 +359,7 @@ function AtomInstances({ element, positions }: { element: string; positions: Arr
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, positions.length]}>
       <sphereGeometry args={[radius * 0.4, 16, 12]} />
-      <meshStandardMaterial color={new Color(color)} />
+      <meshStandardMaterial color={new Color(color)} transparent={opacity < 1} opacity={opacity} depthWrite={opacity >= 1} />
     </instancedMesh>
   )
 }

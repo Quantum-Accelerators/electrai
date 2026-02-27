@@ -19,6 +19,8 @@ export { parsePymatgenChgcar } from './parsers/pymatgen-chgcar.ts'
 // Utils
 export { marchingCubes, extendPeriodicGrid } from './utils/marching-cubes.ts'
 export { fracToCart, latticeToMatrix4, cellVolume, unitCellEdges, unitCellBoundingBox } from './utils/lattice.ts'
+export { computeTiles, atomOpacity, distFromPrimaryCell } from './utils/tiling.ts'
+export type { TileInfo } from './utils/tiling.ts'
 export { getElement, ELEMENTS } from './utils/elements.ts'
 export type { ElementData } from './utils/elements.ts'
 

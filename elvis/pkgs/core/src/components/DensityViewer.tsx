@@ -12,6 +12,7 @@ import { CameraController } from './CameraController.tsx'
 import type { CameraSnapTarget } from './CameraController.tsx'
 import { SlicePlane3D } from './SlicePlane3D.tsx'
 import { fracToCart } from '../utils/lattice.ts'
+import { computeTiles } from '../utils/tiling.ts'
 
 interface DensityViewerProps {
   volume: VolumeData
@@ -33,6 +34,9 @@ interface DensityViewerProps {
   sliceAxis?: 0 | 1 | 2
   sliceIndex?: number
   label?: string
+  tilePadding?: number
+  tileFade?: boolean
+  abcIsXyz?: boolean
 }
 
 export function DensityViewer({
@@ -55,7 +59,15 @@ export function DensityViewer({
   sliceAxis,
   sliceIndex,
   label,
+  tilePadding = 0,
+  tileFade = true,
+  abcIsXyz,
 }: DensityViewerProps) {
+  const tiles = useMemo(() => {
+    if (tilePadding <= 0) return undefined
+    return computeTiles(volume.lattice, tilePadding, tileFade)
+  }, [volume.lattice, tilePadding, tileFade])
+
   const center = useMemo(() => {
     const c = fracToCart(volume.lattice, [0.5, 0.5, 0.5])
     return new Vector3(...c)
@@ -90,8 +102,8 @@ export function DensityViewer({
         <directionalLight position={[10, 10, 10]} intensity={0.8} />
         <directionalLight position={[-5, -5, 5]} intensity={0.4} />
 
-        <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} />
-        <CrystalStructure volume={volume} showAtoms={showAtoms} showAtomLabels={showAtomLabels} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} dashedLines={dashedLines} lineWidth={lineWidth} />
+        <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} tiles={tiles} tilePadding={tilePadding} tileFade={tileFade} />
+        <CrystalStructure volume={volume} showAtoms={showAtoms} showAtomLabels={showAtomLabels} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} dashedLines={dashedLines} lineWidth={lineWidth} tiles={tiles} tilePadding={tilePadding} tileFade={tileFade} />
         {showSlice && sliceAxis !== undefined && sliceIndex !== undefined && (
           <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} data={volume.grid.data} />
         )}
@@ -101,11 +113,13 @@ export function DensityViewer({
         <OrbitControls makeDefault target={center.toArray()} />
         <GizmoHelper alignment="bottom-right" margin={[80, 36]}>
           <GizmoViewport axisHeadScale={0.8} labelColor="white" />
-          <ScreenOffsetGroup offset={[-100, 0, 0]}>
-            <group scale={40}>
-              <LatticeGizmo lattice={volume.lattice} />
-            </group>
-          </ScreenOffsetGroup>
+          {!abcIsXyz && (
+            <ScreenOffsetGroup offset={[-100, 0, 0]}>
+              <group scale={40}>
+                <LatticeGizmo lattice={volume.lattice} />
+              </group>
+            </ScreenOffsetGroup>
+          )}
         </GizmoHelper>
       </Canvas>
     </div>

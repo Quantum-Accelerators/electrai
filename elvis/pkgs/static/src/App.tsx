@@ -151,6 +151,8 @@ export default function App() {
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
   const [sliceSpeed, setSliceSpeed] = useUrlState('ss', intParam(120))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
+  const [tilePadding, setTilePadding] = useUrlState('tp', floatParam({ default: 0, encoding: 'string', decimals: 1 }), { debounce: 300 })
+  const [tileFade, setTileFade] = useUrlState('nf', boolTrueParam)
   const [cam, setCam] = useUrlState('c', camParam)
   const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID))
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
@@ -310,6 +312,26 @@ export default function App() {
     group: 'View',
     defaultBindings: ['t s'],
     handler: () => setShowSlice(!showSlice),
+  })
+  useAction('view:toggle-tiling', {
+    label: 'Toggle tiling',
+    group: 'View',
+    defaultBindings: ['t t'],
+    handler: () => setTilePadding(tilePadding > 0 ? 0 : 1),
+  })
+  useAction('view:set-tile-padding', {
+    label: 'Set tile padding',
+    keywords: ['tiling', 'padding', 'periodic'],
+    group: 'View',
+    defaultBindings: ['\\f t'],
+    handler: (_e, captures) => setTilePadding(captures?.[0] ?? 1),
+  })
+  useAction('view:toggle-tile-fade', {
+    label: 'Toggle tile fade',
+    keywords: ['tiling', 'fade', 'opacity'],
+    group: 'View',
+    defaultBindings: ['t f'],
+    handler: () => setTileFade(!tileFade),
   })
   useAction('view:set-orbit-deg', {
     label: 'Set orbit step',
@@ -930,6 +952,8 @@ export default function App() {
                 showWorldAxes={showWorldAxes}
                 dashedLines={dashedLines}
                 activeMovements={activeMovements}
+                tilePadding={tilePadding}
+                tileFade={tileFade}
               />
             ) : (
               <DensityViewer
@@ -951,6 +975,9 @@ export default function App() {
                 showSlice={showSlice}
                 sliceAxis={sliceAxis}
                 sliceIndex={sliceIndex ?? 0}
+                tilePadding={tilePadding}
+                tileFade={tileFade}
+                abcIsXyz={abcIsXyz}
               />
             )}
             {showSlice && (
@@ -1058,6 +1085,10 @@ export default function App() {
             elements={primaryFile.data.structure.elements}
             counts={primaryFile.data.structure.counts}
             abcIsXyz={abcIsXyz}
+            tilePadding={tilePadding}
+            onTilePaddingChange={setTilePadding}
+            tileFade={tileFade}
+            onTileFadeChange={setTileFade}
           />
         )}
         <input
