@@ -17,14 +17,22 @@ interface ControlsProps {
   onOpacityChange: (v: number) => void
   showAtoms: boolean
   onShowAtomsChange: (v: boolean) => void
+  showAtomLabels: boolean
+  onShowAtomLabelsChange: (v: boolean) => void
   showAbcCell: boolean
   onShowAbcCellChange: (v: boolean) => void
   showXyzBox: boolean
   onShowXyzBoxChange: (v: boolean) => void
   showWorldAxes: boolean
   onShowWorldAxesChange: (v: boolean) => void
+  dashedLines: boolean
+  onDashedLinesChange: (v: boolean) => void
   orbitDeg: number
   onOrbitDegChange: (v: number) => void
+  zoomPct: number
+  onZoomPctChange: (v: number) => void
+  panStep: number
+  onPanStepChange: (v: number) => void
   showSlice: boolean
   onShowSliceChange: (v: boolean) => void
   sliceAxis: 0 | 1 | 2
@@ -59,14 +67,22 @@ export function Controls({
   onOpacityChange,
   showAtoms,
   onShowAtomsChange,
+  showAtomLabels,
+  onShowAtomLabelsChange,
   showAbcCell,
   onShowAbcCellChange,
   showXyzBox,
   onShowXyzBoxChange,
   showWorldAxes,
   onShowWorldAxesChange,
+  dashedLines,
+  onDashedLinesChange,
   orbitDeg,
   onOrbitDegChange,
+  zoomPct,
+  onZoomPctChange,
+  panStep,
+  onPanStepChange,
   showSlice,
   onShowSliceChange,
   sliceAxis,
@@ -169,6 +185,11 @@ export function Controls({
             Show atoms
           </label>
 
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showAtomLabels} onChange={e => onShowAtomLabelsChange(e.target.checked)} />
+            Atom labels
+          </label>
+
           {!abcIsXyz && (
             <label className={styles.toggle}>
               <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
@@ -184,6 +205,11 @@ export function Controls({
           <label className={styles.toggle}>
             <input type="checkbox" checked={showWorldAxes} onChange={e => onShowWorldAxesChange(e.target.checked)} />
             Show XYZ axes
+          </label>
+
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={dashedLines} onChange={e => onDashedLinesChange(e.target.checked)} />
+            Dashed outlines
           </label>
         </div>
       </details>
@@ -203,6 +229,35 @@ export function Controls({
                 onClick={e => e.stopPropagation()}
                 style={{ width: 32, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
               /><span style={{ marginLeft: 1 }}>°</span>
+            </>}
+          </label>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={zoomPct > 0} onChange={e => onZoomPctChange(e.target.checked ? 20 : 0)} />
+            Zoom step{zoomPct > 0 && <>:
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={zoomPct}
+                onChange={e => { const v = parseInt(e.target.value); if (v > 0) onZoomPctChange(v) }}
+                onClick={e => e.stopPropagation()}
+                style={{ width: 32, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
+              /><span style={{ marginLeft: 1 }}>%</span>
+            </>}
+          </label>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={panStep > 0} onChange={e => onPanStepChange(e.target.checked ? 1 : 0)} />
+            Pan step{panStep > 0 && <>:
+              <input
+                type="number"
+                min={0.1}
+                max={20}
+                step={0.1}
+                value={panStep}
+                onChange={e => { const v = parseFloat(e.target.value); if (v > 0) onPanStepChange(v) }}
+                onClick={e => e.stopPropagation()}
+                style={{ width: 36, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
+              />
             </>}
           </label>
           <label className={styles.controlLabel}>

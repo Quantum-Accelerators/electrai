@@ -18,9 +18,11 @@ interface DensityViewerProps {
   isoLevel: number
   opacity: number
   showAtoms: boolean
+  showAtomLabels: boolean
   showAbcCell: boolean
   showXyzBox: boolean
   showWorldAxes: boolean
+  dashedLines: boolean
   lineWidth?: number
   activeMovements?: RefObject<Set<string>>
   cameraSnap?: MutableRefObject<CameraSnapTarget | null>
@@ -38,9 +40,11 @@ export function DensityViewer({
   isoLevel,
   opacity,
   showAtoms,
+  showAtomLabels,
   showAbcCell,
   showXyzBox,
   showWorldAxes,
+  dashedLines,
   lineWidth = 1,
   activeMovements,
   cameraSnap,
@@ -87,7 +91,7 @@ export function DensityViewer({
         <directionalLight position={[-5, -5, 5]} intensity={0.4} />
 
         <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} />
-        <CrystalStructure volume={volume} showAtoms={showAtoms} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} lineWidth={lineWidth} />
+        <CrystalStructure volume={volume} showAtoms={showAtoms} showAtomLabels={showAtomLabels} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} dashedLines={dashedLines} lineWidth={lineWidth} />
         {showSlice && sliceAxis !== undefined && sliceIndex !== undefined && (
           <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} data={volume.grid.data} />
         )}

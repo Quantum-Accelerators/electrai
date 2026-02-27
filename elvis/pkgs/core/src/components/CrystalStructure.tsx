@@ -1,6 +1,6 @@
 import { useMemo, useRef, useEffect } from 'react'
-import { Object3D, Color, Vector3, InstancedMesh } from 'three'
-import { Html } from '@react-three/drei'
+import { Object3D, Color, Vector3, InstancedMesh, BufferGeometry, Line as ThreeLine, LineDashedMaterial } from 'three'
+import { Html, Billboard, Text } from '@react-three/drei'
 import type { VolumeData } from '../types.ts'
 import { fracToCart, unitCellEdges, unitCellBoundingBox } from '../utils/lattice.ts'
 import { getElement } from '../utils/elements.ts'
@@ -8,9 +8,11 @@ import { getElement } from '../utils/elements.ts'
 interface CrystalStructureProps {
   volume: VolumeData
   showAtoms: boolean
+  showAtomLabels: boolean
   showAbcCell: boolean
   showXyzBox: boolean
   showWorldAxes: boolean
+  dashedLines: boolean
   lineWidth?: number
 }
 
@@ -68,7 +70,27 @@ function AxisLabel({ position, label, color }: {
   )
 }
 
-export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, showWorldAxes, lineWidth = 1 }: CrystalStructureProps) {
+function DashedEdge({ from, to, color }: {
+  from: [number, number, number]
+  to: [number, number, number]
+  color: string
+}) {
+  const groupRef = useRef<Object3D>(null!)
+  const line = useMemo(() => {
+    const geo = new BufferGeometry().setFromPoints([new Vector3(...from), new Vector3(...to)])
+    const mat = new LineDashedMaterial({ color, dashSize: 0.15, gapSize: 0.08 })
+    const l = new ThreeLine(geo, mat)
+    l.computeLineDistances()
+    return l
+  }, [from, to, color])
+  useEffect(() => {
+    groupRef.current.add(line)
+    return () => { groupRef.current?.remove(line) }
+  }, [line])
+  return <group ref={groupRef} />
+}
+
+export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, lineWidth = 1 }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
   // Group atoms by element for instanced rendering
@@ -173,6 +195,17 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
       {showAtoms && Array.from(atomGroups.entries()).map(([element, positions]) => (
         <AtomInstances key={element} element={element} positions={positions} />
       ))}
+      {showAtoms && showAtomLabels && Array.from(atomGroups.entries()).map(([element, positions]) => {
+        const { color, radius } = getElement(element)
+        const css = `#${color.toString(16).padStart(6, '0')}`
+        return positions.map((pos, i) => (
+          <Billboard key={`label-${element}-${i}`} position={[pos[0], pos[1] + radius * 0.4 + 0.15, pos[2]]}>
+            <Text fontSize={0.2} color={css} anchorY="bottom" fillOpacity={0.45}>
+              {element}
+            </Text>
+          </Billboard>
+        ))
+      })}
       {showAbcCell && (
         <>
           {cellEdgesByAxis.map((edges, axisIdx) =>
@@ -180,7 +213,14 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
               const ca = fracToCart(lattice, a)
               const cb = fracToCart(lattice, b)
               const isFromOrigin = a[0] === 0 && a[1] === 0 && a[2] === 0
-              return (
+              return dashedLines ? (
+                <DashedEdge
+                  key={`cell-${axisIdx}-${edgeIdx}`}
+                  from={ca}
+                  to={cb}
+                  color={LATTICE_COLORS[axisIdx]}
+                />
+              ) : (
                 <AxisCylinder
                   key={`cell-${axisIdx}-${edgeIdx}`}
                   from={ca}
@@ -197,13 +237,22 @@ export function CrystalStructure({ volume, showAtoms, showAbcCell, showXyzBox, s
         </>
       )}
       {showXyzBox && xyzBoxEdges.map((edge, i) => (
-        <AxisCylinder
-          key={`xyz-box-${i}`}
-          from={edge.from}
-          to={edge.to}
-          color={WORLD_COLORS[edge.axis]}
-          radius={0.03 * lineWidth}
-        />
+        dashedLines ? (
+          <DashedEdge
+            key={`xyz-box-${i}`}
+            from={edge.from}
+            to={edge.to}
+            color={WORLD_COLORS[edge.axis]}
+          />
+        ) : (
+          <AxisCylinder
+            key={`xyz-box-${i}`}
+            from={edge.from}
+            to={edge.to}
+            color={WORLD_COLORS[edge.axis]}
+            radius={0.03 * lineWidth}
+          />
+        )
       ))}
       {showWorldAxes && (
         <>

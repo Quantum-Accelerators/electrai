@@ -139,7 +139,9 @@ export default function App() {
   const [showAtoms, setShowAtoms] = useUrlState('ha', boolTrueParam)
   const [showAbcCell, setShowAbcCell] = useUrlState('hc', boolTrueParam)
   const [showXyzBox, setShowXyzBox] = useUrlState('xb', boolParam)
+  const [showAtomLabels, setShowAtomLabels] = useUrlState('al', boolParam)
   const [showWorldAxes, setShowWorldAxes] = useUrlState('xa', boolParam)
+  const [dashedLines, setDashedLines] = useUrlState('dl', boolParam)
   const [showSlice, setShowSlice] = useUrlState('sl', boolParam)
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
   const [sliceIndex, setSliceIndex] = useUrlState('si', optIntParam, { debounce: 300 })
@@ -290,6 +292,18 @@ export default function App() {
     group: 'View',
     defaultBindings: ['t shift+a'],
     handler: () => setShowAtoms(!showAtoms),
+  })
+  useAction('view:toggle-labels', {
+    label: 'Toggle atom labels',
+    group: 'View',
+    defaultBindings: ['t l'],
+    handler: () => setShowAtomLabels(!showAtomLabels),
+  })
+  useAction('view:toggle-dashed', {
+    label: 'Toggle dashed outlines',
+    group: 'View',
+    defaultBindings: ['t d'],
+    handler: () => setDashedLines(!dashedLines),
   })
   useAction('view:toggle-slice', {
     label: 'Toggle 2D slice',
@@ -903,9 +917,11 @@ export default function App() {
                 isoLevel={isoLevel ?? 0}
                 opacity={opacity}
                 showAtoms={showAtoms}
+                showAtomLabels={showAtomLabels}
                 showAbcCell={showAbcCell}
                 showXyzBox={showXyzBox}
                 showWorldAxes={showWorldAxes}
+                dashedLines={dashedLines}
                 activeMovements={activeMovements}
               />
             ) : (
@@ -914,9 +930,11 @@ export default function App() {
                 isoLevel={isoLevel ?? 0}
                 opacity={opacity}
                 showAtoms={showAtoms}
+                showAtomLabels={showAtomLabels}
                 showAbcCell={showAbcCell}
                 showXyzBox={showXyzBox}
                 showWorldAxes={showWorldAxes}
+                dashedLines={dashedLines}
                 lineWidth={lineWidth}
                 activeMovements={activeMovements}
                 cameraSnap={cameraSnap}
@@ -1001,14 +1019,22 @@ export default function App() {
             onOpacityChange={setOpacity}
             showAtoms={showAtoms}
             onShowAtomsChange={setShowAtoms}
+            showAtomLabels={showAtomLabels}
+            onShowAtomLabelsChange={setShowAtomLabels}
             showAbcCell={showAbcCell}
             onShowAbcCellChange={setShowAbcCell}
             showXyzBox={showXyzBox}
             onShowXyzBoxChange={setShowXyzBox}
             showWorldAxes={showWorldAxes}
             onShowWorldAxesChange={setShowWorldAxes}
+            dashedLines={dashedLines}
+            onDashedLinesChange={setDashedLines}
             orbitDeg={orbitDeg}
             onOrbitDegChange={setOrbitDeg}
+            zoomPct={zoomPct}
+            onZoomPctChange={setZoomPct}
+            panStep={panStep}
+            onPanStepChange={setPanStep}
             showSlice={showSlice}
             onShowSliceChange={setShowSlice}
             sliceAxis={sliceAxis}

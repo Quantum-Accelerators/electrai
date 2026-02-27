@@ -8,13 +8,15 @@ interface ComparisonViewProps {
   isoLevel: number
   opacity: number
   showAtoms: boolean
+  showAtomLabels: boolean
   showAbcCell: boolean
   showXyzBox: boolean
   showWorldAxes: boolean
+  dashedLines: boolean
   activeMovements?: RefObject<Set<string>>
 }
 
-export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showAbcCell, showXyzBox, showWorldAxes, activeMovements }: ComparisonViewProps) {
+export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, activeMovements }: ComparisonViewProps) {
   return (
     <div className={styles.comparisonGrid}>
       {volumes.map(({ data, label }) => (
@@ -24,9 +26,11 @@ export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showAbcC
             isoLevel={isoLevel}
             opacity={opacity}
             showAtoms={showAtoms}
+            showAtomLabels={showAtomLabels}
             showAbcCell={showAbcCell}
             showXyzBox={showXyzBox}
             showWorldAxes={showWorldAxes}
+            dashedLines={dashedLines}
             activeMovements={activeMovements}
             label={label}
           />
