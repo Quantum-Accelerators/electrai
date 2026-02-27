@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import type { ElvisSettings } from '../hooks/useSettings.ts'
 
 interface SettingsProps {
@@ -9,11 +10,39 @@ interface SettingsProps {
 }
 
 export function Settings({ settings, onUpdate, showCacheToggle = true, lineWidth, onLineWidthChange }: SettingsProps) {
+  const [collapsed, setCollapsed] = useState(() => {
+    return sessionStorage.getItem('elvis-settings-collapsed') === 'true'
+  })
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed(prev => {
+      const next = !prev
+      sessionStorage.setItem('elvis-settings-collapsed', String(next))
+      return next
+    })
+  }, [])
+
   return (
-    <div style={{ padding: '8px 16px', borderBottom: '1px solid #333' }}>
-      <div style={{ fontSize: 13, color: '#aaa', fontWeight: 600, marginBottom: 8 }}>
-        Settings
-      </div>
+    <div style={{ borderBottom: '1px solid #333' }}>
+      <button
+        onClick={toggleCollapsed}
+        style={{
+          width: '100%',
+          padding: '8px 16px',
+          background: 'transparent',
+          border: 'none',
+          color: '#aaa',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span>Settings</span>
+        <span style={{ fontSize: 10 }}>{collapsed ? '\u25b6' : '\u25bc'}</span>
+      </button>
+      {!collapsed && <div style={{ padding: '0 16px 8px' }}>
       {showCacheToggle && (
         <label style={{
           display: 'flex',
@@ -81,6 +110,7 @@ export function Settings({ settings, onUpdate, showCacheToggle = true, lineWidth
           />
         </label>
       )}
+      </div>}
     </div>
   )
 }

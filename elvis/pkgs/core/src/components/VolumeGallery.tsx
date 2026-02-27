@@ -43,7 +43,7 @@ function compositionFormula(elements: string[], atomCount: number, counts?: numb
 export function VolumeGallery({ store, currentVolumeId, onSelect, refreshKey }: VolumeGalleryProps) {
   const [volumes, setVolumes] = useState<StoredVolume[]>([])
   const [collapsed, setCollapsed] = useState(() => {
-    return localStorage.getItem('elvis-gallery-collapsed') === 'true'
+    return sessionStorage.getItem('elvis-gallery-collapsed') === 'true'
   })
 
   const refresh = useCallback(async () => {
@@ -55,7 +55,7 @@ export function VolumeGallery({ store, currentVolumeId, onSelect, refreshKey }: 
   const toggleCollapsed = useCallback(() => {
     setCollapsed(prev => {
       const next = !prev
-      localStorage.setItem('elvis-gallery-collapsed', String(next))
+      sessionStorage.setItem('elvis-gallery-collapsed', String(next))
       return next
     })
   }, [])

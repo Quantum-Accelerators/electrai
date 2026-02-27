@@ -401,11 +401,18 @@ export default function App() {
     cancelSliceAnim()
     let last = performance.now()
     let current = sliceIndex ?? 0
+    let fractional = 0
     const step = target > current ? 1 : -1
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      const advance = Math.max(1, Math.round(sliceSpeed * dt))
+      fractional += sliceSpeed * dt
+      const advance = Math.floor(fractional)
+      if (advance < 1) {
+        sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
+        return
+      }
+      fractional -= advance
       const remaining = Math.abs(target - current)
       if (remaining <= 0) { sliceAnimRef.current = null; return }
       const move = Math.min(advance, remaining)
