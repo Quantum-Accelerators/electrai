@@ -26,6 +26,25 @@ const screens: ScreenshotsMap = {
       { type: 'wait', duration: 7000 },
     ],
   } satisfies ScreencastConfig,
+  'slice-sweep': {
+    query: '?c=28+59.1+13.4+1.9&iso=0.3&m=mp-1523390&si=35&sa=0&ss=20&xa&xb&sl&hc',
+    width: 800,
+    height: 600,
+    selector: 'canvas',
+    preScreenshotSleep: 5000,
+    path: 'slice-sweep.gif',
+    fps: 30,
+    gifQuality: 10,
+    actions: [
+      { type: 'wait', duration: 500 },
+      { type: 'key', key: 'Meta+Shift+ArrowLeft', duration: 100 },
+      { type: 'wait', duration: 500 },
+      { type: 'key', key: 'Meta+ArrowRight', duration: 100 },
+      { type: 'wait', duration: 4000 },
+      { type: 'key', key: 'Meta+ArrowLeft', duration: 100 },
+      { type: 'wait', duration: 4000 },
+    ],
+  } satisfies ScreencastConfig,
 }
 
 export default screens
