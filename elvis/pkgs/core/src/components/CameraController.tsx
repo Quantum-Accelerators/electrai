@@ -30,8 +30,10 @@ interface CameraControllerProps {
   activeMovements: RefObject<Set<string>>
   cameraSnap?: MutableRefObject<CameraSnapTarget | null>
   animationDuration?: number
-  onCameraChange?: (theta: number, phi: number, zoom: number, roll: number) => void
+  onCameraChange?: (theta: number, phi: number, zoom: number, roll: number, targetOffset?: [number, number, number]) => void
   initialCamera?: MutableRefObject<[number, number, number, number] | null>
+  initialTargetOffset?: MutableRefObject<[number, number, number] | null>
+  center?: Vector3
 }
 
 interface SnapState {
@@ -60,6 +62,8 @@ export function CameraController({
   animationDuration = 0.5,
   onCameraChange,
   initialCamera,
+  initialTargetOffset,
+  center,
 }: CameraControllerProps) {
   const camera = useThree(s => s.camera)
   const controls = useThree(s => s.controls) as { target: Vector3; update: () => void } | null
@@ -77,6 +81,11 @@ export function CameraController({
     // override OrbitControls which may reset orientation on early frames
     if (initialCamera?.current && initFramesRef.current < 5) {
       const [theta, phi, zoom, roll] = initialCamera.current
+      // Apply target offset (pan) if provided
+      if (initialTargetOffset?.current && center) {
+        const [dx, dy, dz] = initialTargetOffset.current
+        target.set(center.x + dx, center.y + dy, center.z + dz)
+      }
       _spherical.set(zoom, MathUtils.degToRad(phi), MathUtils.degToRad(theta))
       _offset.setFromSpherical(_spherical)
       camera.position.copy(target).add(_offset)
@@ -89,7 +98,10 @@ export function CameraController({
       }
       controls.update()
       initFramesRef.current++
-      if (initFramesRef.current >= 5) initialCamera.current = null
+      if (initFramesRef.current >= 5) {
+        initialCamera.current = null
+        if (initialTargetOffset?.current) initialTargetOffset.current = null
+      }
       return
     }
 
@@ -318,11 +330,22 @@ export function CameraController({
             const sinR = _axis.dot(_viewDir)
             roll = Math.round(MathUtils.radToDeg(Math.atan2(sinR, cosR)) * 10) / 10
           }
+          // Compute target offset from center
+          let targetOffset: [number, number, number] | undefined
+          if (center) {
+            const dx = parseFloat((target.x - center.x).toPrecision(3))
+            const dy = parseFloat((target.y - center.y).toPrecision(3))
+            const dz = parseFloat((target.z - center.z).toPrecision(3))
+            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01 || Math.abs(dz) > 0.01) {
+              targetOffset = [dx, dy, dz]
+            }
+          }
           onCameraChange(
             Math.round(MathUtils.radToDeg(_spherical.theta) * 10) / 10,
             Math.round(MathUtils.radToDeg(_spherical.phi) * 10) / 10,
             parseFloat(_spherical.radius.toPrecision(3)),
             roll,
+            targetOffset,
           )
         }
       }

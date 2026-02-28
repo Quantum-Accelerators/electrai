@@ -16,7 +16,7 @@ import {
   useSettings,
   fracToCart,
 } from '@elvis/core'
-import { ShortcutsModal, Omnibar, SequenceModal, SpeedDial, useAction } from 'use-kbd'
+import { ShortcutsModal, Omnibar, SequenceModal, LookupModal, SpeedDial, useAction, useArrowGroup } from 'use-kbd'
 import type { SpeedDialAction } from 'use-kbd'
 import 'use-kbd/styles.css'
 import { useUrlState, floatParam, optFloatParam, boolParam, intParam, optIntParam, stringParam } from 'use-prms'
@@ -76,6 +76,22 @@ const camParam: Param<CamState> = {
     if (parts.length === 3) return [parts[0], parts[1], parts[2], 0]
     if (parts.length === 4) return parts as [number, number, number, number]
     return null
+  },
+}
+
+// Camera target offset (pan): `?ct=1.2+0+-0.5` (dx dy dz, spaces → + in URL)
+type CamTarget = [number, number, number] | null
+const camTargetParam: Param<CamTarget> = {
+  encode: (v) => {
+    if (!v) return undefined
+    const fmt = (n: number) => parseFloat(n.toPrecision(3)).toString()
+    return `${fmt(v[0])} ${fmt(v[1])} ${fmt(v[2])}`
+  },
+  decode: (e) => {
+    if (e === undefined) return null
+    const parts = e.trim().split(/[\s,]+/).map(Number)
+    if (parts.length !== 3 || !parts.every(isFinite)) return null
+    return parts as [number, number, number]
   },
 }
 
@@ -151,9 +167,10 @@ export default function App() {
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
   const [sliceSpeed, setSliceSpeed] = useUrlState('ss', intParam(120))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
-  const [tilePadding, setTilePadding] = useUrlState('tp', floatParam({ default: 0, encoding: 'string', decimals: 1 }), { debounce: 300 })
+  const [tilePadding, setTilePadding] = useUrlState('tp', floatParam({ default: 0.5, encoding: 'string', decimals: 2 }), { debounce: 300 })
   const [tileFade, setTileFade] = useUrlState('nf', boolTrueParam)
   const [cam, setCam] = useUrlState('c', camParam)
+  const [camTarget, setCamTarget] = useUrlState('ct', camTargetParam, { debounce: 500 })
   const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID))
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
@@ -199,14 +216,16 @@ export default function App() {
   const activeMovements = useRef(new Set<string>())
   const cameraSnap = useRef<CameraSnapTarget | null>(null)
   const initialCamera = useRef<CamState>(cam)
+  const initialTargetOffset = useRef<CamTarget>(camTarget)
 
   const startMovement = useCallback((dir: string) => {
     activeMovements.current.add(dir)
   }, [])
 
-  const handleCameraChange = useCallback((theta: number, phi: number, zoom: number, roll: number) => {
+  const handleCameraChange = useCallback((theta: number, phi: number, zoom: number, roll: number, targetOffset?: [number, number, number]) => {
     setCam([theta, phi, zoom, roll])
-  }, [setCam])
+    setCamTarget(targetOffset ?? null)
+  }, [setCam, setCamTarget])
 
   const MOVEMENT_KEYS = useMemo(() => new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
@@ -412,6 +431,7 @@ export default function App() {
 
   // Slice animation: sweep sliceIndex to start or end
   const sliceAnimRef = useRef<{ target: number; raf: number } | null>(null)
+  const sliceDirectionRef = useRef<'forward' | 'backward'>('forward')
   const cancelSliceAnim = useCallback(() => {
     if (sliceAnimRef.current) {
       cancelAnimationFrame(sliceAnimRef.current.raf)
@@ -450,13 +470,32 @@ export default function App() {
     label: 'Animate slice to start',
     group: 'Slice',
     defaultBindings: ['meta+arrowleft'],
-    handler: () => { setShowSlice(true); animateSliceTo(0) },
+    handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceTo(0) },
   })
   useAction('slice:animate-end', {
     label: 'Animate slice to end',
     group: 'Slice',
     defaultBindings: ['meta+arrowright'],
-    handler: () => { setShowSlice(true); animateSliceTo(maxSliceIndex) },
+    handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceTo(maxSliceIndex) },
+  })
+  useAction('slice:play-pause', {
+    label: 'Play/pause slice',
+    group: 'Slice',
+    defaultBindings: ['space'],
+    handler: () => {
+      if (sliceAnimRef.current) {
+        cancelSliceAnim()
+      } else {
+        setShowSlice(true)
+        const si = sliceIndex ?? 0
+        if (si >= maxSliceIndex && sliceDirectionRef.current === 'forward') {
+          sliceDirectionRef.current = 'backward'
+        } else if (si <= 0 && sliceDirectionRef.current === 'backward') {
+          sliceDirectionRef.current = 'forward'
+        }
+        animateSliceTo(sliceDirectionRef.current === 'forward' ? maxSliceIndex : 0)
+      }
+    },
   })
   useAction('slice:jump-start', {
     label: 'Jump slice to start',
@@ -553,84 +592,26 @@ export default function App() {
 
   // Camera navigation (orbit: continuous or discrete step snaps)
   // In discrete mode, startMovement tracks held state so CameraController can chain snaps
-  useAction('nav:orbit-left', {
-    label: 'Orbit left',
+  useArrowGroup('nav:orbit', {
+    label: 'Orbit',
     group: 'Camera',
-    defaultBindings: ['arrowleft'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('orbit-left')
-      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'left', degrees: orbitDeg })
+    defaultModifiers: [],
+    handlers: {
+      left:  (e) => { if (e?.repeat) return; startMovement('orbit-left');  if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'left',  degrees: orbitDeg }) },
+      right: (e) => { if (e?.repeat) return; startMovement('orbit-right'); if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'right', degrees: orbitDeg }) },
+      up:    (e) => { if (e?.repeat) return; startMovement('orbit-up');    if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'up',    degrees: orbitDeg }) },
+      down:  (e) => { if (e?.repeat) return; startMovement('orbit-down');  if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'down',  degrees: orbitDeg }) },
     },
   })
-  useAction('nav:orbit-right', {
-    label: 'Orbit right',
+  useArrowGroup('nav:pan', {
+    label: 'Pan',
     group: 'Camera',
-    defaultBindings: ['arrowright'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('orbit-right')
-      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'right', degrees: orbitDeg })
-    },
-  })
-  useAction('nav:orbit-up', {
-    label: 'Orbit up',
-    group: 'Camera',
-    defaultBindings: ['arrowup'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('orbit-up')
-      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'up', degrees: orbitDeg })
-    },
-  })
-  useAction('nav:orbit-down', {
-    label: 'Orbit down',
-    group: 'Camera',
-    defaultBindings: ['arrowdown'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('orbit-down')
-      if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'down', degrees: orbitDeg })
-    },
-  })
-  useAction('nav:pan-left', {
-    label: 'Pan left',
-    group: 'Camera',
-    defaultBindings: ['shift+arrowleft'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('pan-left')
-      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'left', distance: panStep })
-    },
-  })
-  useAction('nav:pan-right', {
-    label: 'Pan right',
-    group: 'Camera',
-    defaultBindings: ['shift+arrowright'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('pan-right')
-      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStep })
-    },
-  })
-  useAction('nav:pan-up', {
-    label: 'Pan up',
-    group: 'Camera',
-    defaultBindings: ['shift+arrowup'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('pan-up')
-      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'up', distance: panStep })
-    },
-  })
-  useAction('nav:pan-down', {
-    label: 'Pan down',
-    group: 'Camera',
-    defaultBindings: ['shift+arrowdown'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('pan-down')
-      if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down', distance: panStep })
+    defaultModifiers: ['shift'],
+    handlers: {
+      left:  (e) => { if (e?.repeat) return; startMovement('pan-left');  if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'left',  distance: panStep }) },
+      right: (e) => { if (e?.repeat) return; startMovement('pan-right'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStep }) },
+      up:    (e) => { if (e?.repeat) return; startMovement('pan-up');    if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'up',    distance: panStep }) },
+      down:  (e) => { if (e?.repeat) return; startMovement('pan-down');  if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down',  distance: panStep }) },
     },
   })
   useAction('nav:zoom-in', {
@@ -972,6 +953,7 @@ export default function App() {
                 animationDuration={animDuration || settings.animationDuration}
                 onCameraChange={handleCameraChange}
                 initialCamera={initialCamera}
+                initialTargetOffset={initialTargetOffset}
                 showSlice={showSlice}
                 sliceAxis={sliceAxis}
                 sliceIndex={sliceIndex ?? 0}
@@ -980,23 +962,30 @@ export default function App() {
                 abcIsXyz={abcIsXyz}
               />
             )}
-            {showSlice && (
-              <div className={styles.slicePanel} style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                width: 280,
-                background: '#1a1a2e',
-                borderTop: '1px solid #333',
-                borderRight: '1px solid #333',
-              }}>
-                <SliceViewer
-                  volume={primaryFile.data}
-                  axis={sliceAxis}
-                  sliceIndex={sliceIndex ?? 0}
-                />
-              </div>
-            )}
+            {showSlice && (() => {
+              const d = primaryFile.data.grid.dims
+              const [sw, sh] = sliceAxis === 0 ? [d[1], d[2]] : sliceAxis === 1 ? [d[0], d[2]] : [d[0], d[1]]
+              const maxDim = 200
+              const scale = maxDim / Math.max(sw, sh)
+              return (
+                <div className={styles.slicePanel} style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  width: Math.round(sw * scale),
+                  height: Math.round(sh * scale),
+                  background: '#1a1a2e',
+                  borderTop: '1px solid #333',
+                  borderRight: '1px solid #333',
+                }}>
+                  <SliceViewer
+                    volume={primaryFile.data}
+                    axis={sliceAxis}
+                    sliceIndex={sliceIndex ?? 0}
+                  />
+                </div>
+              )
+            })()}
           </>
         ) : (
           <div className={styles.loadingViewer}>
@@ -1132,6 +1121,7 @@ export default function App() {
       <ShortcutsModal editable />
       <Omnibar />
       <SequenceModal />
+      <LookupModal />
       <SpeedDial actions={speedDialActions} />
     </div>
   )

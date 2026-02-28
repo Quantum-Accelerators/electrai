@@ -53,8 +53,6 @@
 }
 
 .slicePanel {
-  height: 280px;
-  border-top: 1px solid #333;
   padding: 0;
   flex-shrink: 0;
 }
