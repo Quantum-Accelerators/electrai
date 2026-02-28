@@ -45,6 +45,25 @@ const screens: ScreenshotsMap = {
       { type: 'wait', duration: 4000 },
     ],
   } satisfies ScreencastConfig,
+  'tiling-slice-sweep': {
+    query: '?iso=571.4&c=70.1+54.6+13.5+-88&od=30&si=0&a=0.5&tp=0.5&ss=20&ct=0.426+-0.56+-0.00378&sl',
+    width: 800,
+    height: 600,
+    selector: 'canvas',
+    preScreenshotSleep: 5000,
+    path: 'tiling-slice-sweep.gif',
+    fps: 30,
+    gifQuality: 10,
+    actions: [
+      { type: 'wait', duration: 500 },
+      { type: 'key', key: 'Meta+Shift+ArrowLeft', duration: 100 },
+      { type: 'wait', duration: 500 },
+      { type: 'key', key: 'Meta+ArrowRight', duration: 100 },
+      { type: 'wait', duration: 6000 },
+      { type: 'key', key: 'Meta+ArrowLeft', duration: 100 },
+      { type: 'wait', duration: 6000 },
+    ],
+  } satisfies ScreencastConfig,
 }
 
 export default screens

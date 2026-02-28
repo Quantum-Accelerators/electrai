@@ -10,6 +10,14 @@ Interactive 3D electron density viewer for VASP CHGCAR/ELFCAR files and [Materia
   </a>
 </p>
 
+**Periodic tiling with slice sweep:**
+
+<p align="center">
+  <a href="https://elvis.rbw.sh/?iso=571.4&c=70.1+54.6+13.5+-88&od=30&si=0&a=0.5&tp=0.5&ss=20&ct=0.426+-0.56+-0.00378&sl">
+    <img src="pkgs/static/public/scrns/tiling-slice-sweep.gif" alt="ELvis – Periodic tiling with slice sweep" width="600" />
+  </a>
+</p>
+
 ## Features
 
 - **Drag-and-drop** CHGCAR, ELFCAR, and `.npy` files
@@ -42,12 +50,17 @@ Or load a Materials Project example directly: [`elvis.rbw.sh/?m=mp-1000020`][dem
 | `iso` | Iso-level | `571.4` |
 | `op` | Opacity | `0.6` |
 | `c` | Camera: θ° φ° zoom roll° | `178.8 31.3 11.5` |
+| `ct` | Camera target offset (pan): dx dy dz | `0.426 -0.56 -0.004` |
 | `a` | Animation duration (seconds) | `2.0` |
 | `lw` | Line width multiplier | `1.5` |
 | `xb` | Show XYZ bounding box | (flag) |
 | `xa` | Show XYZ axes | (flag) |
 | `do` | Discrete 90° orbit | (flag) |
 | `si` | Slice index | `48` |
+| `sl` | Show slice plane | (flag) |
+| `ss` | Slice sweep speed (slices/s) | `20` |
+| `tp` | Tile padding (0–1) | `0.5` |
+| `nf` | Disable tile fade | (flag) |
 
 ## Screenshots
 
