@@ -88,8 +88,8 @@ importers:
         specifier: ^19.1.1
         version: 19.2.4(react@19.2.4)
       use-kbd:
-        specifier: ^0.10.0
-        version: 0.10.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: https://github.com/runsascoded/use-kbd#f0d62e856ef904d2904a465ac9b61c7410782726
+        version: https://codeload.github.com/runsascoded/use-kbd/tar.gz/f0d62e856ef904d2904a465ac9b61c7410782726(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       use-prms:
         specifier: https://github.com/runsascoded/use-prms#e8358bc09a3b2708c5dc41f7d489d1b512092811
         version: https://codeload.github.com/runsascoded/use-prms/tar.gz/e8358bc09a3b2708c5dc41f7d489d1b512092811(react@19.2.4)
@@ -122,8 +122,8 @@ importers:
         specifier: ^16.4.0
         version: 16.5.0
       scrns:
-        specifier: ^0.3.0
-        version: 0.3.0(typescript@5.9.3)
+        specifier: https://gitlab.com/runsascoded/js/scrns/-/archive/9217c09a77ce721e757358db2b9adab8eb2ede8e/scrns-9217c09a77ce721e757358db2b9adab8eb2ede8e.tar.gz
+        version: https://gitlab.com/runsascoded/js/scrns/-/archive/9217c09a77ce721e757358db2b9adab8eb2ede8e/scrns-9217c09a77ce721e757358db2b9adab8eb2ede8e.tar.gz(typescript@5.9.3)
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -1861,8 +1861,9 @@ packages:
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
-  scrns@0.3.0:
-    resolution: {integrity: sha512-Mie3IiCVO4NbK0eAV6Vf3aORR2AlcZgcSDXeKK5gTOho6HlBxXzOMl98awZxI2cU3NlnkAtA7Sky67jp2pNMEw==}
+  scrns@https://gitlab.com/runsascoded/js/scrns/-/archive/9217c09a77ce721e757358db2b9adab8eb2ede8e/scrns-9217c09a77ce721e757358db2b9adab8eb2ede8e.tar.gz:
+    resolution: {tarball: https://gitlab.com/runsascoded/js/scrns/-/archive/9217c09a77ce721e757358db2b9adab8eb2ede8e/scrns-9217c09a77ce721e757358db2b9adab8eb2ede8e.tar.gz}
+    version: 0.3.0-dist.297480b
     hasBin: true
 
   semver@6.3.1:
@@ -2029,8 +2030,9 @@ packages:
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
-  use-kbd@0.10.0:
-    resolution: {integrity: sha512-2g0nWWWvZfd7JCkQnxydCPgK35QKY6ieQGrP4X52R3CRAqmfJUgaKygKAAAshrpu3EFZdRlLNlcVAKTfxXcVcA==}
+  use-kbd@https://codeload.github.com/runsascoded/use-kbd/tar.gz/f0d62e856ef904d2904a465ac9b61c7410782726:
+    resolution: {tarball: https://codeload.github.com/runsascoded/use-kbd/tar.gz/f0d62e856ef904d2904a465ac9b61c7410782726}
+    version: 0.10.0-dist.553255d
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
@@ -4354,7 +4356,7 @@ snapshots:
 
   scheduler@0.27.0: {}
 
-  scrns@0.3.0(typescript@5.9.3):
+  scrns@https://gitlab.com/runsascoded/js/scrns/-/archive/9217c09a77ce721e757358db2b9adab8eb2ede8e/scrns-9217c09a77ce721e757358db2b9adab8eb2ede8e.tar.gz(typescript@5.9.3):
     dependencies:
       commander: 12.1.0
       gifenc: 1.0.3
@@ -4559,10 +4561,13 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  use-kbd@0.10.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  use-kbd@https://codeload.github.com/runsascoded/use-kbd/tar.gz/f0d62e856ef904d2904a465ac9b61c7410782726(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
+      debug: 4.4.3
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
+    transitivePeerDependencies:
+      - supports-color
 
   use-prms@https://codeload.github.com/runsascoded/use-prms/tar.gz/e8358bc09a3b2708c5dc41f7d489d1b512092811(react@19.2.4):
     dependencies:

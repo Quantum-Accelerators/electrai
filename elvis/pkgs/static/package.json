@@ -18,7 +18,7 @@
     "aws-static-sso": "https://github.com/runsascoded/aws-static-sso#13075f68e82e86ed23156764922fb7333c912eea&path:/client",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "use-kbd": "^0.10.0",
+    "use-kbd": "https://github.com/runsascoded/use-kbd#f0d62e856ef904d2904a465ac9b61c7410782726",
     "use-prms": "https://github.com/runsascoded/use-prms#e8358bc09a3b2708c5dc41f7d489d1b512092811"
   },
   "devDependencies": {
@@ -31,7 +31,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.22",
     "globals": "^16.4.0",
-    "scrns": "^0.3.0",
+    "scrns": "https://gitlab.com/runsascoded/js/scrns/-/archive/9217c09a77ce721e757358db2b9adab8eb2ede8e/scrns-9217c09a77ce721e757358db2b9adab8eb2ede8e.tar.gz",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",
     "vite": "^7.1.7"
