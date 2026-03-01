@@ -258,6 +258,19 @@ export default function App() {
     return primaryFile.data.grid.dims[sliceAxis] - 1
   }, [primaryFile, sliceAxis])
 
+  // Refs for values used in useActionPair/useArrowGroup handlers,
+  // which have stale closures due to useMemo in those hooks
+  const sliceIndexRef = useRef(sliceIndex ?? 0)
+  sliceIndexRef.current = sliceIndex ?? 0
+  const maxSliceIndexRef = useRef(maxSliceIndex)
+  maxSliceIndexRef.current = maxSliceIndex
+  const orbitDegRef = useRef(orbitDeg)
+  orbitDegRef.current = orbitDeg
+  const panStepRef = useRef(panStep)
+  panStepRef.current = panStep
+  const zoomPctRef = useRef(zoomPct)
+  zoomPctRef.current = zoomPct
+
   const handleSliceAxisChange = useCallback((axis: 0 | 1 | 2) => {
     setSliceAxis(axis)
     if (primaryFile) setSliceIndex(Math.floor(primaryFile.data.grid.dims[axis] / 2))
@@ -481,11 +494,11 @@ export default function App() {
     actions: [
       {
         defaultBindings: ['arrowleft'],
-        handler: () => { cancelSliceAnim(); setSliceIndex(Math.max(0, (sliceIndex ?? 0) - 1)) },
+        handler: () => { cancelSliceAnim(); setSliceIndex(Math.max(0, sliceIndexRef.current - 1)) },
       },
       {
         defaultBindings: ['arrowright'],
-        handler: () => { cancelSliceAnim(); setSliceIndex(Math.min(maxSliceIndex, (sliceIndex ?? 0) + 1)) },
+        handler: () => { cancelSliceAnim(); setSliceIndex(Math.min(maxSliceIndexRef.current, sliceIndexRef.current + 1)) },
       },
     ],
   })
@@ -515,11 +528,11 @@ export default function App() {
     actions: [
       {
         defaultBindings: ['arrowleft'],
-        handler: (e) => { if (e?.repeat) return; startMovement('pan-left'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'left', distance: panStep }) },
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-left'); if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'left', distance: panStepRef.current }) },
       },
       {
         defaultBindings: ['arrowright'],
-        handler: (e) => { if (e?.repeat) return; startMovement('pan-right'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStep }) },
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-right'); if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStepRef.current }) },
       },
     ],
   })
@@ -531,11 +544,11 @@ export default function App() {
     actions: [
       {
         defaultBindings: ['arrowup'],
-        handler: (e) => { if (e?.repeat) return; startMovement('pan-up'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'up', distance: panStep }) },
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-up'); if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'up', distance: panStepRef.current }) },
       },
       {
         defaultBindings: ['arrowdown'],
-        handler: (e) => { if (e?.repeat) return; startMovement('pan-down'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down', distance: panStep }) },
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-down'); if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'down', distance: panStepRef.current }) },
       },
     ],
   })
@@ -579,6 +592,10 @@ export default function App() {
     sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
   }, [sliceIndex, sliceSpeed, sweepMode, sweepDuration, maxSliceIndex, cancelSliceAnim, setSliceIndex])
 
+  // Ref so useActionPair handlers can access the latest animateSliceTo
+  const animateSliceToRef = useRef(animateSliceTo)
+  animateSliceToRef.current = animateSliceTo
+
   useActionPair('slice:animate', {
     label: 'Animate slice to start / end',
     description: 'Sweep slice to boundary at current speed',
@@ -586,11 +603,11 @@ export default function App() {
     actions: [
       {
         defaultBindings: ['alt+arrowleft'],
-        handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceTo(0) },
+        handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceToRef.current(0) },
       },
       {
         defaultBindings: ['alt+arrowright'],
-        handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceTo(maxSliceIndex) },
+        handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceToRef.current(maxSliceIndexRef.current) },
       },
     ],
   })
@@ -625,7 +642,7 @@ export default function App() {
       },
       {
         defaultBindings: ['end'],
-        handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndex) },
+        handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndexRef.current) },
       },
     ],
   })
@@ -682,10 +699,10 @@ export default function App() {
     group: 'Camera',
     defaultModifiers: [],
     handlers: {
-      left:  (e) => { if (e?.repeat) return; startMovement('orbit-left');  if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'left',  degrees: orbitDeg }) },
-      right: (e) => { if (e?.repeat) return; startMovement('orbit-right'); if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'right', degrees: orbitDeg }) },
-      up:    (e) => { if (e?.repeat) return; startMovement('orbit-up');    if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'up',    degrees: orbitDeg }) },
-      down:  (e) => { if (e?.repeat) return; startMovement('orbit-down');  if (orbitDeg > 0) snapCamera({ type: 'orbit-step', direction: 'down',  degrees: orbitDeg }) },
+      left:  (e) => { if (e?.repeat) return; startMovement('orbit-left');  if (orbitDegRef.current > 0) snapCamera({ type: 'orbit-step', direction: 'left',  degrees: orbitDegRef.current }) },
+      right: (e) => { if (e?.repeat) return; startMovement('orbit-right'); if (orbitDegRef.current > 0) snapCamera({ type: 'orbit-step', direction: 'right', degrees: orbitDegRef.current }) },
+      up:    (e) => { if (e?.repeat) return; startMovement('orbit-up');    if (orbitDegRef.current > 0) snapCamera({ type: 'orbit-step', direction: 'up',    degrees: orbitDegRef.current }) },
+      down:  (e) => { if (e?.repeat) return; startMovement('orbit-down');  if (orbitDegRef.current > 0) snapCamera({ type: 'orbit-step', direction: 'down',  degrees: orbitDegRef.current }) },
     },
   })
   useArrowGroup('nav:pan', {
@@ -694,10 +711,10 @@ export default function App() {
     group: 'Camera',
     defaultModifiers: ['shift'],
     handlers: {
-      left:  (e) => { if (e?.repeat) return; startMovement('pan-left');  if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'left',  distance: panStep }) },
-      right: (e) => { if (e?.repeat) return; startMovement('pan-right'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStep }) },
-      up:    (e) => { if (e?.repeat) return; startMovement('pan-up');    if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'up',    distance: panStep }) },
-      down:  (e) => { if (e?.repeat) return; startMovement('pan-down');  if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down',  distance: panStep }) },
+      left:  (e) => { if (e?.repeat) return; startMovement('pan-left');  if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'left',  distance: panStepRef.current }) },
+      right: (e) => { if (e?.repeat) return; startMovement('pan-right'); if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStepRef.current }) },
+      up:    (e) => { if (e?.repeat) return; startMovement('pan-up');    if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'up',    distance: panStepRef.current }) },
+      down:  (e) => { if (e?.repeat) return; startMovement('pan-down');  if (panStepRef.current > 0) snapCamera({ type: 'pan-step', direction: 'down',  distance: panStepRef.current }) },
     },
   })
   useActionPair('nav:zoom', {
@@ -710,7 +727,7 @@ export default function App() {
         handler: (e) => {
           if (e?.repeat) return
           startMovement('zoom-in')
-          if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'in', factor: 1 + zoomPct / 100 })
+          if (zoomPctRef.current > 0) snapCamera({ type: 'zoom-step', direction: 'in', factor: 1 + zoomPctRef.current / 100 })
         },
       },
       {
@@ -718,7 +735,7 @@ export default function App() {
         handler: (e) => {
           if (e?.repeat) return
           startMovement('zoom-out')
-          if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'out', factor: 1 + zoomPct / 100 })
+          if (zoomPctRef.current > 0) snapCamera({ type: 'zoom-step', direction: 'out', factor: 1 + zoomPctRef.current / 100 })
         },
       },
     ],
