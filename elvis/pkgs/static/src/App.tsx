@@ -322,8 +322,8 @@ export default function App() {
   }, [primaryFile])
 
   // Compute sign so arrow-left/right match visual screen direction for slice stepping.
-  // Dot the slice-axis world direction with the camera's screen-right vector; if negative,
-  // increasing index moves leftward on screen, so we flip the arrow mapping.
+  // Dot the slice-axis world direction with the camera's screen-right vector; if positive,
+  // increasing index moves rightward on screen (ArrowRight → +si), else flip.
   const sliceStepSign = useMemo(() => {
     if (!primaryFile || !cam) return 1
     const lat = primaryFile.data.lattice
@@ -339,11 +339,13 @@ export default function App() {
     const ux = -Math.sin(theta) * Math.cos(phi)
     const uy = Math.sin(phi)
     const uz = -Math.cos(theta) * Math.cos(phi)
-    // After roll: right_rolled = right*cos(ρ) + up*sin(ρ)
+    // After roll: right_rolled = right*cos(ρ) − up*sin(ρ)
+    // (camera right = cross(viewDir, cameraUp); the − follows from expanding cameraUp
+    //  = worldUp_perp·cos(ρ) + right_noroll·sin(ρ) and using cross identities)
     const cr = Math.cos(roll), sr = Math.sin(roll)
-    const rrx = rx * cr + ux * sr
-    const rry = uy * sr  // right_y before roll is 0
-    const rrz = rz * cr + uz * sr
+    const rrx = rx * cr - ux * sr
+    const rry = -uy * sr  // right_y before roll is 0
+    const rrz = rz * cr - uz * sr
     const dot = sliceDir[0] * rrx + sliceDir[1] * rry + sliceDir[2] * rrz
     return dot >= 0 ? 1 : -1
   }, [primaryFile, cam, sliceAxis])

@@ -167,4 +167,68 @@ test.describe('Elvis E2E', () => {
       return si === 26 || si === 6
     })
   })
+
+  // Direction-specific tests: verify sliceStepSign maps ArrowRight to the correct
+  // screen direction by fixing the camera angle. The test fixture has an axis-aligned
+  // 4Å cubic lattice, so the c-vector (sa=2) is (0,0,4).
+  //
+  // Zero-roll cases (roll=0):
+  // At theta=−45° (c=-45+90+15+0): right=(cos−45,0,−sin−45)=(0.707,0,0.707)
+  //   dot(c,right) = 4·0.707 = +2.83 > 0 → sign=1 → ArrowRight increases si
+  // At theta=+45° (c=45+90+15+0): right=(cos45,0,−sin45)=(0.707,0,−0.707)
+  //   dot(c,right) = 4·(−0.707) = −2.83 < 0 → sign=−1 → ArrowRight decreases si
+  //
+  // Non-zero roll case (roll=90°, catches the ±sin(ρ) sign in rolled-right formula):
+  // At c=0+45+15+90 (theta=0, phi=45°, roll=90°):
+  //   right_noroll = (1, 0, 0), up_noroll = (0, sin45, -cos45·0) ≈ (0, 0.707, 0)
+  //   rolled_right = right·cos90 − up·sin90 = (0,0,0) − (0,0.707,0) = (0,−0.707,0)
+  //   dot(c, rolled_right) = (0,0,4)·(0,−0.707,0) = 0 … but with non-zero phi:
+  //   up_noroll = (0, sin45, -cos0·cos45) = (0, 0.707, -0.707)
+  //   rolled_right = (1,0,0)·0 − (0,0.707,-0.707)·1 = (0, -0.707, 0.707)
+  //   dot = 4·0.707 = +2.83 > 0 → sign=1 → ArrowRight increases si
+  //   (Buggy +sin(ρ) formula would give (0,+0.707,−0.707), dot=−2.83, wrong sign)
+
+  test('slice direction: ArrowRight increases si when dot > 0', async ({ page }) => {
+    await interceptS3(page)
+    // theta=-45 → c-axis projects onto screen-right → ArrowRight = +si
+    await page.goto('/?si=16&a=0&c=-45+90+15+0')
+
+    await waitForLoad(page)
+    await waitForParam(page, 'si', v => v === '16', { timeout: 10000 })
+
+    await enterSliceMode(page)
+    await page.locator('body').press('ArrowRight')
+
+    await waitForParam(page, 'si', v => v === '17')
+  })
+
+  test('slice direction: ArrowRight decreases si when dot < 0', async ({ page }) => {
+    await interceptS3(page)
+    // theta=+45 → c-axis projects opposite to screen-right → ArrowRight = -si
+    await page.goto('/?si=16&a=0&c=45+90+15+0')
+
+    await waitForLoad(page)
+    await waitForParam(page, 'si', v => v === '16', { timeout: 10000 })
+
+    await enterSliceMode(page)
+    await page.locator('body').press('ArrowRight')
+
+    await waitForParam(page, 'si', v => v === '15')
+  })
+
+  test('slice direction: non-zero roll (catches ±sin sign bug)', async ({ page }) => {
+    await interceptS3(page)
+    // theta=0, phi=45, roll=90 → rolled right has y<0 component from −up·sin(ρ)
+    // c-axis = (0,0,4), rolled_right = (0,−0.707,0.707) → dot = +2.83 → sign=1
+    // Buggy +sin(ρ) would give rolled_right = (0,+0.707,−0.707) → dot = −2.83 → wrong sign
+    await page.goto('/?si=16&a=0&c=0+45+15+90')
+
+    await waitForLoad(page)
+    await waitForParam(page, 'si', v => v === '16', { timeout: 10000 })
+
+    await enterSliceMode(page)
+    await page.locator('body').press('ArrowRight')
+
+    await waitForParam(page, 'si', v => v === '17')
+  })
 })
