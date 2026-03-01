@@ -42,6 +42,10 @@ interface ControlsProps {
   onSliceIndexChange: (v: number) => void
   animDuration: number
   onAnimDurationChange: (v: number) => void
+  sweepMode: 'd' | 'r'
+  sweepDuration: number
+  onSweepDurationChange: (v: number) => void
+  onSweepModeToggle: () => void
   sliceSpeed: number
   onSliceSpeedChange: (v: number) => void
   cam: [number, number, number, number] | null
@@ -96,6 +100,10 @@ export function Controls({
   onSliceIndexChange,
   animDuration,
   onAnimDurationChange,
+  sweepMode,
+  sweepDuration,
+  onSweepDurationChange,
+  onSweepModeToggle,
   sliceSpeed,
   onSliceSpeedChange,
   cam,
@@ -364,16 +372,37 @@ export function Controls({
                 />
               </label>
               <label className={styles.controlLabel}>
-                Sweep: {sliceSpeed} slices/s
-                <input
-                  type="range"
-                  min={5}
-                  max={500}
-                  step={5}
-                  value={sliceSpeed}
-                  onChange={e => onSliceSpeedChange(parseInt(e.target.value))}
-                  className={styles.slider}
-                />
+                <div className={styles.sliderHeader}>
+                  <span>Sweep: {sweepMode === 'd' ? `${sweepDuration.toFixed(1)}s` : `${sliceSpeed} sl/s`}</span>
+                  <button
+                    className={styles.resetBtn}
+                    onClick={e => { e.preventDefault(); onSweepModeToggle() }}
+                    title={sweepMode === 'd' ? 'Switch to slices/sec' : 'Switch to duration'}
+                  >
+                    ↔
+                  </button>
+                </div>
+                {sweepMode === 'd' ? (
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={10}
+                    step={0.5}
+                    value={sweepDuration}
+                    onChange={e => onSweepDurationChange(parseFloat(e.target.value))}
+                    className={styles.slider}
+                  />
+                ) : (
+                  <input
+                    type="range"
+                    min={5}
+                    max={500}
+                    step={5}
+                    value={sliceSpeed}
+                    onChange={e => onSliceSpeedChange(parseInt(e.target.value))}
+                    className={styles.slider}
+                  />
+                )}
               </label>
             </>
           )}

@@ -16,8 +16,8 @@ import {
   useSettings,
   fracToCart,
 } from '@elvis/core'
-import { ShortcutsModal, Omnibar, SequenceModal, LookupModal, SpeedDial, useAction, useArrowGroup } from 'use-kbd'
-import type { SpeedDialAction } from 'use-kbd'
+import { ShortcutsModal, Omnibar, SequenceModal, LookupModal, SpeedDial, ModeIndicator, useAction, useActionPair, useArrowGroup, useMode } from 'use-kbd'
+import type { SpeedDialAction, GroupRendererProps } from 'use-kbd'
 import 'use-kbd/styles.css'
 import { useUrlState, floatParam, optFloatParam, boolParam, intParam, optIntParam, stringParam } from 'use-prms'
 import type { Param } from 'use-prms'
@@ -28,6 +28,7 @@ import { decompressGzip } from './utils/gzip.ts'
 import { SSOAuthFlow } from './components/SSOAuthFlow.tsx'
 import type { FetchProgress } from './utils/fetch-volume.ts'
 import type { AWSCredentials } from './utils/aws-credentials.ts'
+import Tooltip from '@mui/material/Tooltip'
 import styles from './App.module.css'
 
 interface LoadedFile {
@@ -139,6 +140,69 @@ const GithubIcon = () => (
   </svg>
 )
 
+const AXES_SECTIONS = [
+  {
+    headers: ['Axis', 'a', 'b', 'c'],
+    rows: [
+      { label: 'Look ↓', actions: ['cam:snap-a', 'cam:snap-b', 'cam:snap-c'], tooltip: 'Point camera along this lattice vector' },
+      { label: 'Align ↑', actions: ['cam:align-a', 'cam:align-b', 'cam:align-c'], tooltip: 'Roll camera so this lattice vector points up' },
+    ],
+  },
+  {
+    headers: ['Axis', 'x', 'y', 'z'],
+    rows: [
+      { label: 'Look ↓', actions: ['cam:snap-x', 'cam:snap-y', 'cam:snap-z'], tooltip: 'Point camera along this axis' },
+      { label: 'Align ↑', actions: ['cam:align-x', 'cam:align-y', 'cam:align-z'], tooltip: 'Roll camera so this axis points up' },
+    ],
+  },
+]
+
+function CameraAxesRenderer({ group, renderCell }: GroupRendererProps) {
+  const bindingsMap = new Map(
+    group.shortcuts
+      .filter((s): s is Extract<typeof s, { type: 'action' }> => s.type === 'action')
+      .map(s => [s.actionId, s.bindings])
+  )
+  return (
+    <>
+      {AXES_SECTIONS.map((section, si) => {
+        if (!section.rows.some(r => r.actions.some(a => bindingsMap.has(a)))) return null
+        return (
+          <table key={si} className="kbd-table">
+            <thead>
+              <tr>
+                {section.headers.map((h, i) => <th key={i} style={i > 0 ? { textAlign: 'right', paddingRight: 8 } : undefined}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {section.rows.map((row, ri) => (
+                <tr key={ri}>
+                  <td>
+                    <Tooltip title={row.tooltip} arrow placement="left">
+                      <span>{row.label}</span>
+                    </Tooltip>
+                  </td>
+                  {row.actions.map((actionId, ci) => (
+                    <td key={ci} className="kbd-cell-right">{renderCell(actionId, bindingsMap.get(actionId) ?? [])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      })}
+    </>
+  )
+}
+
+const cameraAxesRenderers = { 'Axes': CameraAxesRenderer }
+
+const MuiTooltip = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <Tooltip title={title} arrow>
+    <span style={{ display: 'contents' }}>{children}</span>
+  </Tooltip>
+)
+
 const speedDialActions: SpeedDialAction[] = [
   {
     key: 'github',
@@ -158,13 +222,15 @@ export default function App() {
   const [showAtomLabels, setShowAtomLabels] = useUrlState('al', boolParam)
   const [showWorldAxes, setShowWorldAxes] = useUrlState('xa', boolParam)
   const [dashedLines, setDashedLines] = useUrlState('dl', boolParam)
-  const [showSlice, setShowSlice] = useUrlState('sl', boolParam)
+  const [showSlice, setShowSlice] = useUrlState('sl', boolTrueParam)
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
   const [sliceIndex, setSliceIndex] = useUrlState('si', optIntParam, { debounce: 300 })
   const [orbitDeg, setOrbitDeg] = useUrlState('od', intParam(30))
   const [zoomPct, setZoomPct] = useUrlState('zd', intParam(0))
   const [panStep, setPanStep] = useUrlState('pd', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
+  const [sweepMode, setSweepMode] = useUrlState('sm', stringParam('d'))
+  const [sweepDuration, setSweepDuration] = useUrlState('sd', floatParam({ default: 3, encoding: 'string', decimals: 1 }), { debounce: 300 })
   const [sliceSpeed, setSliceSpeed] = useUrlState('ss', intParam(120))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [tilePadding, setTilePadding] = useUrlState('tp', floatParam({ default: 0.5, encoding: 'string', decimals: 2 }), { debounce: 300 })
@@ -244,6 +310,50 @@ export default function App() {
 
   const primaryFile = files[0] ?? null
 
+  const maxSliceIndex = useMemo(() => {
+    if (!primaryFile) return 0
+    return primaryFile.data.grid.dims[sliceAxis] - 1
+  }, [primaryFile, sliceAxis])
+
+  const handleSliceAxisChange = useCallback((axis: 0 | 1 | 2) => {
+    setSliceAxis(axis)
+    if (primaryFile) setSliceIndex(Math.floor(primaryFile.data.grid.dims[axis] / 2))
+  }, [setSliceAxis, setSliceIndex, primaryFile])
+
+  const handleSweepModeToggle = useCallback(() => {
+    if (sweepMode === 'd') {
+      sessionStorage.setItem('elvis-sweep-d', String(sweepDuration))
+      const stored = sessionStorage.getItem('elvis-sweep-r')
+      setSweepMode('r')
+      setSweepDuration(3)
+      setSliceSpeed(stored ? parseInt(stored) : 120)
+    } else {
+      sessionStorage.setItem('elvis-sweep-r', String(sliceSpeed))
+      const stored = sessionStorage.getItem('elvis-sweep-d')
+      setSweepMode('d')
+      setSliceSpeed(120)
+      setSweepDuration(stored ? parseFloat(stored) : 3)
+    }
+  }, [sweepMode, sweepDuration, sliceSpeed, setSweepMode, setSweepDuration, setSliceSpeed])
+
+  // Keyboard modes: s/o/p toggle slice/orbit/pan, remapping arrows to each mode's primary actions
+  useMode('mode:slice', {
+    label: 'Slice',
+    color: '#ff9800',
+    defaultBindings: ['s'],
+    onActivate: () => setShowSlice(true),
+  })
+  useMode('mode:orbit', {
+    label: 'Orbit',
+    color: '#4fc3f7',
+    defaultBindings: ['o'],
+  })
+  useMode('mode:pan', {
+    label: 'Pan',
+    color: '#66bb6a',
+    defaultBindings: ['p'],
+  })
+
   // Lattice directions for abc camera snaps (computed from loaded file)
   const latticeDirections = useMemo(() => {
     if (!primaryFile) return null
@@ -279,8 +389,7 @@ export default function App() {
     cameraSnap.current = snap
   }, [])
 
-  // View toggles (t _ chords)
-  // Group toggles: if either member is on, turn both off; if both off, turn both on
+  // View toggles: single-letter where free, `t _` sequence where letter conflicts
   useAction('view:toggle-xyz', {
     label: 'Toggle XYZ (axes + box)',
     group: 'View',
@@ -311,19 +420,19 @@ export default function App() {
   useAction('view:toggle-abc-atoms', {
     label: 'Toggle atoms',
     group: 'View',
-    defaultBindings: ['t shift+a'],
+    defaultBindings: ['h'],
     handler: () => setShowAtoms(!showAtoms),
   })
   useAction('view:toggle-labels', {
     label: 'Toggle atom labels',
     group: 'View',
-    defaultBindings: ['t l'],
+    defaultBindings: ['l'],
     handler: () => setShowAtomLabels(!showAtomLabels),
   })
   useAction('view:toggle-dashed', {
     label: 'Toggle dashed outlines',
     group: 'View',
-    defaultBindings: ['t d'],
+    defaultBindings: ['d'],
     handler: () => setDashedLines(!dashedLines),
   })
   useAction('view:toggle-slice', {
@@ -335,7 +444,7 @@ export default function App() {
   useAction('view:toggle-tiling', {
     label: 'Toggle tiling',
     group: 'View',
-    defaultBindings: ['t t'],
+    defaultBindings: ['g'],
     handler: () => setTilePadding(tilePadding > 0 ? 0 : 1),
   })
   useAction('view:set-tile-padding', {
@@ -349,7 +458,7 @@ export default function App() {
     label: 'Toggle tile fade',
     keywords: ['tiling', 'fade', 'opacity'],
     group: 'View',
-    defaultBindings: ['t f'],
+    defaultBindings: ['f'],
     handler: () => setTileFade(!tileFade),
   })
   useAction('view:set-orbit-deg', {
@@ -412,21 +521,91 @@ export default function App() {
   })
   useAction('slice:axis-x', {
     label: 'Slice along X',
+    description: 'Set slice plane perpendicular to X axis',
     group: 'Slice',
-    defaultBindings: ['1'],
-    handler: () => { setShowSlice(true); setSliceAxis(0) },
+    mode: 'mode:slice',
+    defaultBindings: ['x'],
+    handler: () => handleSliceAxisChange(0),
   })
   useAction('slice:axis-y', {
     label: 'Slice along Y',
+    description: 'Set slice plane perpendicular to Y axis',
     group: 'Slice',
-    defaultBindings: ['2'],
-    handler: () => { setShowSlice(true); setSliceAxis(1) },
+    mode: 'mode:slice',
+    defaultBindings: ['y'],
+    handler: () => handleSliceAxisChange(1),
   })
   useAction('slice:axis-z', {
     label: 'Slice along Z',
+    description: 'Set slice plane perpendicular to Z axis',
     group: 'Slice',
-    defaultBindings: ['3'],
-    handler: () => { setShowSlice(true); setSliceAxis(2) },
+    mode: 'mode:slice',
+    defaultBindings: ['z'],
+    handler: () => handleSliceAxisChange(2),
+  })
+
+  // Slice mode: arrows step index, up/down change axis
+  useActionPair('mode:slice:step', {
+    label: 'Step slice back / forward',
+    group: 'Slice',
+    mode: 'mode:slice',
+    actions: [
+      {
+        defaultBindings: ['arrowleft'],
+        handler: () => { cancelSliceAnim(); setSliceIndex(Math.max(0, (sliceIndex ?? 0) - 1)) },
+      },
+      {
+        defaultBindings: ['arrowright'],
+        handler: () => { cancelSliceAnim(); setSliceIndex(Math.min(maxSliceIndex, (sliceIndex ?? 0) + 1)) },
+      },
+    ],
+  })
+  useActionPair('mode:slice:axis', {
+    label: 'Prev / next slice axis',
+    group: 'Slice',
+    mode: 'mode:slice',
+    actions: [
+      {
+        defaultBindings: ['arrowdown'],
+        handler: () => handleSliceAxisChange(((sliceAxis + 2) % 3) as 0 | 1 | 2),
+      },
+      {
+        defaultBindings: ['arrowup'],
+        handler: () => handleSliceAxisChange(((sliceAxis + 1) % 3) as 0 | 1 | 2),
+      },
+    ],
+  })
+
+  // Pan mode: unmodified arrows pan
+  useActionPair('mode:pan:horizontal', {
+    label: 'Pan left / right',
+    group: 'Camera',
+    mode: 'mode:pan',
+    actions: [
+      {
+        defaultBindings: ['arrowleft'],
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-left'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'left', distance: panStep }) },
+      },
+      {
+        defaultBindings: ['arrowright'],
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-right'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'right', distance: panStep }) },
+      },
+    ],
+  })
+  useActionPair('mode:pan:vertical', {
+    label: 'Pan up / down',
+    group: 'Camera',
+    mode: 'mode:pan',
+    actions: [
+      {
+        defaultBindings: ['arrowup'],
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-up'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'up', distance: panStep }) },
+      },
+      {
+        defaultBindings: ['arrowdown'],
+        handler: (e) => { if (e?.repeat) return; startMovement('pan-down'); if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down', distance: panStep }) },
+      },
+    ],
   })
 
   // Slice animation: sweep sliceIndex to start or end
@@ -441,6 +620,8 @@ export default function App() {
 
   const animateSliceTo = useCallback((target: number) => {
     cancelSliceAnim()
+    const totalSlices = maxSliceIndex + 1
+    const effectiveSlicesPerSec = sweepMode === 'd' ? totalSlices / sweepDuration : sliceSpeed
     let last = performance.now()
     let current = sliceIndex ?? 0
     let fractional = 0
@@ -448,7 +629,7 @@ export default function App() {
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      fractional += sliceSpeed * dt
+      fractional += effectiveSlicesPerSec * dt
       const advance = Math.floor(fractional)
       if (advance < 1) {
         sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
@@ -464,19 +645,21 @@ export default function App() {
       sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
     }
     sliceAnimRef.current = { target, raf: requestAnimationFrame(tick) }
-  }, [sliceIndex, sliceSpeed, cancelSliceAnim, setSliceIndex])
+  }, [sliceIndex, sliceSpeed, sweepMode, sweepDuration, maxSliceIndex, cancelSliceAnim, setSliceIndex])
 
-  useAction('slice:animate-start', {
-    label: 'Animate slice to start',
+  useActionPair('slice:animate', {
+    label: 'Animate slice to start / end',
     group: 'Slice',
-    defaultBindings: ['meta+arrowleft'],
-    handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceTo(0) },
-  })
-  useAction('slice:animate-end', {
-    label: 'Animate slice to end',
-    group: 'Slice',
-    defaultBindings: ['meta+arrowright'],
-    handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceTo(maxSliceIndex) },
+    actions: [
+      {
+        defaultBindings: ['meta+arrowleft'],
+        handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceTo(0) },
+      },
+      {
+        defaultBindings: ['meta+arrowright'],
+        handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceTo(maxSliceIndex) },
+      },
+    ],
   })
   useAction('slice:play-pause', {
     label: 'Play/pause slice',
@@ -497,95 +680,109 @@ export default function App() {
       }
     },
   })
-  useAction('slice:jump-start', {
-    label: 'Jump slice to start',
+  useActionPair('slice:jump', {
+    label: 'Jump slice to start / end',
     group: 'Slice',
-    defaultBindings: ['meta+shift+arrowleft'],
-    handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(0) },
-  })
-  useAction('slice:jump-end', {
-    label: 'Jump slice to end',
-    group: 'Slice',
-    defaultBindings: ['meta+shift+arrowright'],
-    handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndex) },
+    actions: [
+      {
+        defaultBindings: ['meta+shift+arrowleft'],
+        handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(0) },
+      },
+      {
+        defaultBindings: ['meta+shift+arrowright'],
+        handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndex) },
+      },
+    ],
   })
 
   // Camera axis-snap (look down lattice vectors or world axes)
   useAction('cam:snap-a', {
     label: 'Look down a',
-    group: 'Camera',
+    description: 'Point camera along lattice vector a',
+    group: 'Axes',
     defaultBindings: ['a'],
     enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.a }) },
   })
   useAction('cam:align-a', {
     label: 'Align a up',
-    group: 'Camera',
+    description: 'Roll camera so lattice vector a points up',
+    group: 'Axes',
     defaultBindings: ['shift+a'],
     enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.a }) },
   })
   useAction('cam:snap-b', {
     label: 'Look down b',
-    group: 'Camera',
+    description: 'Point camera along lattice vector b',
+    group: 'Axes',
     defaultBindings: ['b'],
     enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.b }) },
   })
   useAction('cam:align-b', {
     label: 'Align b up',
-    group: 'Camera',
+    description: 'Roll camera so lattice vector b points up',
+    group: 'Axes',
     defaultBindings: ['shift+b'],
     enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.b }) },
   })
   useAction('cam:snap-c', {
     label: 'Look down c',
-    group: 'Camera',
+    description: 'Point camera along lattice vector c',
+    group: 'Axes',
     defaultBindings: ['c'],
     enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.c }) },
   })
   useAction('cam:align-c', {
     label: 'Align c up',
-    group: 'Camera',
+    description: 'Roll camera so lattice vector c points up',
+    group: 'Axes',
     defaultBindings: ['shift+c'],
     enabled: !abcIsXyz,
     handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.c }) },
   })
   useAction('cam:snap-x', {
     label: 'Look down X',
-    group: 'Camera',
+    description: 'Point camera along X axis',
+    group: 'Axes',
     defaultBindings: ['x'],
     handler: () => snapCamera({ type: 'look-down', direction: [1, 0, 0] }),
   })
   useAction('cam:align-x', {
     label: 'Align X up',
-    group: 'Camera',
+    description: 'Roll camera so X axis points up',
+    group: 'Axes',
     defaultBindings: ['shift+x'],
     handler: () => snapCamera({ type: 'align-up', axis: [1, 0, 0] }),
   })
   useAction('cam:snap-y', {
     label: 'Look down Y',
-    group: 'Camera',
+    description: 'Point camera along Y axis',
+    group: 'Axes',
     defaultBindings: ['y'],
     handler: () => snapCamera({ type: 'look-down', direction: [0, 1, 0] }),
   })
   useAction('cam:align-y', {
     label: 'Align Y up',
-    group: 'Camera',
+    description: 'Roll camera so Y axis points up',
+    group: 'Axes',
     defaultBindings: ['shift+y'],
     handler: () => snapCamera({ type: 'align-up', axis: [0, 1, 0] }),
   })
   useAction('cam:snap-z', {
     label: 'Look down Z',
-    group: 'Camera',
+    description: 'Point camera along Z axis',
+    group: 'Axes',
     defaultBindings: ['z'],
     handler: () => snapCamera({ type: 'look-down', direction: [0, 0, 1] }),
   })
   useAction('cam:align-z', {
     label: 'Align Z up',
-    group: 'Camera',
+    description: 'Roll camera so Z axis points up',
+    group: 'Axes',
     defaultBindings: ['shift+z'],
     handler: () => snapCamera({ type: 'align-up', axis: [0, 0, 1] }),
   })
@@ -614,37 +811,48 @@ export default function App() {
       down:  (e) => { if (e?.repeat) return; startMovement('pan-down');  if (panStep > 0) snapCamera({ type: 'pan-step', direction: 'down',  distance: panStep }) },
     },
   })
-  useAction('nav:zoom-in', {
-    label: 'Zoom in',
+  useActionPair('nav:zoom', {
+    label: 'Zoom in / out',
     group: 'Camera',
-    defaultBindings: ['='],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('zoom-in')
-      if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'in', factor: 1 + zoomPct / 100 })
-    },
+    actions: [
+      {
+        defaultBindings: ['='],
+        handler: (e) => {
+          if (e?.repeat) return
+          startMovement('zoom-in')
+          if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'in', factor: 1 + zoomPct / 100 })
+        },
+      },
+      {
+        defaultBindings: ['-'],
+        handler: (e) => {
+          if (e?.repeat) return
+          startMovement('zoom-out')
+          if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'out', factor: 1 + zoomPct / 100 })
+        },
+      },
+    ],
   })
-  useAction('nav:zoom-out', {
-    label: 'Zoom out',
+  useActionPair('nav:roll', {
+    label: 'Roll CCW / CW',
     group: 'Camera',
-    defaultBindings: ['-'],
-    handler: (e) => {
-      if (e?.repeat) return
-      startMovement('zoom-out')
-      if (zoomPct > 0) snapCamera({ type: 'zoom-step', direction: 'out', factor: 1 + zoomPct / 100 })
-    },
+    actions: [
+      {
+        defaultBindings: ['['],
+        handler: (e) => { if (e?.repeat) return; startMovement('roll-ccw') },
+      },
+      {
+        defaultBindings: [']'],
+        handler: (e) => { if (e?.repeat) return; startMovement('roll-cw') },
+      },
+    ],
   })
-  useAction('nav:roll-ccw', {
-    label: 'Roll CCW',
+  useAction('nav:reset-pan', {
+    label: 'Reset center',
+    description: 'Return crystal to center of viewport',
     group: 'Camera',
-    defaultBindings: ['['],
-    handler: (e) => { if (e?.repeat) return; startMovement('roll-ccw') },
-  })
-  useAction('nav:roll-cw', {
-    label: 'Roll CW',
-    group: 'Camera',
-    defaultBindings: [']'],
-    handler: (e) => { if (e?.repeat) return; startMovement('roll-cw') },
+    defaultBindings: ['r'],
+    handler: () => { setCamTarget(null); snapCamera({ type: 'reset-pan' }) },
   })
 
   // Auto-restore on mount: ?m= param (OPFS cache → fetch) or last active OPFS volume
@@ -703,7 +911,7 @@ export default function App() {
       setFiles([{ data: result.data, filename: result.filename }])
       // Only set iso/slice defaults when the URL didn't specify them
       if (isoLevel === null) setIsoLevel(computeDefaultIsoLevel(result.data.grid.data))
-      if (sliceIndex === null) setSliceIndex(Math.floor(result.data.grid.dims[2] / 2))
+      if (sliceIndex === null) setSliceIndex(Math.floor(result.data.grid.dims[sliceAxis] / 2))
       if (result.volumeId) {
         setCurrentVolumeId(result.volumeId)
         setGalleryRefreshKey(k => k + 1)
@@ -718,7 +926,7 @@ export default function App() {
 
     setFiles([{ data, filename }])
     setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-    setSliceIndex(Math.floor(data.grid.dims[2] / 2))
+    setSliceIndex(Math.floor(data.grid.dims[sliceAxis] / 2))
 
     // Cache in OPFS if enabled (skip if same filename already cached)
     if (opfsStore && settings.cacheInOPFS && blob) {
@@ -759,7 +967,7 @@ export default function App() {
     const data = await parseBlob(blob, filename)
     setFiles([{ data, filename }])
     setIsoLevel(computeDefaultIsoLevel(data.grid.data))
-    setSliceIndex(Math.floor(data.grid.dims[2] / 2))
+    setSliceIndex(Math.floor(data.grid.dims[sliceAxis] / 2))
     setCurrentVolumeId(_id)
     setMaterialId(extractMpId(filename) ?? '')
     setFetchStatus(null)
@@ -873,11 +1081,6 @@ export default function App() {
     if (!primaryFile) return 0
     return computeDefaultIsoLevel(primaryFile.data.grid.data)
   }, [primaryFile])
-
-  const maxSliceIndex = useMemo(() => {
-    if (!primaryFile) return 0
-    return primaryFile.data.grid.dims[sliceAxis] - 1
-  }, [primaryFile, sliceAxis])
 
   const exampleLinks = (
     <details
@@ -1061,12 +1264,16 @@ export default function App() {
             showSlice={showSlice}
             onShowSliceChange={setShowSlice}
             sliceAxis={sliceAxis}
-            onSliceAxisChange={setSliceAxis}
+            onSliceAxisChange={handleSliceAxisChange}
             sliceIndex={sliceIndex ?? 0}
             maxSliceIndex={maxSliceIndex}
             onSliceIndexChange={setSliceIndex}
             animDuration={animDuration}
             onAnimDurationChange={setAnimDuration}
+            sweepMode={sweepMode as 'd' | 'r'}
+            sweepDuration={sweepDuration}
+            onSweepDurationChange={setSweepDuration}
+            onSweepModeToggle={handleSweepModeToggle}
             sliceSpeed={sliceSpeed}
             onSliceSpeedChange={setSliceSpeed}
             cam={cam}
@@ -1118,11 +1325,12 @@ export default function App() {
         onCancel={() => setSizeConfirm(null)}
       />
 
-      <ShortcutsModal editable />
+      <ShortcutsModal editable groupRenderers={cameraAxesRenderers} TooltipComponent={MuiTooltip} />
       <Omnibar />
       <SequenceModal />
       <LookupModal />
       <SpeedDial actions={speedDialActions} />
+      <ModeIndicator />
     </div>
   )
 }
