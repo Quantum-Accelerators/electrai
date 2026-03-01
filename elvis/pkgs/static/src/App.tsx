@@ -173,7 +173,7 @@ export default function App() {
   const [panStep, setPanStep] = useUrlState('pd', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
   const [sweepMode, setSweepMode] = useUrlState('sm', stringParam('d'))
-  const [sweepDuration, setSweepDuration] = useUrlState('sd', floatParam({ default: 3, encoding: 'string', decimals: 1 }), { debounce: 300 })
+  const [sweepDuration, setSweepDuration] = useUrlState('sd', floatParam({ default: 2, encoding: 'string', decimals: 1 }), { debounce: 300 })
   const [sliceSpeed, setSliceSpeed] = useUrlState('ss', intParam(120))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [tilePadding, setTilePadding] = useUrlState('tp', floatParam({ default: 0.5, encoding: 'string', decimals: 2 }), { debounce: 300 })
@@ -281,14 +281,14 @@ export default function App() {
       sessionStorage.setItem('elvis-sweep-d', String(sweepDuration))
       const stored = sessionStorage.getItem('elvis-sweep-r')
       setSweepMode('r')
-      setSweepDuration(3)
+      setSweepDuration(2)
       setSliceSpeed(stored ? parseInt(stored) : 120)
     } else {
       sessionStorage.setItem('elvis-sweep-r', String(sliceSpeed))
       const stored = sessionStorage.getItem('elvis-sweep-d')
       setSweepMode('d')
       setSliceSpeed(120)
-      setSweepDuration(stored ? parseFloat(stored) : 3)
+      setSweepDuration(stored ? parseFloat(stored) : 2)
     }
   }, [sweepMode, sweepDuration, sliceSpeed, setSweepMode, setSweepDuration, setSliceSpeed])
 
