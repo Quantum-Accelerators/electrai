@@ -16,8 +16,8 @@ import {
   useSettings,
   fracToCart,
 } from '@elvis/core'
-import { ShortcutsModal, Omnibar, SequenceModal, LookupModal, SpeedDial, ModeIndicator, useAction, useActionPair, useArrowGroup, useMode } from 'use-kbd'
-import type { SpeedDialAction, GroupRendererProps } from 'use-kbd'
+import { ShortcutsModal, Omnibar, SequenceModal, LookupModal, SpeedDial, ModeIndicator, useAction, useActionPair, useActionTriplet, useArrowGroup, useMode } from 'use-kbd'
+import type { SpeedDialAction } from 'use-kbd'
 import 'use-kbd/styles.css'
 import { useUrlState, floatParam, optFloatParam, boolParam, intParam, optIntParam, stringParam } from 'use-prms'
 import type { Param } from 'use-prms'
@@ -139,63 +139,6 @@ const GithubIcon = () => (
     <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
   </svg>
 )
-
-const AXES_SECTIONS = [
-  {
-    headers: ['Axis', 'a', 'b', 'c'],
-    rows: [
-      { label: 'Look ↓', actions: ['cam:snap-a', 'cam:snap-b', 'cam:snap-c'], tooltip: 'Point camera along this lattice vector' },
-      { label: 'Align ↑', actions: ['cam:align-a', 'cam:align-b', 'cam:align-c'], tooltip: 'Roll camera so this lattice vector points up' },
-    ],
-  },
-  {
-    headers: ['Axis', 'x', 'y', 'z'],
-    rows: [
-      { label: 'Look ↓', actions: ['cam:snap-x', 'cam:snap-y', 'cam:snap-z'], tooltip: 'Point camera along this axis' },
-      { label: 'Align ↑', actions: ['cam:align-x', 'cam:align-y', 'cam:align-z'], tooltip: 'Roll camera so this axis points up' },
-    ],
-  },
-]
-
-function CameraAxesRenderer({ group, renderCell }: GroupRendererProps) {
-  const bindingsMap = new Map(
-    group.shortcuts
-      .filter((s): s is Extract<typeof s, { type: 'action' }> => s.type === 'action')
-      .map(s => [s.actionId, s.bindings])
-  )
-  return (
-    <>
-      {AXES_SECTIONS.map((section, si) => {
-        if (!section.rows.some(r => r.actions.some(a => bindingsMap.has(a)))) return null
-        return (
-          <table key={si} className="kbd-table">
-            <thead>
-              <tr>
-                {section.headers.map((h, i) => <th key={i} style={i > 0 ? { textAlign: 'right', paddingRight: 8 } : undefined}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {section.rows.map((row, ri) => (
-                <tr key={ri}>
-                  <td>
-                    <Tooltip title={row.tooltip} arrow placement="left">
-                      <span>{row.label}</span>
-                    </Tooltip>
-                  </td>
-                  {row.actions.map((actionId, ci) => (
-                    <td key={ci} className="kbd-cell-right">{renderCell(actionId, bindingsMap.get(actionId) ?? [])}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )
-      })}
-    </>
-  )
-}
-
-const cameraAxesRenderers = { 'Axes': CameraAxesRenderer }
 
 const MuiTooltip = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <Tooltip title={title} arrow>
@@ -392,6 +335,7 @@ export default function App() {
   // View toggles: single-letter where free, `t _` sequence where letter conflicts
   useAction('view:toggle-xyz', {
     label: 'Toggle XYZ (axes + box)',
+    description: 'Show/hide XYZ coordinate axes and bounding box',
     group: 'View',
     defaultBindings: ['t x'],
     handler: () => {
@@ -402,12 +346,14 @@ export default function App() {
   })
   useAction('view:toggle-xyz-axes', {
     label: 'Toggle XYZ axes',
+    description: 'Show/hide XYZ coordinate axes only',
     group: 'View',
     defaultBindings: ['t shift+x'],
     handler: () => setShowWorldAxes(!showWorldAxes),
   })
   useAction('view:toggle-abc', {
     label: 'Toggle abc (cell + atoms)',
+    description: 'Show/hide lattice cell and atoms together',
     group: 'View',
     defaultBindings: ['t a'],
     enabled: !abcIsXyz,
@@ -419,36 +365,42 @@ export default function App() {
   })
   useAction('view:toggle-abc-atoms', {
     label: 'Toggle atoms',
+    description: 'Show/hide atom spheres',
     group: 'View',
     defaultBindings: ['h'],
     handler: () => setShowAtoms(!showAtoms),
   })
   useAction('view:toggle-labels', {
     label: 'Toggle atom labels',
+    description: 'Show/hide element labels on atoms',
     group: 'View',
     defaultBindings: ['l'],
     handler: () => setShowAtomLabels(!showAtomLabels),
   })
   useAction('view:toggle-dashed', {
     label: 'Toggle dashed outlines',
+    description: 'Switch between dashed and solid cell outlines',
     group: 'View',
     defaultBindings: ['d'],
     handler: () => setDashedLines(!dashedLines),
   })
   useAction('view:toggle-slice', {
     label: 'Toggle 2D slice',
+    description: 'Show/hide 2D density slice plane',
     group: 'View',
     defaultBindings: ['t s'],
     handler: () => setShowSlice(!showSlice),
   })
   useAction('view:toggle-tiling', {
     label: 'Toggle tiling',
+    description: 'Toggle periodic tiling of unit cell',
     group: 'View',
     defaultBindings: ['g'],
     handler: () => setTilePadding(tilePadding > 0 ? 0 : 1),
   })
   useAction('view:set-tile-padding', {
     label: 'Set tile padding',
+    description: 'Gap between periodic tile copies',
     keywords: ['tiling', 'padding', 'periodic'],
     group: 'View',
     defaultBindings: ['\\f t'],
@@ -456,97 +408,74 @@ export default function App() {
   })
   useAction('view:toggle-tile-fade', {
     label: 'Toggle tile fade',
+    description: 'Fade periodic tile copies',
     keywords: ['tiling', 'fade', 'opacity'],
     group: 'View',
     defaultBindings: ['f'],
     handler: () => setTileFade(!tileFade),
   })
-  useAction('view:set-orbit-deg', {
-    label: 'Set orbit step',
+  useActionPair('view:orbit-step', {
+    label: 'Orbit step: set / toggle',
+    description: 'Discrete angle steps (0 = smooth continuous)',
     keywords: ['deg', '90deg', '90', 'discrete', 'step', 'angle'],
     group: 'View',
-    defaultBindings: ['\\d+ o'],
-    handler: (_e, captures) => {
-      setOrbitDeg(captures?.[0] ?? 90)
-    },
+    actions: [
+      { defaultBindings: ['\\d+ o'], handler: (_e, captures) => setOrbitDeg(captures?.[0] ?? 90) },
+      { defaultBindings: ['t o'], handler: () => setOrbitDeg(orbitDeg > 0 ? 0 : 90) },
+    ],
   })
-  useAction('view:toggle-orbit', {
-    label: 'Toggle orbit step',
-    keywords: ['deg', 'discrete', 'step'],
-    group: 'View',
-    defaultBindings: ['t o'],
-    handler: () => setOrbitDeg(orbitDeg > 0 ? 0 : 90),
-  })
-  useAction('view:set-zoom-step', {
-    label: 'Set zoom step %',
-    keywords: ['discrete', 'step', 'zoom'],
-    group: 'View',
-    defaultBindings: ['\\d+ z'],
-    handler: (_e, captures) => setZoomPct(captures?.[0] ?? 20),
-  })
-  useAction('view:toggle-zoom-step', {
-    label: 'Toggle zoom step',
-    keywords: ['discrete', 'step', 'zoom'],
-    group: 'View',
-    defaultBindings: ['t z'],
-    handler: () => setZoomPct(zoomPct > 0 ? 0 : 20),
-  })
-  useAction('view:set-pan-step', {
-    label: 'Set pan step',
+  useActionPair('view:pan-step', {
+    label: 'Pan step: set / toggle',
+    description: 'Fixed-distance steps (0 = smooth continuous)',
     keywords: ['discrete', 'step', 'pan'],
     group: 'View',
-    defaultBindings: ['\\d+ p'],
-    handler: (_e, captures) => setPanStep(captures?.[0] ?? 1),
+    actions: [
+      { defaultBindings: ['\\d+ p'], handler: (_e, captures) => setPanStep(captures?.[0] ?? 1) },
+      { defaultBindings: ['t p'], handler: () => setPanStep(panStep > 0 ? 0 : 1) },
+    ],
   })
-  useAction('view:toggle-pan-step', {
-    label: 'Toggle pan step',
-    keywords: ['discrete', 'step', 'pan'],
+  useActionPair('view:zoom-step', {
+    label: 'Zoom step: set / toggle',
+    description: 'Discrete percentage steps (0 = smooth continuous)',
+    keywords: ['discrete', 'step', 'zoom'],
     group: 'View',
-    defaultBindings: ['t p'],
-    handler: () => setPanStep(panStep > 0 ? 0 : 1),
+    actions: [
+      { defaultBindings: ['\\d+ z'], handler: (_e, captures) => setZoomPct(captures?.[0] ?? 20) },
+      { defaultBindings: ['t z'], handler: () => setZoomPct(zoomPct > 0 ? 0 : 20) },
+    ],
   })
   useAction('view:set-anim-speed', {
-    label: 'Set animation speed (seconds)',
+    label: 'Set animation speed',
+    description: 'Camera snap animation duration (seconds)',
     keywords: ['duration', 'animation', 'speed'],
     group: 'View',
     defaultBindings: ['\\f s'],
     handler: (_e, captures) => setAnimDuration(captures?.[0] ?? 0.5),
   })
   useAction('view:set-slice-speed', {
-    label: 'Set slice speed (slices/sec)',
+    label: 'Set slice speed',
+    description: 'Slice sweep rate (slices/sec)',
     keywords: ['slice', 'animation', 'speed', 'sweep'],
     group: 'View',
     defaultBindings: ['\\d+ shift+s'],
     handler: (_e, captures) => setSliceSpeed(captures?.[0] ?? 120),
   })
-  useAction('slice:axis-x', {
-    label: 'Slice along X',
-    description: 'Set slice plane perpendicular to X axis',
+  useActionTriplet('slice:axis', {
+    label: 'Slice along X / Y / Z',
+    description: 'Set slice plane perpendicular to axis',
     group: 'Slice',
     mode: 'mode:slice',
-    defaultBindings: ['x'],
-    handler: () => handleSliceAxisChange(0),
-  })
-  useAction('slice:axis-y', {
-    label: 'Slice along Y',
-    description: 'Set slice plane perpendicular to Y axis',
-    group: 'Slice',
-    mode: 'mode:slice',
-    defaultBindings: ['y'],
-    handler: () => handleSliceAxisChange(1),
-  })
-  useAction('slice:axis-z', {
-    label: 'Slice along Z',
-    description: 'Set slice plane perpendicular to Z axis',
-    group: 'Slice',
-    mode: 'mode:slice',
-    defaultBindings: ['z'],
-    handler: () => handleSliceAxisChange(2),
+    actions: [
+      { defaultBindings: ['x'], handler: () => handleSliceAxisChange(0) },
+      { defaultBindings: ['y'], handler: () => handleSliceAxisChange(1) },
+      { defaultBindings: ['z'], handler: () => handleSliceAxisChange(2) },
+    ],
   })
 
   // Slice mode: arrows step index, up/down change axis
   useActionPair('mode:slice:step', {
     label: 'Step slice back / forward',
+    description: 'Move slice plane one grid step',
     group: 'Slice',
     mode: 'mode:slice',
     actions: [
@@ -562,6 +491,7 @@ export default function App() {
   })
   useActionPair('mode:slice:axis', {
     label: 'Prev / next slice axis',
+    description: 'Cycle between X/Y/Z slice axes',
     group: 'Slice',
     mode: 'mode:slice',
     actions: [
@@ -579,6 +509,7 @@ export default function App() {
   // Pan mode: unmodified arrows pan
   useActionPair('mode:pan:horizontal', {
     label: 'Pan left / right',
+    description: 'Move camera sideways in pan mode',
     group: 'Camera',
     mode: 'mode:pan',
     actions: [
@@ -594,6 +525,7 @@ export default function App() {
   })
   useActionPair('mode:pan:vertical', {
     label: 'Pan up / down',
+    description: 'Move camera vertically in pan mode',
     group: 'Camera',
     mode: 'mode:pan',
     actions: [
@@ -649,20 +581,22 @@ export default function App() {
 
   useActionPair('slice:animate', {
     label: 'Animate slice to start / end',
+    description: 'Sweep slice to boundary at current speed',
     group: 'Slice',
     actions: [
       {
-        defaultBindings: ['meta+arrowleft'],
+        defaultBindings: ['alt+arrowleft'],
         handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceTo(0) },
       },
       {
-        defaultBindings: ['meta+arrowright'],
+        defaultBindings: ['alt+arrowright'],
         handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceTo(maxSliceIndex) },
       },
     ],
   })
   useAction('slice:play-pause', {
     label: 'Play/pause slice',
+    description: 'Start/stop slice sweep animation',
     group: 'Slice',
     defaultBindings: ['space'],
     handler: () => {
@@ -682,115 +616,69 @@ export default function App() {
   })
   useActionPair('slice:jump', {
     label: 'Jump slice to start / end',
+    description: 'Instantly move slice to boundary',
     group: 'Slice',
     actions: [
       {
-        defaultBindings: ['meta+shift+arrowleft'],
+        defaultBindings: ['home'],
         handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(0) },
       },
       {
-        defaultBindings: ['meta+shift+arrowright'],
+        defaultBindings: ['end'],
         handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndex) },
       },
     ],
   })
 
   // Camera axis-snap (look down lattice vectors or world axes)
-  useAction('cam:snap-a', {
-    label: 'Look down a',
-    description: 'Point camera along lattice vector a',
+  useActionTriplet('cam:snap-abc', {
+    label: 'Look down a / b / c',
+    description: 'Point camera along lattice vector',
     group: 'Axes',
-    defaultBindings: ['a'],
     enabled: !abcIsXyz,
-    handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.a }) },
+    actions: [
+      { defaultBindings: ['a'], handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.a }) } },
+      { defaultBindings: ['b'], handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.b }) } },
+      { defaultBindings: ['c'], handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.c }) } },
+    ],
   })
-  useAction('cam:align-a', {
-    label: 'Align a up',
-    description: 'Roll camera so lattice vector a points up',
+  useActionTriplet('cam:snap-xyz', {
+    label: 'Look down X / Y / Z',
+    description: 'Point camera along axis',
     group: 'Axes',
-    defaultBindings: ['shift+a'],
+    actions: [
+      { defaultBindings: ['x'], handler: () => snapCamera({ type: 'look-down', direction: [1, 0, 0] }) },
+      { defaultBindings: ['y'], handler: () => snapCamera({ type: 'look-down', direction: [0, 1, 0] }) },
+      { defaultBindings: ['z'], handler: () => snapCamera({ type: 'look-down', direction: [0, 0, 1] }) },
+    ],
+  })
+  useActionTriplet('cam:align-abc', {
+    label: 'Align a / b / c up',
+    description: 'Roll camera so lattice vector points up',
+    group: 'Axes',
     enabled: !abcIsXyz,
-    handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.a }) },
+    actions: [
+      { defaultBindings: ['shift+a'], handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.a }) } },
+      { defaultBindings: ['shift+b'], handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.b }) } },
+      { defaultBindings: ['shift+c'], handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.c }) } },
+    ],
   })
-  useAction('cam:snap-b', {
-    label: 'Look down b',
-    description: 'Point camera along lattice vector b',
+  useActionTriplet('cam:align-xyz', {
+    label: 'Align X / Y / Z up',
+    description: 'Roll camera so axis points up',
     group: 'Axes',
-    defaultBindings: ['b'],
-    enabled: !abcIsXyz,
-    handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.b }) },
-  })
-  useAction('cam:align-b', {
-    label: 'Align b up',
-    description: 'Roll camera so lattice vector b points up',
-    group: 'Axes',
-    defaultBindings: ['shift+b'],
-    enabled: !abcIsXyz,
-    handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.b }) },
-  })
-  useAction('cam:snap-c', {
-    label: 'Look down c',
-    description: 'Point camera along lattice vector c',
-    group: 'Axes',
-    defaultBindings: ['c'],
-    enabled: !abcIsXyz,
-    handler: () => { if (latticeDirections) snapCamera({ type: 'look-down', direction: latticeDirections.c }) },
-  })
-  useAction('cam:align-c', {
-    label: 'Align c up',
-    description: 'Roll camera so lattice vector c points up',
-    group: 'Axes',
-    defaultBindings: ['shift+c'],
-    enabled: !abcIsXyz,
-    handler: () => { if (latticeDirections) snapCamera({ type: 'align-up', axis: latticeDirections.c }) },
-  })
-  useAction('cam:snap-x', {
-    label: 'Look down X',
-    description: 'Point camera along X axis',
-    group: 'Axes',
-    defaultBindings: ['x'],
-    handler: () => snapCamera({ type: 'look-down', direction: [1, 0, 0] }),
-  })
-  useAction('cam:align-x', {
-    label: 'Align X up',
-    description: 'Roll camera so X axis points up',
-    group: 'Axes',
-    defaultBindings: ['shift+x'],
-    handler: () => snapCamera({ type: 'align-up', axis: [1, 0, 0] }),
-  })
-  useAction('cam:snap-y', {
-    label: 'Look down Y',
-    description: 'Point camera along Y axis',
-    group: 'Axes',
-    defaultBindings: ['y'],
-    handler: () => snapCamera({ type: 'look-down', direction: [0, 1, 0] }),
-  })
-  useAction('cam:align-y', {
-    label: 'Align Y up',
-    description: 'Roll camera so Y axis points up',
-    group: 'Axes',
-    defaultBindings: ['shift+y'],
-    handler: () => snapCamera({ type: 'align-up', axis: [0, 1, 0] }),
-  })
-  useAction('cam:snap-z', {
-    label: 'Look down Z',
-    description: 'Point camera along Z axis',
-    group: 'Axes',
-    defaultBindings: ['z'],
-    handler: () => snapCamera({ type: 'look-down', direction: [0, 0, 1] }),
-  })
-  useAction('cam:align-z', {
-    label: 'Align Z up',
-    description: 'Roll camera so Z axis points up',
-    group: 'Axes',
-    defaultBindings: ['shift+z'],
-    handler: () => snapCamera({ type: 'align-up', axis: [0, 0, 1] }),
+    actions: [
+      { defaultBindings: ['shift+x'], handler: () => snapCamera({ type: 'align-up', axis: [1, 0, 0] }) },
+      { defaultBindings: ['shift+y'], handler: () => snapCamera({ type: 'align-up', axis: [0, 1, 0] }) },
+      { defaultBindings: ['shift+z'], handler: () => snapCamera({ type: 'align-up', axis: [0, 0, 1] }) },
+    ],
   })
 
   // Camera navigation (orbit: continuous or discrete step snaps)
   // In discrete mode, startMovement tracks held state so CameraController can chain snaps
   useArrowGroup('nav:orbit', {
     label: 'Orbit',
+    description: 'Rotate camera around crystal',
     group: 'Camera',
     defaultModifiers: [],
     handlers: {
@@ -802,6 +690,7 @@ export default function App() {
   })
   useArrowGroup('nav:pan', {
     label: 'Pan',
+    description: 'Shift camera position without rotating',
     group: 'Camera',
     defaultModifiers: ['shift'],
     handlers: {
@@ -813,6 +702,7 @@ export default function App() {
   })
   useActionPair('nav:zoom', {
     label: 'Zoom in / out',
+    description: 'Move camera closer or further from crystal',
     group: 'Camera',
     actions: [
       {
@@ -835,6 +725,7 @@ export default function App() {
   })
   useActionPair('nav:roll', {
     label: 'Roll CCW / CW',
+    description: 'Roll camera around view axis',
     group: 'Camera',
     actions: [
       {
@@ -1325,7 +1216,7 @@ export default function App() {
         onCancel={() => setSizeConfirm(null)}
       />
 
-      <ShortcutsModal editable groupRenderers={cameraAxesRenderers} TooltipComponent={MuiTooltip} />
+      <ShortcutsModal editable arrowIcon="move" TooltipComponent={MuiTooltip} />
       <Omnibar />
       <SequenceModal />
       <LookupModal />

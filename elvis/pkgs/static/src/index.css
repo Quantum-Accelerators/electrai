@@ -10,7 +10,3 @@ html, body, #root {
   color: #eee;
   font-family: system-ui, -apple-system, sans-serif;
 }
-
-.kbd-cell-right .kbd-action-bindings {
-  justify-content: flex-end;
-}
