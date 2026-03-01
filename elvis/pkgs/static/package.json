@@ -14,11 +14,14 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.800.0",
     "@elvis/core": "workspace:*",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.8",
     "@tanstack/react-query": "^5.90.21",
     "aws-static-sso": "https://github.com/runsascoded/aws-static-sso#13075f68e82e86ed23156764922fb7333c912eea&path:/client",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "use-kbd": "https://github.com/runsascoded/use-kbd#f0d62e856ef904d2904a465ac9b61c7410782726",
+    "use-kbd": "https://github.com/runsascoded/use-kbd#34745efff8efdfd2c46e3e39d479a708aba704b2",
     "use-prms": "https://github.com/runsascoded/use-prms#e8358bc09a3b2708c5dc41f7d489d1b512092811"
   },
   "devDependencies": {
