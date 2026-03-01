@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import { MathUtils, Quaternion, Spherical, Vector3 } from 'three'
 import type { RefObject, MutableRefObject } from 'react'
@@ -19,12 +19,19 @@ const _viewDir = new Vector3()
 const _upTarget = new Vector3()
 const _upCurrent = new Vector3()
 
+// Wheel handler temp vectors (separate to avoid conflicts with useFrame)
+const _wFwd = new Vector3()
+const _wRight = new Vector3()
+const _wUp = new Vector3()
+const _wPan = new Vector3()
+
 export type CameraSnapTarget =
   | { type: 'look-down', direction: [number, number, number] }
   | { type: 'align-up', axis: [number, number, number] }
   | { type: 'orbit-step', direction: 'left' | 'right' | 'up' | 'down', degrees: number }
   | { type: 'zoom-step', direction: 'in' | 'out', factor: number }
   | { type: 'pan-step', direction: 'left' | 'right' | 'up' | 'down', distance: number }
+  | { type: 'reset-pan' }
 
 interface CameraControllerProps {
   activeMovements: RefObject<Set<string>>
@@ -72,6 +79,46 @@ export function CameraController({
   const initFramesRef = useRef(0)
   const camSyncRef = useRef<{ lastChange: number; reported: boolean }>({ lastChange: 0, reported: true })
   const prevCamRef = useRef<[number, number, number, number, number, number] | null>(null)
+  const gl = useThree(s => s.gl)
+
+  // Modifier+wheel: Shift=pan vertical, Ctrl/Cmd+Shift=pan horizontal, Alt=roll
+  useEffect(() => {
+    const canvas = gl.domElement
+    const handler = (e: WheelEvent) => {
+      if (!controls) return
+      if (!e.shiftKey && !e.altKey) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      const target = controls.target
+      const delta = e.deltaY * 0.01
+
+      camera.getWorldDirection(_wFwd)
+      _wRight.crossVectors(_wFwd, camera.up).normalize()
+      _wUp.crossVectors(_wRight, _wFwd).normalize()
+
+      if (e.altKey && !e.shiftKey) {
+        // Alt+wheel → roll
+        camera.up.applyAxisAngle(_wFwd, delta * 0.003)
+        camera.lookAt(target)
+      } else if (e.shiftKey && (e.ctrlKey || e.metaKey)) {
+        // Ctrl/Cmd+Shift+wheel → pan left/right
+        _wPan.copy(_wRight).multiplyScalar(delta)
+        camera.position.add(_wPan)
+        target.add(_wPan)
+      } else if (e.shiftKey) {
+        // Shift+wheel → pan up/down
+        _wPan.copy(_wUp).multiplyScalar(-delta)
+        camera.position.add(_wPan)
+        target.add(_wPan)
+      }
+
+      controls.update()
+    }
+
+    canvas.addEventListener('wheel', handler, { passive: false, capture: true })
+    return () => canvas.removeEventListener('wheel', handler, { capture: true })
+  }, [gl, camera, controls])
 
   useFrame((_, delta) => {
     if (!controls) return
@@ -177,6 +224,10 @@ export function CameraController({
         else endT.addScaledVector(_up, -d)
         startTarget = startT
         endTarget = endT
+      } else if (snap.type === 'reset-pan' && center) {
+        endQuat = startQuat.clone()
+        startTarget = target.clone()
+        endTarget = center.clone()
       }
 
       // Remember step snaps for key-hold chaining
