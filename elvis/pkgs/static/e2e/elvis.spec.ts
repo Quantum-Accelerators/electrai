@@ -46,11 +46,19 @@ async function waitForParam(
   }).toPass({ timeout })
 }
 
-/** Wait for material to finish loading. */
+/** Wait for material to finish loading and three.js scene to initialize. */
 async function waitForLoad(page: Page) {
   await expect(page.getByText('mp-1000020.json.gz').first()).toBeVisible({ timeout: 15000 })
-  // Give the app a moment to settle after rendering (URL debounces, state propagation)
-  await page.waitForTimeout(500)
+  // Wait for the slice info to appear (proves grid data is parsed and maxSliceIndex is set)
+  await expect(page.getByText(/Slice: \d+ \/ 31/)).toBeVisible({ timeout: 10000 })
+}
+
+/** Enter slice mode and wait for the keymap to be active. */
+async function enterSliceMode(page: Page) {
+  await page.locator('body').press('s')
+  await expect(page.locator('.kbd-mode-indicator-label')).toHaveText('Slice')
+  // Allow one animation frame for the effective keymap to recompute after mode change
+  await page.waitForTimeout(100)
 }
 
 test.describe('Elvis E2E', () => {
@@ -81,8 +89,7 @@ test.describe('Elvis E2E', () => {
     // Record whether ?c= exists before interaction
     const hadCamBefore = urlParams(page).get('c')
 
-    // Press ArrowRight to orbit right by 90° — dispatch directly on document body
-    // to match how use-kbd listens for keyboard events
+    // Press ArrowRight to orbit right by 90°
     await page.locator('body').press('ArrowRight')
 
     // Wait for ?c= to appear (first interaction sets it)
@@ -90,13 +97,11 @@ test.describe('Elvis E2E', () => {
       if (!v) return false
       const parts = v.split(/[\s+]+/).map(Number)
       if (parts.length < 3) return false
-      // If we had a previous value, check theta changed
       if (hadCamBefore) {
         const prevTheta = parseFloat(hadCamBefore.split(/[\s+]+/)[0])
         const curTheta = parts[0]
         return Math.abs(Math.abs(curTheta - prevTheta) - 90) < 5
       }
-      // Otherwise just verify it appeared with valid numbers
       return parts.every(isFinite)
     }, { timeout: 5000 })
   })
@@ -111,7 +116,7 @@ test.describe('Elvis E2E', () => {
     // No ct= initially (null by default)
     expect(urlParams(page).get('ct')).toBeNull()
 
-    // Shift+ArrowRight triggers pan — dispatch on document body
+    // Shift+ArrowRight triggers pan
     await page.locator('body').press('Shift+ArrowRight')
 
     // Wait for ct= to appear with a valid 3-tuple
@@ -124,30 +129,22 @@ test.describe('Elvis E2E', () => {
 
   test('slice mode: step by 1', async ({ page }) => {
     await interceptS3(page)
-    // Pre-set si=16 to avoid relying on auto-set timing
     await page.goto('/?si=16&a=0')
 
     await waitForLoad(page)
-
-    // Confirm si=16
     await waitForParam(page, 'si', v => v === '16', { timeout: 10000 })
-    const initialSi = 16
 
-    // Press 's' to enter slice mode
-    await page.locator('body').press('s')
+    await enterSliceMode(page)
 
-    // Mode indicator should show "Slice"
-    await expect(page.locator('.kbd-mode-indicator-label')).toHaveText('Slice')
-
-    // Press ArrowRight to step +1
+    // Press ArrowRight to step slice index
     await page.locator('body').press('ArrowRight')
 
-    // si should change by exactly 1 (direction depends on sliceStepSign,
-    // but for a cubic cell at default camera, sign=1 → si increases)
+    // si should change by exactly 1 (sign depends on camera angle;
+    // for cubic cell at default camera with cam=null, sign=1 → si increases)
     await waitForParam(page, 'si', v => {
       if (v === null) return false
       const si = parseInt(v)
-      return si === initialSi + 1 || si === initialSi - 1
+      return si === 17 || si === 15
     })
   })
 
@@ -156,22 +153,17 @@ test.describe('Elvis E2E', () => {
     await page.goto('/?si=16&a=0')
 
     await waitForLoad(page)
-
-    // Confirm si=16 from URL
     await waitForParam(page, 'si', v => v === '16', { timeout: 10000 })
 
-    // Enter slice mode
-    await page.locator('body').press('s')
-    await expect(page.locator('.kbd-mode-indicator-label')).toHaveText('Slice')
+    await enterSliceMode(page)
 
     // Shift+ArrowRight to step by 10
     await page.locator('body').press('Shift+ArrowRight')
 
-    // si should change by 10 (or clamp to 0/31)
+    // si should change by 10 (sign=1 → 26, or sign=-1 → 6)
     await waitForParam(page, 'si', v => {
       if (v === null) return false
       const si = parseInt(v)
-      // Could be 26 (16+10) or 6 (16-10), depending on sign
       return si === 26 || si === 6
     })
   })
