@@ -502,6 +502,22 @@ export default function App() {
       },
     ],
   })
+  useActionPair('mode:slice:step10', {
+    label: 'Step slice back / forward \u00d710',
+    description: 'Move slice plane ten grid steps',
+    group: 'Slice',
+    mode: 'mode:slice',
+    actions: [
+      {
+        defaultBindings: ['shift+arrowleft'],
+        handler: () => { cancelSliceAnim(); setSliceIndex(Math.max(0, sliceIndexRef.current - 10)) },
+      },
+      {
+        defaultBindings: ['shift+arrowright'],
+        handler: () => { cancelSliceAnim(); setSliceIndex(Math.min(maxSliceIndexRef.current, sliceIndexRef.current + 10)) },
+      },
+    ],
+  })
   useActionPair('mode:slice:axis', {
     label: 'Prev / next slice axis',
     description: 'Cycle between X/Y/Z slice axes',
@@ -602,11 +618,11 @@ export default function App() {
     group: 'Slice',
     actions: [
       {
-        defaultBindings: ['alt+arrowleft'],
+        defaultBindings: ['meta+arrowleft'],
         handler: () => { sliceDirectionRef.current = 'backward'; setShowSlice(true); animateSliceToRef.current(0) },
       },
       {
-        defaultBindings: ['alt+arrowright'],
+        defaultBindings: ['meta+arrowright'],
         handler: () => { sliceDirectionRef.current = 'forward'; setShowSlice(true); animateSliceToRef.current(maxSliceIndexRef.current) },
       },
     ],
@@ -637,11 +653,11 @@ export default function App() {
     group: 'Slice',
     actions: [
       {
-        defaultBindings: ['home'],
+        defaultBindings: ['meta+shift+arrowleft'],
         handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(0) },
       },
       {
-        defaultBindings: ['end'],
+        defaultBindings: ['meta+shift+arrowright'],
         handler: () => { cancelSliceAnim(); setShowSlice(true); setSliceIndex(maxSliceIndexRef.current) },
       },
     ],
