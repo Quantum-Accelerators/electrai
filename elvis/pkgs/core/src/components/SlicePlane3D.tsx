@@ -105,6 +105,9 @@ export function SlicePlane3D({ lattice, axis, sliceIndex, dims, data }: SlicePla
         opacity={0.85}
         side={DoubleSide}
         depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={1}
+        polygonOffsetUnits={1}
       />
     </mesh>
   )

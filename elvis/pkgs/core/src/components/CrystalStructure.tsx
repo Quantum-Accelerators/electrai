@@ -262,7 +262,7 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
         const css = `#${color.toString(16).padStart(6, '0')}`
         return positions.map((pos, i) => (
           <Billboard key={`label-${element}-${i}`} position={[pos[0], pos[1] + radius * 0.4 + 0.15, pos[2]]}>
-            <Text fontSize={0.2} color={css} anchorY="bottom" fillOpacity={0.45}>
+            <Text fontSize={0.2} color={css} anchorY="bottom" fillOpacity={0.85} outlineWidth={0.015} outlineColor="#000000">
               {element}
             </Text>
           </Billboard>
