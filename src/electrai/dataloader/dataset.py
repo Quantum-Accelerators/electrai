@@ -107,7 +107,7 @@ class RhoData(Dataset):
         else:
             raise ValueError("No filename found.")
 
-        self.category = Path(datapath).name.split("_")[0]  # example: mp_filelist.txt
+        self.category = Path(datapath).name.split("_")[0]
         self.root = Path(datapath).parent
         self.member_list = member_list
 
@@ -116,7 +116,7 @@ class RhoData(Dataset):
 
     def __getitem__(self, index):
         index = self.member_list[index]
-        data, label = utils.load_numpy_rho(
+        data, label, lattice = utils.load_numpy_rho(
             root=self.root,
             category=self.category,
             index=index,
@@ -125,4 +125,4 @@ class RhoData(Dataset):
         )
         data = data.unsqueeze(0)
         label = label.unsqueeze(0)
-        return {"data": data, "label": label, "index": index}
+        return {"data": data, "label": label, "index": index, "lattice": lattice}

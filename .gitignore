@@ -2,7 +2,7 @@
 .cache/
 docs/reference/*
 ./examples/MP/experiments
-./examples/QM9s
+./examples/QM9
 *doctrees*
 /site
 
