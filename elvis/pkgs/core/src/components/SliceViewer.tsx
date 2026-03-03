@@ -8,9 +8,10 @@ interface SliceViewerProps {
   sliceIndex: number
 }
 
-export function SliceViewer({ volume, axis, sliceIndex }: SliceViewerProps) {
+export function SliceViewer({ volume, axis, sliceIndex: rawSliceIndex }: SliceViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { dims, data } = volume.grid
+  const sliceIndex = Math.max(0, Math.min(rawSliceIndex, dims[axis] - 1))
 
   // Determine the 2D slice dimensions
   const [width, height] = useMemo(() => {

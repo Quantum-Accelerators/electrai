@@ -8,6 +8,7 @@ const VIRIDIS: [number, number, number][] = [
 
 /** Interpolate the viridis colormap at t ∈ [0, 1] → [r, g, b] in 0–255. */
 export function viridis(t: number): [number, number, number] {
+  if (!isFinite(t)) return [0, 0, 0]
   const idx = Math.max(0, Math.min(1, t)) * (VIRIDIS.length - 1)
   const lo = Math.floor(idx)
   const hi = Math.min(lo + 1, VIRIDIS.length - 1)

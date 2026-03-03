@@ -260,6 +260,13 @@ export default function App() {
     return primaryFile.data.grid.dims[sliceAxis] - 1
   }, [primaryFile, sliceAxis])
 
+  // Clamp sliceIndex when grid dimensions change (e.g. new material, axis switch)
+  useEffect(() => {
+    if (sliceIndex !== null && primaryFile && sliceIndex > maxSliceIndex) {
+      setSliceIndex(maxSliceIndex)
+    }
+  }, [maxSliceIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Refs for values used in useActionPair/useArrowGroup handlers,
   // which have stale closures due to useMemo in those hooks
   const sliceIndexRef = useRef(sliceIndex ?? 0)
@@ -1109,6 +1116,13 @@ export default function App() {
     () => Math.max(0, Math.min(isoLevel ?? 0, maxDensity)),
     [isoLevel, maxDensity],
   )
+
+  // Clamp isoLevel URL param when density range changes (e.g. new material)
+  useEffect(() => {
+    if (isoLevel !== null && primaryFile && isoLevel > maxDensity) {
+      setIsoLevel(maxDensity)
+    }
+  }, [maxDensity]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isoLevelRef = useRef(isoLevel ?? 0)
   isoLevelRef.current = isoLevel ?? 0
