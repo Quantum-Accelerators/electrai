@@ -85,6 +85,8 @@ test.describe('Elvis E2E', () => {
     await page.goto('/?od=90&a=0.1')
 
     await waitForLoad(page)
+    // Allow keyboard hooks to register after Three.js scene initializes
+    await page.waitForTimeout(200)
 
     // Record whether ?c= exists before interaction
     const hadCamBefore = urlParams(page).get('c')
@@ -103,7 +105,7 @@ test.describe('Elvis E2E', () => {
         return Math.abs(Math.abs(curTheta - prevTheta) - 90) < 5
       }
       return parts.every(isFinite)
-    }, { timeout: 5000 })
+    })
   })
 
   test('pan camera', async ({ page }) => {
@@ -112,6 +114,8 @@ test.describe('Elvis E2E', () => {
     await page.goto('/?pd=1&a=0.1')
 
     await waitForLoad(page)
+    // Allow keyboard hooks to register after Three.js scene initializes
+    await page.waitForTimeout(200)
 
     // No ct= initially (null by default)
     expect(urlParams(page).get('ct')).toBeNull()
@@ -124,7 +128,7 @@ test.describe('Elvis E2E', () => {
       if (!v) return false
       const parts = v.trim().split(/[\s+]+/).map(Number)
       return parts.length === 3 && parts.every(isFinite)
-    }, { timeout: 5000 })
+    })
   })
 
   test('slice mode: step by 1', async ({ page }) => {

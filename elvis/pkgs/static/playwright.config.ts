@@ -23,7 +23,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
+    command: 'pnpm build && vite preview --port 3150 --strictPort',
     port: 3150,
     reuseExistingServer: !process.env.CI,
   },
