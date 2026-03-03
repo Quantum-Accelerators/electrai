@@ -15,7 +15,7 @@ interface ComparisonViewProps {
   dashedLines: boolean
   activeMovements?: RefObject<Set<string>>
   tilePadding?: number
-  tileFade?: boolean
+  tileFade?: number
 }
 
 export function ComparisonView({ volumes, isoLevel, opacity, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, activeMovements, tilePadding, tileFade }: ComparisonViewProps) {

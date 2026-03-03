@@ -19,7 +19,7 @@ interface CrystalStructureProps {
   lineWidth?: number
   tiles?: TileInfo[]
   tilePadding?: number
-  tileFade?: boolean
+  tileFade?: number
 }
 
 // Lattice vector colors — YOV (yellow, orange, violet), warm complement of gizmo RGB
@@ -109,15 +109,17 @@ function quantizeOpacity(o: number): number {
   return Math.round(o * 20) / 20
 }
 
-export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, lineWidth = 1, tiles, tilePadding = 0, tileFade = true }: CrystalStructureProps) {
+export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, lineWidth = 1, tiles, tilePadding = 0, tileFade = 1 }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
   // Group atoms by (element, quantized opacity) for tiled instanced rendering
   // When tilePadding > 0, per-atom opacity is computed from fractional-coordinate distance
-  const { atomGroups, primaryAtomGroups } = useMemo(() => {
+  // Label atoms: only atoms whose fractional center is inside [0,1]³ (with small tolerance for boundary atoms)
+  const { atomGroups, labelAtoms } = useMemo(() => {
     const groups = new Map<string, Array<[number, number, number]>>()
-    const primaryGroups = new Map<string, Array<[number, number, number]>>()
+    const labels: Array<{ element: string; pos: [number, number, number] }> = []
     const tileList = tiles ?? [{ fracOffset: [0, 0, 0] as [number, number, number], cartOffset: [0, 0, 0] as [number, number, number], opacity: 1, isPrimary: true }]
+    const eps = 0.01
 
     for (const tile of tileList) {
       if (tile.opacity <= 0) continue
@@ -143,14 +145,14 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
         arr.push(pos)
         groups.set(key, arr)
 
-        if (tile.isPrimary) {
-          const pArr = primaryGroups.get(atom.element) ?? []
-          pArr.push(pos)
-          primaryGroups.set(atom.element, pArr)
-        }
+        // Collect label candidates: atoms inside or on boundary of primary cell
+        const inCell = fracPos[0] >= -eps && fracPos[0] <= 1 + eps &&
+                       fracPos[1] >= -eps && fracPos[1] <= 1 + eps &&
+                       fracPos[2] >= -eps && fracPos[2] <= 1 + eps
+        if (inCell) labels.push({ element: atom.element, pos })
       }
     }
-    return { atomGroups: groups, primaryAtomGroups: primaryGroups }
+    return { atomGroups: groups, labelAtoms: labels }
   }, [lattice, structure, tiles, tilePadding, tileFade])
 
   const origin = useMemo(() => fracToCart(lattice, [0, 0, 0]), [lattice])
@@ -257,16 +259,16 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
           <AtomInstances key={key} element={element} positions={positions} opacity={opacity} />
         )
       })}
-      {showAtoms && showAtomLabels && Array.from(primaryAtomGroups.entries()).map(([element, positions]) => {
+      {showAtoms && showAtomLabels && labelAtoms.map(({ element, pos }, i) => {
         const { color, radius } = getElement(element)
         const css = `#${color.toString(16).padStart(6, '0')}`
-        return positions.map((pos, i) => (
-          <Billboard key={`label-${element}-${i}`} position={[pos[0], pos[1] + radius * 0.4 + 0.15, pos[2]]}>
+        return (
+          <Billboard key={`label-${i}`} position={[pos[0], pos[1] + radius * 0.4 + 0.15, pos[2]]}>
             <Text fontSize={0.2} color={css} anchorY="bottom" fillOpacity={0.85} outlineWidth={0.015} outlineColor="#000000">
               {element}
             </Text>
           </Billboard>
-        ))
+        )
       })}
       {showAbcCell && (
         <>

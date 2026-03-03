@@ -179,7 +179,7 @@ export default function App() {
   const [sliceSpeed, setSliceSpeed] = useUrlState('ss', intParam(120))
   const [lineWidth, setLineWidth] = useUrlState('lw', floatParam({ default: 1, encoding: 'string', decimals: 1 }))
   const [tilePadding, setTilePadding] = useUrlState('tp', floatParam({ default: 0.5, encoding: 'string', decimals: 2 }), { debounce: 300 })
-  const [tileFade, setTileFade] = useUrlState('nf', boolTrueParam)
+  const [tileFade, setTileFade] = useUrlState('nf', floatParam({ default: 1, encoding: 'string', decimals: 1 }), { debounce: 300 })
   const [cam, setCam] = useUrlState('c', camParam)
   const [camTarget, setCamTarget] = useUrlState('ct', camTargetParam, { debounce: 500 })
   const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID), { push: true })
@@ -456,11 +456,11 @@ export default function App() {
   })
   useAction('view:toggle-tile-fade', {
     label: 'Toggle tile fade',
-    description: 'Fade periodic tile copies',
+    description: 'Fade periodic tile copies (0=off, >0=power exponent)',
     keywords: ['tiling', 'fade', 'opacity'],
     group: 'View',
     defaultBindings: ['f'],
-    handler: () => setTileFade(!tileFade),
+    handler: () => setTileFade(tileFade > 0 ? 0 : 1),
   })
   useActionPair('iso:step', {
     label: 'Decrease / increase iso level',

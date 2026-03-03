@@ -36,7 +36,7 @@ interface DensityViewerProps {
   sliceIndex?: number
   label?: string
   tilePadding?: number
-  tileFade?: boolean
+  tileFade?: number
   abcIsXyz?: boolean
 }
 
@@ -62,7 +62,7 @@ export function DensityViewer({
   sliceIndex,
   label,
   tilePadding = 0,
-  tileFade = true,
+  tileFade = 1,
   abcIsXyz,
 }: DensityViewerProps) {
   const tiles = useMemo(() => {

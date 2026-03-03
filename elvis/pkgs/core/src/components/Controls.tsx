@@ -57,8 +57,8 @@ interface ControlsProps {
   abcIsXyz?: boolean
   tilePadding?: number
   onTilePaddingChange?: (v: number) => void
-  tileFade?: boolean
-  onTileFadeChange?: (v: boolean) => void
+  tileFade?: number
+  onTileFadeChange?: (v: number) => void
 }
 
 const AXIS_LABELS = ['X', 'Y', 'Z'] as const
@@ -275,9 +275,17 @@ export function Controls({
               />
             </label>
             {hasTiling && onTileFadeChange && (
-              <label className={styles.toggle}>
-                <input type="checkbox" checked={tileFade ?? true} onChange={e => onTileFadeChange(e.target.checked)} />
-                Fade
+              <label className={styles.controlLabel}>
+                Fade: {(tileFade ?? 1) === 0 ? 'off' : (tileFade ?? 1).toFixed(1)}
+                <input
+                  type="range"
+                  min={0}
+                  max={5}
+                  step={0.5}
+                  value={tileFade ?? 1}
+                  onChange={e => onTileFadeChange(parseFloat(e.target.value))}
+                  className={styles.slider}
+                />
               </label>
             )}
           </div>

@@ -13,20 +13,20 @@ type ShaderObj = {
  * fade into any Three.js material shader (MeshStandard, MeshBasic, LineDashed, etc.)
  *
  * Fragments beyond `padding` distance (in fractional lattice coords) from the
- * primary cell [0,1]³ are discarded. When fade=true, opacity fades linearly
- * from 1 at the cell boundary to 0 at the padding edge.
+ * primary cell [0,1]³ are discarded. When fade > 0, opacity follows a power
+ * curve: (1 - d/padding)^fade. fade=0 means hard cutoff (no fade).
  */
 export function tileFadeCompile(
   lattice: LatticeMatrix,
   padding: number,
-  fade: boolean,
+  fade: number,
 ): (shader: ShaderObj) => void {
   const invLat = new Matrix4().copy(latticeToMatrix4(lattice)).invert()
 
   return (shader: ShaderObj) => {
     shader.uniforms.uTFInvLat = { value: invLat }
     shader.uniforms.uTFPad = { value: padding }
-    shader.uniforms.uTFFade = { value: fade ? 1.0 : 0.0 }
+    shader.uniforms.uTFFade = { value: fade }
 
     // Vertex: compute world position and pass to fragment
     shader.vertexShader = shader.vertexShader.replace(
@@ -58,7 +58,7 @@ uniform float uTFFade;`,
 {vec3 _f=(uTFInvLat*vec4(vTFWP,1.0)).xyz;
 float _d=max(max(0.0,max(-_f.x,_f.x-1.0)),max(max(0.0,max(-_f.y,_f.y-1.0)),max(0.0,max(-_f.z,_f.z-1.0))));
 if(_d>=uTFPad)discard;
-if(uTFFade>0.5)gl_FragColor.a*=1.0-_d/uTFPad;}`,
+if(uTFFade>0.0)gl_FragColor.a*=pow(1.0-_d/uTFPad,uTFFade);}`,
     )
   }
 }

@@ -10,10 +10,10 @@ interface IsosurfaceRendererProps {
   opacity: number
   tiles?: TileInfo[]
   tilePadding?: number
-  tileFade?: boolean
+  tileFade?: number
 }
 
-export function IsosurfaceRenderer({ volume, isoLevel, opacity, tiles, tilePadding = 0, tileFade = true }: IsosurfaceRendererProps) {
+export function IsosurfaceRenderer({ volume, isoLevel, opacity, tiles, tilePadding = 0, tileFade = 1 }: IsosurfaceRendererProps) {
   const extended = useMemo(
     () => extendPeriodicGrid(volume.grid.data, volume.grid.dims),
     [volume],

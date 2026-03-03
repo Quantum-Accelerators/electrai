@@ -22,18 +22,19 @@ export function distFromPrimaryCell(frac: [number, number, number]): number {
 /**
  * Compute per-atom opacity based on fractional position relative to the primary cell.
  * padding: how far beyond the primary cell boundary to show atoms.
- * fade: if true, linear fade from 1 at the boundary to 0 at the padding edge.
- *        if false, hard cutoff at the padding boundary.
+ * fade: power exponent for fade curve. 0 = no fade (hard cutoff at padding edge),
+ *       1 = linear, >1 = steep initial drop then gradual tail.
+ *       opacity = (1 - d/padding)^fade
  */
 export function atomOpacity(
   fracPos: [number, number, number],
   padding: number,
-  fade: boolean,
+  fade: number,
 ): number {
   const dist = distFromPrimaryCell(fracPos)
   if (dist >= padding) return 0
-  if (!fade) return 1
-  return 1 - dist / padding
+  if (fade <= 0) return 1
+  return Math.pow(1 - dist / padding, fade)
 }
 
 /**
@@ -42,14 +43,14 @@ export function atomOpacity(
  * padding: extra cells around the primary cell, in each direction (along abc axes).
  *   0 = primary only. Symmetric offsets from -ceil(padding) to +ceil(padding).
  *
- * fade: if true, per-tile opacity fades linearly based on tile center distance from primary cell.
+ * fade: power exponent for opacity curve. 0 = no fade, 1 = linear, >1 = steep then gradual.
  *
  * Per-tile opacity is an approximation (for isosurface/slice/edges); atoms use atomOpacity().
  */
 export function computeTiles(
   lattice: LatticeMatrix,
   padding: number,
-  fade: boolean,
+  fade: number,
 ): TileInfo[] {
   if (padding <= 0) return [{ fracOffset: [0, 0, 0], cartOffset: [0, 0, 0] as [number, number, number], opacity: 1, isPrimary: true }]
 
@@ -80,8 +81,8 @@ export function computeTiles(
         if (minDist >= padding) continue
 
         let opacity = 1
-        if (fade) {
-          opacity = 1 - minDist / padding
+        if (fade > 0) {
+          opacity = Math.pow(1 - minDist / padding, fade)
         }
 
         tiles.push({ fracOffset, cartOffset, opacity, isPrimary: false })
