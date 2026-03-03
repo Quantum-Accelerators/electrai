@@ -28,7 +28,8 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from optuna.integration import PyTorchLightningPruningCallback
-from src.electrai.lightning import LightningGenerator
+
+from electrai.lightning import LightningGenerator
 
 if TYPE_CHECKING:
     from optuna import Trial

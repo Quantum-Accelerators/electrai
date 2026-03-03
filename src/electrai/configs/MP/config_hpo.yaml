@@ -60,7 +60,7 @@ hpo:
 
 # Fixed dataset parameters (not tuned)
 data:
-  _target_: src.electrai.dataloader.dataset.RhoRead
+  _target_: electrai.dataloader.dataset.RhoRead
   root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
   split_file: null
   precision: f32
@@ -75,7 +75,7 @@ data:
 
 # Fixed model parameters
 model:
-  _target_: src.electrai.model.resunet.ResUNet3D
+  _target_: electrai.model.resunet.ResUNet3D
   in_channels: 1
   out_channels: 1
   n_channels: 32  # overridden by search_space
