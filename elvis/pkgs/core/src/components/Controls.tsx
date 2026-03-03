@@ -33,6 +33,8 @@ interface ControlsProps {
   onZoomPctChange: (v: number) => void
   panStep: number
   onPanStepChange: (v: number) => void
+  rollDeg: number
+  onRollDegChange: (v: number) => void
   showSlice: boolean
   onShowSliceChange: (v: boolean) => void
   sliceAxis: 0 | 1 | 2
@@ -102,6 +104,8 @@ export function Controls({
   onZoomPctChange,
   panStep,
   onPanStepChange,
+  rollDeg,
+  onRollDegChange,
   showSlice,
   onShowSliceChange,
   sliceAxis,
@@ -324,6 +328,20 @@ export function Controls({
                 onClick={e => e.stopPropagation()}
                 style={{ width: 36, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
               />
+            </>}
+          </label>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={rollDeg > 0} onChange={e => onRollDegChange(e.target.checked ? 90 : 0)} />
+            Roll step{rollDeg > 0 && <>:
+              <input
+                type="number"
+                min={1}
+                max={360}
+                value={rollDeg}
+                onChange={e => { const v = parseInt(e.target.value); if (v > 0) onRollDegChange(v) }}
+                onClick={e => e.stopPropagation()}
+                style={{ width: 32, marginLeft: 4, padding: '0 2px', background: '#2a2a3e', color: '#ccc', border: '1px solid #555', borderRadius: 3, fontSize: 12, textAlign: 'right' }}
+              /><span style={{ marginLeft: 1 }}>°</span>
             </>}
           </label>
           <label className={styles.controlLabel}>

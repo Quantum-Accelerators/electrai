@@ -29,6 +29,7 @@ export type CameraSnapTarget =
   | { type: 'look-down', direction: [number, number, number] }
   | { type: 'align-up', axis: [number, number, number] }
   | { type: 'orbit-step', direction: 'left' | 'right' | 'up' | 'down', degrees: number }
+  | { type: 'roll-step', direction: 'cw' | 'ccw', degrees: number }
   | { type: 'zoom-step', direction: 'in' | 'out', factor: number }
   | { type: 'pan-step', direction: 'left' | 'right' | 'up' | 'down', distance: number }
   | { type: 'reset-pan' }
@@ -206,6 +207,12 @@ export function CameraController({
         else if (snap.direction === 'up') _rotQ.setFromAxisAngle(_right, -stepRad)
         else _rotQ.setFromAxisAngle(_right, stepRad)
         endQuat = new Quaternion().multiplyQuaternions(_rotQ, startQuat)
+      } else if (snap.type === 'roll-step') {
+        camera.getWorldDirection(_viewDir)
+        const stepRad = snap.degrees * Math.PI / 180
+        const sign = snap.direction === 'cw' ? -1 : 1
+        _rotQ.setFromAxisAngle(_viewDir, sign * stepRad)
+        endQuat = new Quaternion().multiplyQuaternions(_rotQ, startQuat)
       } else if (snap.type === 'zoom-step') {
         endQuat = startQuat.clone()
         endRadius = snap.direction === 'in' ? radius / snap.factor : radius * snap.factor
@@ -231,7 +238,7 @@ export function CameraController({
       }
 
       // Remember step snaps for key-hold chaining
-      const isStep = snap.type === 'orbit-step' || snap.type === 'zoom-step' || snap.type === 'pan-step'
+      const isStep = snap.type === 'orbit-step' || snap.type === 'roll-step' || snap.type === 'zoom-step' || snap.type === 'pan-step'
       lastStepRef.current = isStep ? snap : null
 
       if (endQuat) {
@@ -279,6 +286,7 @@ export function CameraController({
         if (last && activeMovements.current) {
           let key: string | null = null
           if (last.type === 'orbit-step') key = `orbit-${last.direction}`
+          else if (last.type === 'roll-step') key = `roll-${last.direction}`
           else if (last.type === 'zoom-step') key = `zoom-${last.direction}`
           else if (last.type === 'pan-step') key = `pan-${last.direction}`
           if (key && activeMovements.current.has(key)) {
@@ -297,6 +305,7 @@ export function CameraController({
         // Skip continuous movement if a discrete step chain is pending
         const pendingSnap = cameraSnap?.current?.type
         const discreteOrbit = pendingSnap === 'orbit-step'
+        const discreteRoll = pendingSnap === 'roll-step'
         const discreteZoom = pendingSnap === 'zoom-step'
         const discretePan = pendingSnap === 'pan-step'
 
@@ -349,7 +358,7 @@ export function CameraController({
         }
 
         // Roll: rotate camera up-vector around viewing axis
-        if (movements.has('roll-cw') || movements.has('roll-ccw')) {
+        if (!discreteRoll && (movements.has('roll-cw') || movements.has('roll-ccw'))) {
           camera.getWorldDirection(_viewDir)
           const angle = (movements.has('roll-cw') ? -1 : 1) * ROLL_SPEED * dt
           camera.up.applyAxisAngle(_viewDir, angle)

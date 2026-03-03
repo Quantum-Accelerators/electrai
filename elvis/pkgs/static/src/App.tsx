@@ -172,6 +172,7 @@ export default function App() {
   const [orbitDeg, setOrbitDeg] = useUrlState('od', intParam(30))
   const [zoomPct, setZoomPct] = useUrlState('zd', intParam(0))
   const [panStep, setPanStep] = useUrlState('pd', floatParam({ default: 0, encoding: 'string', decimals: 1 }))
+  const [rollDeg, setRollDeg] = useUrlState('rd', intParam(0))
   const [animDuration, setAnimDuration] = useUrlState('a', floatParam({ default: 0.5, encoding: 'string', decimals: 1 }))
   const [sweepMode, setSweepMode] = useUrlState('sm', stringParam('d'))
   const [sweepDuration, setSweepDuration] = useUrlState('sd', floatParam({ default: 2, encoding: 'string', decimals: 1 }), { debounce: 300 })
@@ -271,6 +272,8 @@ export default function App() {
   panStepRef.current = panStep
   const zoomPctRef = useRef(zoomPct)
   zoomPctRef.current = zoomPct
+  const rollDegRef = useRef(rollDeg)
+  rollDegRef.current = rollDeg
 
   const handleSliceAxisChange = useCallback((axis: 0 | 1 | 2) => {
     setSliceAxis(axis)
@@ -836,13 +839,36 @@ export default function App() {
     actions: [
       {
         defaultBindings: ['['],
-        handler: (e) => { if (e?.repeat) return; startMovement('roll-ccw') },
+        handler: (e) => { if (e?.repeat) return; startMovement('roll-ccw'); if (rollDegRef.current > 0) snapCamera({ type: 'roll-step', direction: 'ccw', degrees: rollDegRef.current }) },
       },
       {
         defaultBindings: [']'],
-        handler: (e) => { if (e?.repeat) return; startMovement('roll-cw') },
+        handler: (e) => { if (e?.repeat) return; startMovement('roll-cw'); if (rollDegRef.current > 0) snapCamera({ type: 'roll-step', direction: 'cw', degrees: rollDegRef.current }) },
       },
     ],
+  })
+  useActionPair('view:roll-step', {
+    label: 'Roll step: set / toggle',
+    description: 'Discrete roll angle steps (0 = smooth continuous)',
+    keywords: ['deg', 'discrete', 'step', 'roll'],
+    group: 'View',
+    actions: [
+      { defaultBindings: ['\\d+ shift+r'], handler: (_e, captures) => setRollDeg(captures?.[0] ?? 90) },
+      { defaultBindings: ['t r'], handler: () => setRollDeg(rollDeg > 0 ? 0 : 90) },
+    ],
+  })
+  // Ctrl+arrows: left/right = roll, up/down = orbit (same as unmodified up/down)
+  useArrowGroup('nav:roll-arrows', {
+    label: 'Roll / Orbit (ctrl)',
+    description: 'Ctrl+Left/Right rolls camera; Ctrl+Up/Down orbits vertically',
+    group: 'Camera',
+    defaultModifiers: ['ctrl'],
+    handlers: {
+      left:  (e) => { if (e?.repeat) return; startMovement('roll-ccw'); if (rollDegRef.current > 0) snapCamera({ type: 'roll-step', direction: 'ccw', degrees: rollDegRef.current }) },
+      right: (e) => { if (e?.repeat) return; startMovement('roll-cw');  if (rollDegRef.current > 0) snapCamera({ type: 'roll-step', direction: 'cw',  degrees: rollDegRef.current }) },
+      up:    (e) => { if (e?.repeat) return; startMovement('orbit-up');    if (orbitDegRef.current > 0) snapCamera({ type: 'orbit-step', direction: 'up',    degrees: orbitDegRef.current }) },
+      down:  (e) => { if (e?.repeat) return; startMovement('orbit-down');  if (orbitDegRef.current > 0) snapCamera({ type: 'orbit-step', direction: 'down',  degrees: orbitDegRef.current }) },
+    },
   })
   useAction('nav:reset-pan', {
     label: 'Reset center',
@@ -1273,6 +1299,8 @@ export default function App() {
               onZoomPctChange={setZoomPct}
               panStep={panStep}
               onPanStepChange={setPanStep}
+              rollDeg={rollDeg}
+              onRollDegChange={setRollDeg}
               showSlice={showSlice}
               onShowSliceChange={setShowSlice}
               sliceAxis={sliceAxis}
