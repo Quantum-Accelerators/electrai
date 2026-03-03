@@ -22,7 +22,6 @@ interface DensityViewerProps {
   showAtomLabels: boolean
   showAbcCell: boolean
   showXyzBox: boolean
-  showWorldAxes: boolean
   dashedLines: boolean
   lineWidth?: number
   activeMovements?: RefObject<Set<string>>
@@ -48,7 +47,6 @@ export function DensityViewer({
   showAtomLabels,
   showAbcCell,
   showXyzBox,
-  showWorldAxes,
   dashedLines,
   lineWidth = 1,
   activeMovements,
@@ -105,7 +103,7 @@ export function DensityViewer({
         <directionalLight position={[-5, -5, 5]} intensity={0.4} />
 
         <IsosurfaceRenderer volume={volume} isoLevel={isoLevel} opacity={opacity} tiles={tiles} tilePadding={tilePadding} tileFade={tileFade} />
-        <CrystalStructure volume={volume} showAtoms={showAtoms} showAtomLabels={showAtomLabels} showAbcCell={showAbcCell} showXyzBox={showXyzBox} showWorldAxes={showWorldAxes} dashedLines={dashedLines} lineWidth={lineWidth} tiles={tiles} tilePadding={tilePadding} tileFade={tileFade} />
+        <CrystalStructure volume={volume} showAtoms={showAtoms} showAtomLabels={showAtomLabels} showAbcCell={showAbcCell} showXyzBox={showXyzBox} dashedLines={dashedLines} lineWidth={lineWidth} tiles={tiles} tilePadding={tilePadding} tileFade={tileFade} />
         {showSlice && sliceAxis !== undefined && sliceIndex !== undefined && (
           <SlicePlane3D lattice={volume.lattice} axis={sliceAxis} sliceIndex={sliceIndex} dims={volume.grid.dims} data={volume.grid.data} />
         )}

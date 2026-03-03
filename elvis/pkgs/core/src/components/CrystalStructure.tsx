@@ -14,7 +14,6 @@ interface CrystalStructureProps {
   showAtomLabels: boolean
   showAbcCell: boolean
   showXyzBox: boolean
-  showWorldAxes: boolean
   dashedLines: boolean
   lineWidth?: number
   tiles?: TileInfo[]
@@ -109,7 +108,7 @@ function quantizeOpacity(o: number): number {
   return Math.round(o * 20) / 20
 }
 
-export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, showWorldAxes, dashedLines, lineWidth = 1, tiles, tilePadding = 0, tileFade = 1 }: CrystalStructureProps) {
+export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCell, showXyzBox, dashedLines, lineWidth = 1, tiles, tilePadding = 0, tileFade = 1 }: CrystalStructureProps) {
   const { lattice, structure } = volume
 
   // Group atoms by (element, quantized opacity) for tiled instanced rendering
@@ -330,7 +329,7 @@ export function CrystalStructure({ volume, showAtoms, showAtomLabels, showAbcCel
           />
         )
       ))}
-      {showWorldAxes && (
+      {showXyzBox && (
         <>
           {worldAxesData.endpoints.map((ep, i) => (
             <AxisCylinder key={`world-${i}`} from={worldAxesData.origin} to={ep} color={WORLD_COLORS[i]} radius={0.06 * lineWidth} />

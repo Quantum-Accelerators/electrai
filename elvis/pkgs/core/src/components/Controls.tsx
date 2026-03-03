@@ -23,8 +23,6 @@ interface ControlsProps {
   onShowAbcCellChange: (v: boolean) => void
   showXyzBox: boolean
   onShowXyzBoxChange: (v: boolean) => void
-  showWorldAxes: boolean
-  onShowWorldAxesChange: (v: boolean) => void
   dashedLines: boolean
   onDashedLinesChange: (v: boolean) => void
   orbitDeg: number
@@ -54,7 +52,6 @@ interface ControlsProps {
   filename: string
   elements?: string[]
   counts?: number[]
-  abcIsXyz?: boolean
   tilePadding?: number
   onTilePaddingChange?: (v: number) => void
   tileFade?: number
@@ -94,8 +91,6 @@ export function Controls({
   onShowAbcCellChange,
   showXyzBox,
   onShowXyzBoxChange,
-  showWorldAxes,
-  onShowWorldAxesChange,
   dashedLines,
   onDashedLinesChange,
   orbitDeg,
@@ -125,7 +120,6 @@ export function Controls({
   filename,
   elements,
   counts,
-  abcIsXyz,
   tilePadding,
   onTilePaddingChange,
   tileFade,
@@ -224,21 +218,14 @@ export function Controls({
             Atom labels
           </label>
 
-          {!abcIsXyz && (
-            <label className={styles.toggle}>
-              <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
-              Show abc cell
-            </label>
-          )}
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={showAbcCell} onChange={e => onShowAbcCellChange(e.target.checked)} />
+            Show abc box
+          </label>
 
           <label className={styles.toggle}>
             <input type="checkbox" checked={showXyzBox} onChange={e => onShowXyzBoxChange(e.target.checked)} />
             Show XYZ box
-          </label>
-
-          <label className={styles.toggle}>
-            <input type="checkbox" checked={showWorldAxes} onChange={e => onShowWorldAxesChange(e.target.checked)} />
-            Show XYZ axes
           </label>
 
           <label className={styles.toggle}>
