@@ -164,7 +164,6 @@ export default function App() {
   const [showAbcCell, setShowAbcCell] = useUrlState('hc', boolTrueParam)
   const [showXyzBox, setShowXyzBox] = useUrlState('xb', boolParam)
   const [showAtomLabels, setShowAtomLabels] = useUrlState('al', boolParam)
-  const [showWorldAxes, setShowWorldAxes] = useUrlState('xa', boolParam)
   const [dashedLines, setDashedLines] = useUrlState('dl', boolParam)
   const [showSlice, setShowSlice] = useUrlState('sl', boolTrueParam)
   const [sliceAxis, setSliceAxis] = useUrlState('sa', intParam(2)) as [0 | 1 | 2, (v: 0 | 1 | 2) => void]
@@ -228,12 +227,15 @@ export default function App() {
   const cameraSnap = useRef<CameraSnapTarget | null>(null)
   const initialCamera = useRef<CamState>(cam)
   const initialTargetOffset = useRef<CamTarget>(camTarget)
+  const cameraInteracted = useRef(cam !== null)
 
   const startMovement = useCallback((dir: string) => {
     activeMovements.current.add(dir)
+    cameraInteracted.current = true
   }, [])
 
   const handleCameraChange = useCallback((theta: number, phi: number, zoom: number, roll: number, targetOffset?: [number, number, number]) => {
+    if (!cameraInteracted.current) return
     setCam([theta, phi, zoom, roll])
     setCamTarget(targetOffset ?? null)
   }, [setCam, setCamTarget])
@@ -260,6 +262,12 @@ export default function App() {
     return primaryFile.data.grid.dims[sliceAxis] - 1
   }, [primaryFile, sliceAxis])
 
+  const defaultSliceIndex = useMemo(() => Math.floor(maxSliceIndex / 2), [maxSliceIndex])
+  const effectiveSliceIndex = useMemo(
+    () => Math.max(0, Math.min(sliceIndex ?? defaultSliceIndex, maxSliceIndex)),
+    [sliceIndex, defaultSliceIndex, maxSliceIndex],
+  )
+
   // Clamp sliceIndex when grid dimensions change (e.g. new material, axis switch)
   useEffect(() => {
     if (sliceIndex !== null && primaryFile && sliceIndex > maxSliceIndex) {
@@ -269,8 +277,8 @@ export default function App() {
 
   // Refs for values used in useActionPair/useArrowGroup handlers,
   // which have stale closures due to useMemo in those hooks
-  const sliceIndexRef = useRef(sliceIndex ?? 0)
-  sliceIndexRef.current = sliceIndex ?? 0
+  const sliceIndexRef = useRef(effectiveSliceIndex)
+  sliceIndexRef.current = effectiveSliceIndex
   const maxSliceIndexRef = useRef(maxSliceIndex)
   maxSliceIndexRef.current = maxSliceIndex
   const orbitDegRef = useRef(orbitDeg)
@@ -375,43 +383,24 @@ export default function App() {
            Math.abs(lat[6]) < eps && Math.abs(lat[7]) < eps
   }, [primaryFile])
 
-  // Auto-hide abc cell when lattice is axis-aligned (abc ≡ xyz)
-  useEffect(() => {
-    if (abcIsXyz && showAbcCell) {
-      setShowAbcCell(false)
-      if (!showXyzBox) setShowXyzBox(true)
-    }
-  }, [abcIsXyz]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const snapCamera = useCallback((snap: CameraSnapTarget) => {
+    cameraInteracted.current = true
     cameraSnap.current = snap
   }, [])
 
   // View toggles: single-letter where free, `t _` sequence where letter conflicts
   useAction('view:toggle-xyz', {
-    label: 'Toggle XYZ (axes + box)',
+    label: 'Toggle XYZ box',
     description: 'Show/hide XYZ coordinate axes and bounding box',
     group: 'View',
     defaultBindings: ['t x'],
-    handler: () => {
-      const anyOn = showXyzBox || showWorldAxes
-      setShowXyzBox(!anyOn)
-      setShowWorldAxes(!anyOn)
-    },
-  })
-  useAction('view:toggle-xyz-axes', {
-    label: 'Toggle XYZ axes',
-    description: 'Show/hide XYZ coordinate axes only',
-    group: 'View',
-    defaultBindings: ['t shift+x'],
-    handler: () => setShowWorldAxes(!showWorldAxes),
+    handler: () => setShowXyzBox(!showXyzBox),
   })
   useAction('view:toggle-abc', {
-    label: 'Toggle abc (cell + atoms)',
-    description: 'Show/hide lattice cell and atoms together',
+    label: 'Toggle abc (box + atoms)',
+    description: 'Show/hide lattice box and atoms together',
     group: 'View',
     defaultBindings: ['t a'],
-    enabled: !abcIsXyz,
     handler: () => {
       const anyOn = showAbcCell || showAtoms
       setShowAbcCell(!anyOn)
@@ -667,7 +656,7 @@ export default function App() {
     const totalSlices = maxSliceIndex + 1
     const effectiveSlicesPerSec = sweepMode === 'd' ? totalSlices / sweepDuration : sliceSpeed
     let last = performance.now()
-    let current = sliceIndex ?? 0
+    let current = effectiveSliceIndex
     let fractional = 0
     const step = target > current ? 1 : -1
     const tick = (now: number) => {
@@ -720,7 +709,7 @@ export default function App() {
         cancelSliceAnim()
       } else {
         setShowSlice(true)
-        const si = sliceIndex ?? 0
+        const si = effectiveSliceIndex
         if (si >= maxSliceIndex && sliceDirectionRef.current === 'forward') {
           sliceDirectionRef.current = 'backward'
         } else if (si <= 0 && sliceDirectionRef.current === 'backward') {
@@ -939,9 +928,6 @@ export default function App() {
     const result = initialQuery.data
     if (result && files.length === 0) {
       setFiles([{ data: result.data, filename: result.filename }])
-      // Only set iso/slice defaults when the URL didn't specify them
-      if (isoLevel === null) setIsoLevel(computeDefaultIsoLevel(result.data.grid.data))
-      if (sliceIndex === null) setSliceIndex(Math.floor(result.data.grid.dims[sliceAxis] / 2))
       if (result.volumeId) {
         setCurrentVolumeId(result.volumeId)
         setGalleryRefreshKey(k => k + 1)
@@ -1113,8 +1099,8 @@ export default function App() {
   }, [primaryFile])
 
   const effectiveIsoLevel = useMemo(
-    () => Math.max(0, Math.min(isoLevel ?? 0, maxDensity)),
-    [isoLevel, maxDensity],
+    () => Math.max(0, Math.min(isoLevel ?? defaultIsoLevel, maxDensity)),
+    [isoLevel, defaultIsoLevel, maxDensity],
   )
 
   // Clamp isoLevel URL param when density range changes (e.g. new material)
@@ -1124,8 +1110,8 @@ export default function App() {
     }
   }, [maxDensity]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isoLevelRef = useRef(isoLevel ?? 0)
-  isoLevelRef.current = isoLevel ?? 0
+  const isoLevelRef = useRef(effectiveIsoLevel)
+  isoLevelRef.current = effectiveIsoLevel
   const maxDensityRef = useRef(maxDensity)
   maxDensityRef.current = maxDensity
   const defaultIsoLevelRef = useRef(defaultIsoLevel)
@@ -1170,7 +1156,7 @@ export default function App() {
 
   return (
     <div className={styles.app}>
-      <div className={styles.viewer}>
+      <div className={styles.viewer} onPointerDown={() => { cameraInteracted.current = true }}>
         <ErrorBoundary label="Viewer" resetKey={`${materialId}:${effectiveIsoLevel}`}>
           {primaryFile ? (
             <>
@@ -1183,7 +1169,6 @@ export default function App() {
                   showAtomLabels={showAtomLabels}
                   showAbcCell={showAbcCell}
                   showXyzBox={showXyzBox}
-                  showWorldAxes={showWorldAxes}
                   dashedLines={dashedLines}
                   activeMovements={activeMovements}
                   tilePadding={tilePadding}
@@ -1198,7 +1183,6 @@ export default function App() {
                   showAtomLabels={showAtomLabels}
                   showAbcCell={showAbcCell}
                   showXyzBox={showXyzBox}
-                  showWorldAxes={showWorldAxes}
                   dashedLines={dashedLines}
                   lineWidth={lineWidth}
                   activeMovements={activeMovements}
@@ -1209,7 +1193,7 @@ export default function App() {
                   initialTargetOffset={initialTargetOffset}
                   showSlice={showSlice}
                   sliceAxis={sliceAxis}
-                  sliceIndex={sliceIndex ?? 0}
+                  sliceIndex={effectiveSliceIndex}
                   tilePadding={tilePadding}
                   tileFade={tileFade}
                   abcIsXyz={abcIsXyz}
@@ -1234,7 +1218,7 @@ export default function App() {
                     <SliceViewer
                       volume={primaryFile.data}
                       axis={sliceAxis}
-                      sliceIndex={sliceIndex ?? 0}
+                      sliceIndex={effectiveSliceIndex}
                     />
                   </div>
                 )
@@ -1303,8 +1287,6 @@ export default function App() {
               onShowAbcCellChange={setShowAbcCell}
               showXyzBox={showXyzBox}
               onShowXyzBoxChange={setShowXyzBox}
-              showWorldAxes={showWorldAxes}
-              onShowWorldAxesChange={setShowWorldAxes}
               dashedLines={dashedLines}
               onDashedLinesChange={setDashedLines}
               orbitDeg={orbitDeg}
@@ -1319,7 +1301,7 @@ export default function App() {
               onShowSliceChange={setShowSlice}
               sliceAxis={sliceAxis}
               onSliceAxisChange={handleSliceAxisChange}
-              sliceIndex={sliceIndex ?? 0}
+              sliceIndex={effectiveSliceIndex}
               maxSliceIndex={maxSliceIndex}
               onSliceIndexChange={setSliceIndex}
               animDuration={animDuration}
@@ -1334,7 +1316,6 @@ export default function App() {
               filename={primaryFile.filename}
               elements={primaryFile.data.structure.elements}
               counts={primaryFile.data.structure.counts}
-              abcIsXyz={abcIsXyz}
               tilePadding={tilePadding}
               onTilePaddingChange={setTilePadding}
               tileFade={tileFade}
