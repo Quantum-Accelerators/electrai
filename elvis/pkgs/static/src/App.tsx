@@ -11,6 +11,7 @@ import {
   AWSCredentialsModal,
   SizeConfirmModal,
   Settings,
+  ErrorBoundary,
   parseCHGCAR,
   parsePymatgenChgcar,
   useSettings,
@@ -180,7 +181,7 @@ export default function App() {
   const [tileFade, setTileFade] = useUrlState('nf', boolTrueParam)
   const [cam, setCam] = useUrlState('c', camParam)
   const [camTarget, setCamTarget] = useUrlState('ct', camTargetParam, { debounce: 500 })
-  const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID))
+  const [materialId, setMaterialId] = useUrlState('m', stringParam(DEFAULT_MP_ID), { push: true })
   const [currentVolumeId, setCurrentVolumeIdRaw] = useState<string | null>(
     () => sessionStorage.getItem('elvis-active-volume'),
   )
@@ -457,6 +458,47 @@ export default function App() {
     group: 'View',
     defaultBindings: ['f'],
     handler: () => setTileFade(!tileFade),
+  })
+  useActionPair('iso:step', {
+    label: 'Decrease / increase iso level',
+    description: 'Adjust isosurface threshold by keyboard step',
+    keywords: ['iso', 'isosurface', 'threshold', 'density'],
+    group: 'Surface',
+    actions: [
+      {
+        defaultBindings: [','],
+        handler: () => {
+          const step = maxDensityRef.current / 50
+          setIsoLevel(Math.max(0, isoLevelRef.current - step))
+        },
+      },
+      {
+        defaultBindings: ['.'],
+        handler: () => {
+          const step = maxDensityRef.current / 50
+          setIsoLevel(Math.min(maxDensityRef.current, isoLevelRef.current + step))
+        },
+      },
+    ],
+  })
+  useAction('iso:set', {
+    label: 'Set iso level',
+    description: 'Set isosurface threshold to a specific value',
+    keywords: ['iso', 'isosurface', 'threshold'],
+    group: 'Surface',
+    defaultBindings: ['\\f i'],
+    handler: (_e, captures) => {
+      const v = captures?.[0] ?? 0
+      setIsoLevel(Math.max(0, Math.min(v, maxDensityRef.current)))
+    },
+  })
+  useAction('iso:reset', {
+    label: 'Reset iso level',
+    description: 'Reset isosurface threshold to default (mean + 2\u03c3)',
+    keywords: ['iso', 'isosurface', 'reset', 'default'],
+    group: 'Surface',
+    defaultBindings: ['t i'],
+    handler: () => setIsoLevel(defaultIsoLevelRef.current),
   })
   useActionPair('view:orbit-step', {
     label: 'Orbit step: set / toggle',
@@ -1037,6 +1079,18 @@ export default function App() {
     return computeDefaultIsoLevel(primaryFile.data.grid.data)
   }, [primaryFile])
 
+  const effectiveIsoLevel = useMemo(
+    () => Math.max(0, Math.min(isoLevel ?? 0, maxDensity)),
+    [isoLevel, maxDensity],
+  )
+
+  const isoLevelRef = useRef(isoLevel ?? 0)
+  isoLevelRef.current = isoLevel ?? 0
+  const maxDensityRef = useRef(maxDensity)
+  maxDensityRef.current = maxDensity
+  const defaultIsoLevelRef = useRef(defaultIsoLevel)
+  defaultIsoLevelRef.current = defaultIsoLevel
+
   const exampleLinks = (
     <details
       open={examplesOpen}
@@ -1077,91 +1131,93 @@ export default function App() {
   return (
     <div className={styles.app}>
       <div className={styles.viewer}>
-        {primaryFile ? (
-          <>
-            {isComparison ? (
-              <ComparisonView
-                volumes={files.map(f => ({ data: f.data, label: f.filename }))}
-                isoLevel={isoLevel ?? 0}
-                opacity={opacity}
-                showAtoms={showAtoms}
-                showAtomLabels={showAtomLabels}
-                showAbcCell={showAbcCell}
-                showXyzBox={showXyzBox}
-                showWorldAxes={showWorldAxes}
-                dashedLines={dashedLines}
-                activeMovements={activeMovements}
-                tilePadding={tilePadding}
-                tileFade={tileFade}
-              />
-            ) : (
-              <DensityViewer
-                volume={primaryFile.data}
-                isoLevel={isoLevel ?? 0}
-                opacity={opacity}
-                showAtoms={showAtoms}
-                showAtomLabels={showAtomLabels}
-                showAbcCell={showAbcCell}
-                showXyzBox={showXyzBox}
-                showWorldAxes={showWorldAxes}
-                dashedLines={dashedLines}
-                lineWidth={lineWidth}
-                activeMovements={activeMovements}
-                cameraSnap={cameraSnap}
-                animationDuration={animDuration || settings.animationDuration}
-                onCameraChange={handleCameraChange}
-                initialCamera={initialCamera}
-                initialTargetOffset={initialTargetOffset}
-                showSlice={showSlice}
-                sliceAxis={sliceAxis}
-                sliceIndex={sliceIndex ?? 0}
-                tilePadding={tilePadding}
-                tileFade={tileFade}
-                abcIsXyz={abcIsXyz}
-              />
-            )}
-            {showSlice && (() => {
-              const d = primaryFile.data.grid.dims
-              const [sw, sh] = sliceAxis === 0 ? [d[1], d[2]] : sliceAxis === 1 ? [d[0], d[2]] : [d[0], d[1]]
-              const maxDim = 200
-              const scale = maxDim / Math.max(sw, sh)
-              return (
-                <div className={styles.slicePanel} style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  width: Math.round(sw * scale),
-                  height: Math.round(sh * scale),
-                  background: '#1a1a2e',
-                  borderTop: '1px solid #333',
-                  borderRight: '1px solid #333',
-                }}>
-                  <SliceViewer
-                    volume={primaryFile.data}
-                    axis={sliceAxis}
-                    sliceIndex={sliceIndex ?? 0}
-                  />
+        <ErrorBoundary label="Viewer" resetKey={`${materialId}:${effectiveIsoLevel}`}>
+          {primaryFile ? (
+            <>
+              {isComparison ? (
+                <ComparisonView
+                  volumes={files.map(f => ({ data: f.data, label: f.filename }))}
+                  isoLevel={effectiveIsoLevel}
+                  opacity={opacity}
+                  showAtoms={showAtoms}
+                  showAtomLabels={showAtomLabels}
+                  showAbcCell={showAbcCell}
+                  showXyzBox={showXyzBox}
+                  showWorldAxes={showWorldAxes}
+                  dashedLines={dashedLines}
+                  activeMovements={activeMovements}
+                  tilePadding={tilePadding}
+                  tileFade={tileFade}
+                />
+              ) : (
+                <DensityViewer
+                  volume={primaryFile.data}
+                  isoLevel={effectiveIsoLevel}
+                  opacity={opacity}
+                  showAtoms={showAtoms}
+                  showAtomLabels={showAtomLabels}
+                  showAbcCell={showAbcCell}
+                  showXyzBox={showXyzBox}
+                  showWorldAxes={showWorldAxes}
+                  dashedLines={dashedLines}
+                  lineWidth={lineWidth}
+                  activeMovements={activeMovements}
+                  cameraSnap={cameraSnap}
+                  animationDuration={animDuration || settings.animationDuration}
+                  onCameraChange={handleCameraChange}
+                  initialCamera={initialCamera}
+                  initialTargetOffset={initialTargetOffset}
+                  showSlice={showSlice}
+                  sliceAxis={sliceAxis}
+                  sliceIndex={sliceIndex ?? 0}
+                  tilePadding={tilePadding}
+                  tileFade={tileFade}
+                  abcIsXyz={abcIsXyz}
+                />
+              )}
+              {showSlice && (() => {
+                const d = primaryFile.data.grid.dims
+                const [sw, sh] = sliceAxis === 0 ? [d[1], d[2]] : sliceAxis === 1 ? [d[0], d[2]] : [d[0], d[1]]
+                const maxDim = 200
+                const scale = maxDim / Math.max(sw, sh)
+                return (
+                  <div className={styles.slicePanel} style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    width: Math.round(sw * scale),
+                    height: Math.round(sh * scale),
+                    background: '#1a1a2e',
+                    borderTop: '1px solid #333',
+                    borderRight: '1px solid #333',
+                  }}>
+                    <SliceViewer
+                      volume={primaryFile.data}
+                      axis={sliceAxis}
+                      sliceIndex={sliceIndex ?? 0}
+                    />
+                  </div>
+                )
+              })()}
+            </>
+          ) : (
+            <div className={styles.loadingViewer}>
+              {isLoading && (
+                <>
+                  <div className={styles.spinner} />
+                  <div className={styles.loadingText}>
+                    {fetchStatus && !fetchStatus.startsWith('Error') ? fetchStatus : 'Loading density data...'}
+                  </div>
+                </>
+              )}
+              {initialQuery.error && !fetchStatus && (
+                <div className={styles.errorText}>
+                  {initialQuery.error instanceof Error ? initialQuery.error.message : 'Failed to load'}
                 </div>
-              )
-            })()}
-          </>
-        ) : (
-          <div className={styles.loadingViewer}>
-            {isLoading && (
-              <>
-                <div className={styles.spinner} />
-                <div className={styles.loadingText}>
-                  {fetchStatus && !fetchStatus.startsWith('Error') ? fetchStatus : 'Loading density data...'}
-                </div>
-              </>
-            )}
-            {initialQuery.error && !fetchStatus && (
-              <div className={styles.errorText}>
-                {initialQuery.error instanceof Error ? initialQuery.error.message : 'Failed to load'}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </ErrorBoundary>
       </div>
       <div className={styles.sidebar}>
         {opfsStore && (
@@ -1191,56 +1247,58 @@ export default function App() {
         )}
         {exampleLinks}
         {primaryFile && (
-          <Controls
-            isoLevel={isoLevel ?? 0}
-            defaultIsoLevel={defaultIsoLevel}
-            maxDensity={maxDensity}
-            onIsoLevelChange={setIsoLevel}
-            opacity={opacity}
-            onOpacityChange={setOpacity}
-            showAtoms={showAtoms}
-            onShowAtomsChange={setShowAtoms}
-            showAtomLabels={showAtomLabels}
-            onShowAtomLabelsChange={setShowAtomLabels}
-            showAbcCell={showAbcCell}
-            onShowAbcCellChange={setShowAbcCell}
-            showXyzBox={showXyzBox}
-            onShowXyzBoxChange={setShowXyzBox}
-            showWorldAxes={showWorldAxes}
-            onShowWorldAxesChange={setShowWorldAxes}
-            dashedLines={dashedLines}
-            onDashedLinesChange={setDashedLines}
-            orbitDeg={orbitDeg}
-            onOrbitDegChange={setOrbitDeg}
-            zoomPct={zoomPct}
-            onZoomPctChange={setZoomPct}
-            panStep={panStep}
-            onPanStepChange={setPanStep}
-            showSlice={showSlice}
-            onShowSliceChange={setShowSlice}
-            sliceAxis={sliceAxis}
-            onSliceAxisChange={handleSliceAxisChange}
-            sliceIndex={sliceIndex ?? 0}
-            maxSliceIndex={maxSliceIndex}
-            onSliceIndexChange={setSliceIndex}
-            animDuration={animDuration}
-            onAnimDurationChange={setAnimDuration}
-            sweepMode={sweepMode as 'd' | 'r'}
-            sweepDuration={sweepDuration}
-            onSweepDurationChange={setSweepDuration}
-            onSweepModeToggle={handleSweepModeToggle}
-            sliceSpeed={sliceSpeed}
-            onSliceSpeedChange={setSliceSpeed}
-            cam={cam}
-            filename={primaryFile.filename}
-            elements={primaryFile.data.structure.elements}
-            counts={primaryFile.data.structure.counts}
-            abcIsXyz={abcIsXyz}
-            tilePadding={tilePadding}
-            onTilePaddingChange={setTilePadding}
-            tileFade={tileFade}
-            onTileFadeChange={setTileFade}
-          />
+          <ErrorBoundary label="Controls" resetKey={`${materialId}:${effectiveIsoLevel}`}>
+            <Controls
+              isoLevel={effectiveIsoLevel}
+              defaultIsoLevel={defaultIsoLevel}
+              maxDensity={maxDensity}
+              onIsoLevelChange={setIsoLevel}
+              opacity={opacity}
+              onOpacityChange={setOpacity}
+              showAtoms={showAtoms}
+              onShowAtomsChange={setShowAtoms}
+              showAtomLabels={showAtomLabels}
+              onShowAtomLabelsChange={setShowAtomLabels}
+              showAbcCell={showAbcCell}
+              onShowAbcCellChange={setShowAbcCell}
+              showXyzBox={showXyzBox}
+              onShowXyzBoxChange={setShowXyzBox}
+              showWorldAxes={showWorldAxes}
+              onShowWorldAxesChange={setShowWorldAxes}
+              dashedLines={dashedLines}
+              onDashedLinesChange={setDashedLines}
+              orbitDeg={orbitDeg}
+              onOrbitDegChange={setOrbitDeg}
+              zoomPct={zoomPct}
+              onZoomPctChange={setZoomPct}
+              panStep={panStep}
+              onPanStepChange={setPanStep}
+              showSlice={showSlice}
+              onShowSliceChange={setShowSlice}
+              sliceAxis={sliceAxis}
+              onSliceAxisChange={handleSliceAxisChange}
+              sliceIndex={sliceIndex ?? 0}
+              maxSliceIndex={maxSliceIndex}
+              onSliceIndexChange={setSliceIndex}
+              animDuration={animDuration}
+              onAnimDurationChange={setAnimDuration}
+              sweepMode={sweepMode as 'd' | 'r'}
+              sweepDuration={sweepDuration}
+              onSweepDurationChange={setSweepDuration}
+              onSweepModeToggle={handleSweepModeToggle}
+              sliceSpeed={sliceSpeed}
+              onSliceSpeedChange={setSliceSpeed}
+              cam={cam}
+              filename={primaryFile.filename}
+              elements={primaryFile.data.structure.elements}
+              counts={primaryFile.data.structure.counts}
+              abcIsXyz={abcIsXyz}
+              tilePadding={tilePadding}
+              onTilePaddingChange={setTilePadding}
+              tileFade={tileFade}
+              onTileFadeChange={setTileFade}
+            />
+          </ErrorBoundary>
         )}
         <input
           ref={addFileInputRef}

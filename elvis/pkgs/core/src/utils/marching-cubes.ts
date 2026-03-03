@@ -358,6 +358,7 @@ export function marchingCubes(
   const [nx, ny, nz] = dims
   const [fx, fy, fz] = fracDims ?? dims
   const positions: number[] = []
+  const MAX_TRIANGLES = 2_000_000
 
   for (let iz = 0; iz < nz - 1; iz++) {
     for (let iy = 0; iy < ny - 1; iy++) {
@@ -403,6 +404,13 @@ export function marchingCubes(
             const cart = fracToCart(lattice, frac)
             positions.push(cart[0], cart[1], cart[2])
           }
+        }
+
+        if (positions.length > MAX_TRIANGLES * 9) {
+          console.warn(`marchingCubes: triangle limit exceeded (>${MAX_TRIANGLES}), returning truncated geometry`)
+          const geometry = new BufferGeometry()
+          geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(0), 3))
+          return geometry
         }
       }
     }

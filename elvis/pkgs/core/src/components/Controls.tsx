@@ -61,6 +61,17 @@ interface ControlsProps {
 
 const AXIS_LABELS = ['X', 'Y', 'Z'] as const
 
+// Non-linear padding slider: 0-20 ticks → 0-1 (step 0.05), 20-30 ticks → 1-2 (step 0.1)
+const PADDING_TICKS = 30
+function paddingToTick(v: number): number {
+  if (v <= 1) return Math.round(v / 0.05)
+  return 20 + Math.round((v - 1) / 0.1)
+}
+function tickToPadding(t: number): number {
+  if (t <= 20) return Math.round(t * 0.05 * 100) / 100
+  return Math.round((1 + (t - 20) * 0.1) * 100) / 100
+}
+
 function fmtAngle(n: number): string {
   const s = n.toFixed(1)
   return s.endsWith('.0') ? s.slice(0, -2) : s
@@ -252,10 +263,10 @@ export function Controls({
               <input
                 type="range"
                 min={0}
-                max={1}
-                step={0.05}
-                value={tp}
-                onChange={e => onTilePaddingChange(parseFloat(e.target.value))}
+                max={PADDING_TICKS}
+                step={1}
+                value={paddingToTick(tp)}
+                onChange={e => onTilePaddingChange(tickToPadding(parseInt(e.target.value)))}
                 className={styles.slider}
               />
             </label>
