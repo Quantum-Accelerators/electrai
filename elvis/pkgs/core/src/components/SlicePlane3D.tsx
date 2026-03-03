@@ -80,6 +80,7 @@ export function SlicePlane3D({ lattice, axis, sliceIndex, dims, data }: SlicePla
     ctx.putImageData(imageData, 0, 0)
 
     const tex = new CanvasTexture(canvas)
+    tex.flipY = false  // Canvas row j maps directly to UV v = j/h; default true would flip the density
     tex.minFilter = NearestFilter
     tex.magFilter = NearestFilter
     tex.needsUpdate = true

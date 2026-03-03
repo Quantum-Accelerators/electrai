@@ -121,6 +121,43 @@ export function CameraController({
     return () => canvas.removeEventListener('wheel', handler, { capture: true })
   }, [gl, camera, controls])
 
+  // Ctrl+drag → roll (intercept before OrbitControls)
+  const rollDragRef = useRef<{ startX: number } | null>(null)
+  useEffect(() => {
+    const canvas = gl.domElement
+    const onDown = (e: PointerEvent) => {
+      if (!controls || !(e.ctrlKey || e.metaKey) || e.button !== 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      rollDragRef.current = { startX: e.clientX }
+      canvas.setPointerCapture(e.pointerId)
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!rollDragRef.current || !controls) return
+      e.preventDefault()
+      e.stopPropagation()
+      const dx = e.clientX - rollDragRef.current.startX
+      rollDragRef.current.startX = e.clientX
+      camera.getWorldDirection(_wFwd)
+      camera.up.applyAxisAngle(_wFwd, -dx * 0.005)
+      camera.lookAt(controls.target)
+      controls.update()
+    }
+    const onUp = (e: PointerEvent) => {
+      if (!rollDragRef.current) return
+      rollDragRef.current = null
+      canvas.releasePointerCapture(e.pointerId)
+    }
+    canvas.addEventListener('pointerdown', onDown, { capture: true })
+    canvas.addEventListener('pointermove', onMove, { capture: true })
+    canvas.addEventListener('pointerup', onUp, { capture: true })
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown, { capture: true })
+      canvas.removeEventListener('pointermove', onMove, { capture: true })
+      canvas.removeEventListener('pointerup', onUp, { capture: true })
+    }
+  }, [gl, camera, controls])
+
   useFrame((_, delta) => {
     if (!controls) return
     const target = controls.target
