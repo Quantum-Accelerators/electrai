@@ -4,34 +4,31 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from src.electrai.model.utils import (
-    FourierPositionalEmbedding,
-    GaussianRadialBasis,
-    PositionalEmbedding,
-)
+from src.electrai.model.utils import CartesianFourierEmbedding, GaussianRadialBasis
 
 
 class LatticeConv3d(nn.Module):
     def __init__(
         self,
-        in_channels,
-        out_channels,
+        in_channels: int,
+        out_channels: int,
         kernel_size,
-        padding_mode="circular",
-        stride=1,
-        dilation=1,
-        use_lattice_conv=False,
-        use_radial_embedding=False,
-        use_positional_embedding=False,
-        trainable_gaussian_params=False,
-        num_gaussians=16,
-        pos_embed_dim=16,
-        pos_embed_type="learnable",
-        r_max=5.0,
-        hidden_dim=64,
+        padding_mode: str = "circular",
+        stride: int = 1,
+        dilation: int = 1,
+        use_lattice_conv: bool = False,
+        mix_weight: float = 0.1,
+        use_radial_embedding: bool = False,
+        use_positional_embedding: bool = False,
+        trainable_gaussian_params: bool = False,
+        num_gaussians: int = 16,
+        pos_embed_dim: int = 16,
+        r_max: float = 5.0,
+        hidden_dim: int = 64,
     ):
         super().__init__()
-        padding = kernel_size // 2  # - 1
+        padding = kernel_size // 2
+
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = (
@@ -41,8 +38,12 @@ class LatticeConv3d(nn.Module):
         self.padding_mode = padding_mode
         self.stride = stride
         self.dilation = dilation
+
         self.use_lattice_conv = use_lattice_conv
+        self.use_radial_embedding = use_radial_embedding
+        self.use_positional_embedding = use_positional_embedding
         self.trainable_gaussian_params = trainable_gaussian_params
+
         self.conv = nn.Conv3d(
             in_channels,
             out_channels,
@@ -53,11 +54,6 @@ class LatticeConv3d(nn.Module):
             dilation=dilation,
             bias=True,
         )
-        w = self.conv.weight.detach().clone()
-        del self.conv._parameters["weight"]
-        self.conv.register_buffer("weight", w)
-        self.use_radial_embedding = use_radial_embedding
-        self.use_positional_embedding = use_positional_embedding
 
         if use_lattice_conv:
             if use_radial_embedding:
@@ -69,17 +65,7 @@ class LatticeConv3d(nn.Module):
                 )
 
             if use_positional_embedding:
-                if pos_embed_type == "learnable":
-                    self.pos_embedding = PositionalEmbedding(
-                        embed_dim=pos_embed_dim, max_kernel_size=max(self.kernel_size)
-                    )
-                elif pos_embed_type == "fourier":
-                    self.pos_embedding = FourierPositionalEmbedding(
-                        embed_dim=pos_embed_dim, max_freq=10
-                    )
-                else:
-                    raise ValueError(f"Unknown pos_embed_type: {pos_embed_type}")
-                self.pos_embed_type = pos_embed_type
+                self.pos_embedding = CartesianFourierEmbedding(num_freqs=60)  # 6)
 
             if use_radial_embedding or use_positional_embedding:
                 input_size = 0
@@ -87,22 +73,30 @@ class LatticeConv3d(nn.Module):
                     input_size += num_gaussians
                 if use_positional_embedding:
                     input_size += pos_embed_dim
+
                 self.filter_network = nn.Sequential(
                     nn.Linear(input_size, hidden_dim),
                     nn.LayerNorm(hidden_dim),
                     nn.SiLU(),
-                    nn.Dropout(0.1),
                     nn.Linear(hidden_dim, hidden_dim),
                     nn.LayerNorm(hidden_dim),
                     nn.SiLU(),
-                    nn.Dropout(0.1),
                     nn.Linear(hidden_dim, in_channels * out_channels),
                 )
 
-            # if self.use_radial_embedding or self.use_positional_embedding:
-            #     self.mix_weight = nn.Parameter(torch.tensor(0.1))
+                # Optional stabilization (uncomment if desired)
+                nn.init.zeros_(self.filter_network[-1].weight)
+                nn.init.zeros_(self.filter_network[-1].bias)
 
-    def _apply_padding(self, x):
+            # Learnable mixing weight (scalar)
+            # self.mix_weight = nn.Parameter(torch.tensor(float(mix_weight)))
+            # Alternative per-out-channel alpha:
+            # self.mix_weight = nn.Parameter(torch.full((out_channels,), float(mix_weight)))
+            self.mix_weight = nn.Parameter(
+                torch.full((out_channels,), float(mix_weight))
+            )
+
+    def _apply_padding(self, x: torch.Tensor) -> torch.Tensor:
         if self.padding_mode == "circular" and any(p > 0 for p in self.padding):
             pad_3d = (
                 self.padding[2],
@@ -113,7 +107,8 @@ class LatticeConv3d(nn.Module):
                 self.padding[0],
             )
             return F.pad(x, pad_3d, mode="circular")
-        elif self.padding_mode in ["zeros", "reflect", "replicate"] and any(
+
+        if self.padding_mode in ["zeros", "reflect", "replicate"] and any(
             p > 0 for p in self.padding
         ):
             pad_3d = (
@@ -125,17 +120,21 @@ class LatticeConv3d(nn.Module):
                 self.padding[0],
             )
             return F.pad(x, pad_3d, mode=self.padding_mode)
-        else:
-            return x
 
-    def compute_geometric_kernel(self, lattice_vectors):
+        return x
+
+    def compute_geometric_kernel(self, lattice_vectors: torch.Tensor) -> torch.Tensor:
+        """
+        lattice_vectors: (B, 3, 3) or (3, 3) in voxel units (z,y,x ordering upstream)
+        returns: (B, out, in, kz, ky, kx) or (out, in, kz, ky, kx) if input was (3,3)
+        """
         if lattice_vectors.dim() == 2:
             lattice_vectors = lattice_vectors.unsqueeze(0)
             squeeze_batch = True
         else:
             squeeze_batch = False
 
-        B = lattice_vectors.shape[0]
+        B = lattice_vectors.shape[0]  # noqa: F841
         kz, ky, kx = self.kernel_size
         device = lattice_vectors.device
 
@@ -144,40 +143,31 @@ class LatticeConv3d(nn.Module):
         x = torch.arange(kx, device=device) - kx // 2
 
         grid_z, grid_y, grid_x = torch.meshgrid(z, y, x, indexing="ij")
-        frac_coords = torch.stack([grid_z, grid_y, grid_x], dim=-1).float()
+        frac_coords = torch.stack(
+            [grid_z, grid_y, grid_x], dim=-1
+        ).float()  # (kz,ky,kx,3)
 
-        cart_coords = torch.einsum("ijkl,bml->bijkm", frac_coords, lattice_vectors)
-        distances = torch.norm(cart_coords, dim=-1)
-
-        debug_stats = {}
-        debug_stats["distances"] = {
-            "min": distances.min().item(),
-            "max": distances.max().item(),
-            "mean": distances.mean().item(),
-            "has_nan": torch.isnan(distances).any().item(),
-            "has_inf": torch.isinf(distances).any().item(),
-        }
+        cart_coords = torch.einsum(
+            "ijkl,bml->bijkm", frac_coords, lattice_vectors
+        )  # (B,kz,ky,kx,3)
+        distances = torch.norm(cart_coords, dim=-1)  # (B,kz,ky,kx)
 
         if self.use_radial_embedding:
-            radial_features = self.gaussian_smear(distances)
+            radial_features = self.gaussian_smear(distances)  # (B,kz,ky,kx,Ng)
             radial_flat = rearrange(radial_features, "b kz ky kx n -> b (kz ky kx) n")
+
         if self.use_positional_embedding:
-            if self.pos_embed_type == "learnable":
-                pos_features = self.pos_embedding(frac_coords, self.kernel_size)
-                pos_features = pos_features.unsqueeze(0).expand(B, -1, -1, -1, -1)
-            else:
-                pos_features = self.pos_embedding(frac_coords)
-                pos_features = pos_features.unsqueeze(0).expand(B, -1, -1, -1, -1)
+            pos_features = self.pos_embedding(cart_coords)  # (B,kz,ky,kx,Np)
             pos_flat = rearrange(pos_features, "b kz ky kx n -> b (kz ky kx) n")
 
         if self.use_radial_embedding and self.use_positional_embedding:
             features = torch.cat([radial_flat, pos_flat], dim=-1)
         elif self.use_radial_embedding:
-            features = torch.cat([radial_flat], dim=-1)
+            features = radial_flat
         else:
-            features = torch.cat([pos_flat], dim=-1)
+            features = pos_flat
 
-        kernel_flat = self.filter_network(features)
+        kernel_flat = self.filter_network(features)  # (B, kz*ky*kx, out*in)
         kernel = rearrange(
             kernel_flat,
             "b (kz ky kx) (o i) -> b o i kz ky kx",
@@ -191,57 +181,88 @@ class LatticeConv3d(nn.Module):
         if squeeze_batch:
             kernel = kernel.squeeze(0)
 
-        return kernel, debug_stats
+        return kernel
 
-    def forward(self, x, lattice_vectors=None):
-        if not self.use_lattice_conv or (
-            not self.use_radial_embedding and not self.use_positional_embedding
+    def forward(
+        self, x: torch.Tensor, lattice_vectors: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        base_kernel = self.conv.weight.unsqueeze(0)  # (1,out,in,kz,ky,kx)
+
+        if (not self.use_lattice_conv) or (
+            (not self.use_radial_embedding) and (not self.use_positional_embedding)
         ):
+            with torch.no_grad():
+                b_rms = base_kernel.pow(2).mean().sqrt()
+                self.kernel_stats = {"base_rms": b_rms.item()}
             return self.conv(x)
 
+        if lattice_vectors is None:
+            raise ValueError(
+                "lattice_vectors must be provided when use_lattice_conv=True"
+            )
+
+        D, H, W = x.shape[-3:]
+
+        # lattice_vectors assumed (B,3,3) in Å; convert to voxel units and reorder to (z,y,x)
+        a = lattice_vectors[:, 0, :]
+        b = lattice_vectors[:, 1, :]
+        c = lattice_vectors[:, 2, :]
+        lv_voxel = torch.stack(
+            [c / D, b / H, a / W], dim=1
+        )  # (B,3,3) in voxel units, z/y/x order
+
         B = x.shape[0]
-        if lattice_vectors.dim() == 2:
-            x_padded = self._apply_padding(x)
-            geometric_kernels = self.compute_geometric_kernel(lattice_vectors)
-            alpha = 1  # self.mix_weight
-            kernel = alpha * geometric_kernels
+        geometric_kernels = self.compute_geometric_kernel(
+            lv_voxel
+        )  # (B,out,in,kz,ky,kx)
 
-            return F.conv3d(
-                x_padded,
-                kernel,
-                self.conv.bias,
-                stride=self.stride,
-                padding=0,
-                dilation=self.dilation,
-            )
+        # Optional global RMS match (comment out if you don't want this constraint)
+        # g_rms = geometric_kernels.pow(2).mean().sqrt().clamp(min=1e-8)
+        # b_rms = base_kernel.pow(2).mean().sqrt().clamp(min=1e-8)
+        # geometric_kernels = geometric_kernels * (b_rms / g_rms)
 
-        else:
-            geometric_kernels, debug_stats = self.compute_geometric_kernel(
-                lattice_vectors
-            )
-            self.last_debug_stats = debug_stats
-            alpha = 1  # 0.1  # self.mix_weight
-            # self.register_buffer("base_weight", w)  # saved + moved with .to(device), not trained
+        # alpha = torch.sigmoid(self.mix_weight)  # scalar
+        alpha = torch.sigmoid(self.mix_weight).view(1, self.out_channels, 1, 1, 1, 1)
 
-            # base_kernel = self.conv.weight.unsqueeze(0)
-            kernels = alpha * geometric_kernels  # + (1 - alpha) * base_kernel
-            x_grouped = x.reshape(1, B * self.in_channels, *x.shape[2:])
-            x_grouped = self._apply_padding(x_grouped)
-            kernels_grouped = kernels.reshape(
-                B * self.out_channels, self.in_channels, *self.kernel_size
-            )
-            out = F.conv3d(
-                x_grouped,
-                kernels_grouped,
-                bias=None,
-                stride=self.stride,
-                padding=0,
-                dilation=self.dilation,
-                groups=B,
-            )
+        with torch.no_grad():
+            g_rms2 = geometric_kernels.pow(2).mean().sqrt()
+            b_rms2 = base_kernel.pow(2).mean().sqrt()
+            self.kernel_stats = {
+                "geo_rms": g_rms2.item(),
+                "base_rms": b_rms2.item(),
+                "ratio": (g_rms2 / (b_rms2 + 1e-8)).item(),
+                "alpha": float(alpha.mean().item())
+                if alpha.numel() > 1
+                else float(alpha.item()),
+            }
 
-            out = out.reshape(B, self.out_channels, *out.shape[2:])
+        # Current mixing rule (as in your snippet):
+        mod = torch.tanh(geometric_kernels)  # bounded
+        kernels = base_kernel * (1 + alpha * mod)
+        # kernels = (
+        #     alpha * geometric_kernels + (1 - alpha) * base_kernel
+        # )  # (B,out,in,kz,ky,kx)
 
-            if self.conv.bias is not None:
-                out = out + self.conv.bias.view(1, -1, 1, 1, 1)
-            return out
+        x_grouped = x.reshape(1, B * self.in_channels, *x.shape[2:])
+        x_grouped = self._apply_padding(x_grouped)
+
+        kernels_grouped = kernels.reshape(
+            B * self.out_channels, self.in_channels, *self.kernel_size
+        )
+
+        out = F.conv3d(
+            x_grouped,
+            kernels_grouped,
+            bias=None,
+            stride=self.stride,
+            padding=0,
+            dilation=self.dilation,
+            groups=B,
+        )
+
+        out = out.reshape(B, self.out_channels, *out.shape[2:])
+
+        if self.conv.bias is not None:
+            out = out + self.conv.bias.view(1, -1, 1, 1, 1)
+
+        return out

@@ -31,12 +31,17 @@ def load_numpy_rho(
     data = torch.tensor(data, dtype=dtype_map[precision])
     label = torch.tensor(label, dtype=dtype_map[precision])
     lattice = torch.tensor(lattice, dtype=dtype_map[precision])
-    grid_shape = torch.tensor(
-        data.shape, dtype=dtype_map[precision], device=lattice.device
-    )
-    lattice = lattice / grid_shape[:, None]
+    # grid_shape = torch.tensor(
+    #     data.shape, dtype=dtype_map[precision], device=lattice.device
+    # )
+    # lattice = lattice / grid_shape[:, None]
     if augmentation:
         data, label = rand_rotate([data, label])
+    # print("shapeeeeeeee", index, data.shape, label.shape)
+    data = data.permute(2, 1, 0)
+    label = label.permute(2, 1, 0)
+    # a, b, c = lattice[0], lattice[1], lattice[2]
+    # lattice = torch.stack([c, b, a], dim=0)  # (z,y,x)
     return data, label, lattice
 
 

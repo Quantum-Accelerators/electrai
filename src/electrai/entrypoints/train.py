@@ -42,7 +42,7 @@ def train(args):
         from lightning.pytorch.loggers import WandbLogger
 
         wandb_logger = WandbLogger(
-            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg)
+            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg), name=cfg.run_name
         )
     else:
         wandb_logger = None
@@ -62,12 +62,19 @@ def train(args):
     # -----------------------------
     # Trainer
     # -----------------------------
+    local_world_size = int(
+        os.environ.get("LOCAL_WORLD_SIZE", torch.cuda.device_count())
+    )
+    world_size = int(os.environ.get("WORLD_SIZE", local_world_size))
+    num_nodes = max(1, world_size // local_world_size)
     trainer = Trainer(
         max_epochs=int(cfg.epochs),
         logger=wandb_logger,
         callbacks=[checkpoint_cb, lr_monitor],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=1,
+        devices="auto",
+        num_nodes=num_nodes,
+        strategy="ddp",
         precision=cfg.precision,
         log_every_n_steps=1,
         gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),

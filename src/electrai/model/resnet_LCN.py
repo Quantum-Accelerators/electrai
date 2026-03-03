@@ -13,11 +13,13 @@ class ResidualBlock(nn.Module):
         K=3,
         use_checkpoint=True,
         use_lattice_conv=False,
+        mix_weight=0.1,
         use_radial_embedding=False,
         use_positional_embedding=False,
         trainable_gaussian_params=False,
         num_gaussians=16,
         pos_embed_dim=16,
+        hidden_dim=64,
     ):
         super().__init__()
         self.use_checkpoint = use_checkpoint
@@ -30,11 +32,13 @@ class ResidualBlock(nn.Module):
             stride=1,
             dilation=1,
             use_lattice_conv=use_lattice_conv,
+            mix_weight=mix_weight,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
             trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
+            hidden_dim=hidden_dim,
         )
         self.norm1 = nn.InstanceNorm3d(in_features)
         self.act1 = nn.PReLU()
@@ -46,11 +50,13 @@ class ResidualBlock(nn.Module):
             stride=1,
             dilation=1,
             use_lattice_conv=use_lattice_conv,
+            mix_weight=mix_weight,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
             trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
+            hidden_dim=hidden_dim,
         )
         self.norm2 = nn.InstanceNorm3d(in_features)
 
@@ -82,16 +88,17 @@ class GeneratorResNet(nn.Module):
         normalize=True,
         use_checkpoint=True,
         use_lattice_conv=False,
+        mix_weight=0.1,
         use_radial_embedding=False,
         use_positional_embedding=False,
         trainable_gaussian_params=False,
         num_gaussians=16,
         pos_embed_dim=16,
+        hidden_dim=64,
     ):
         super().__init__()
         self.normalize = normalize
         self.use_checkpoint = use_checkpoint
-        self.use_lattice_conv = use_lattice_conv
 
         # First layer
         self.conv1 = LatticeConv3d(
@@ -102,11 +109,13 @@ class GeneratorResNet(nn.Module):
             stride=1,
             dilation=1,
             use_lattice_conv=use_lattice_conv,
+            mix_weight=mix_weight,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
             trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
+            hidden_dim=hidden_dim,
         )
         self.act1 = nn.PReLU()
 
@@ -117,6 +126,13 @@ class GeneratorResNet(nn.Module):
                 K=kernel_size2,
                 use_checkpoint=use_checkpoint,
                 use_lattice_conv=use_lattice_conv,
+                mix_weight=mix_weight,
+                use_radial_embedding=use_radial_embedding,
+                use_positional_embedding=use_positional_embedding,
+                trainable_gaussian_params=trainable_gaussian_params,
+                num_gaussians=num_gaussians,
+                pos_embed_dim=pos_embed_dim,
+                hidden_dim=hidden_dim,
             )
             for _ in range(n_residual_blocks)
         ]
@@ -131,11 +147,13 @@ class GeneratorResNet(nn.Module):
             stride=1,
             dilation=1,
             use_lattice_conv=use_lattice_conv,
+            mix_weight=mix_weight,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
             trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
+            hidden_dim=hidden_dim,
         )
         self.norm = nn.InstanceNorm3d(n_channels)
 
@@ -148,11 +166,13 @@ class GeneratorResNet(nn.Module):
             stride=1,
             dilation=1,
             use_lattice_conv=use_lattice_conv,
+            mix_weight=mix_weight,
             use_radial_embedding=use_radial_embedding,
             use_positional_embedding=use_positional_embedding,
             trainable_gaussian_params=trainable_gaussian_params,
             num_gaussians=num_gaussians,
             pos_embed_dim=pos_embed_dim,
+            hidden_dim=hidden_dim,
         )
         self.act2 = nn.ReLU()
 
@@ -174,6 +194,9 @@ class GeneratorResNet(nn.Module):
         out = self.act2(out)
 
         if self.normalize:
-            out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
-            out = out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
+            # out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
+            # out = out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
+            out_sum = torch.sum(out, axis=(-3, -2, -1), keepdim=True).clamp(min=1e-8)
+            x_sum = torch.sum(x, axis=(-3, -2, -1), keepdim=True)
+            out = (out / out_sum) * x_sum
         return out
