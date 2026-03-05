@@ -204,6 +204,7 @@ jobs:
           MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
           COMPARE_CPU: ${{ inputs.compare_cpu }}
           WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
+          WANDB_ENTITY: ${{ vars.WANDB_ENTITY || 'PrinceOA' }}
         run: |
           GPU_TIME=${{ steps.gpu.outputs.GPU_TIME }}
 
@@ -233,7 +234,7 @@ jobs:
           WANDB_RUN_URL="${{ steps.gpu.outputs.WANDB_RUN_URL }}"
           if [ -n "$WANDB_RUN_URL" ]; then
             WANDB_RUN_ID=$(echo "$WANDB_RUN_URL" | grep -oP '[^/]+$')
-            echo "| WandB | [${WANDB_PROJECT}](https://wandb.ai/PrinceOA/$WANDB_PROJECT) run [${WANDB_RUN_ID}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
+            echo "| WandB | [${WANDB_PROJECT}](https://wandb.ai/${WANDB_ENTITY}/$WANDB_PROJECT) run [${WANDB_RUN_ID}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Results" >> $GITHUB_STEP_SUMMARY

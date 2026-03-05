@@ -358,6 +358,13 @@ def main(
     final_val_loss = trainer.callback_metrics.get("val_loss_epoch")
     if final_val_loss is None:
         final_val_loss = trainer.callback_metrics.get("val_loss")
+    if final_val_loss is None:
+        echo(
+            "Error: final validation loss not found in trainer.callback_metrics "
+            "(expected 'val_loss_epoch' or 'val_loss')",
+            err=True,
+        )
+        sys.exit(1)
     final_val_loss = float(final_val_loss)
 
     final_train_loss = trainer.callback_metrics.get("train_loss_epoch")

@@ -98,7 +98,7 @@ For weekly CI, **Option A** is simplest and most reliable.
 - [x] Add WandB tags/config logging to `e2e_train.py` (`--wandb-project`)
 - [x] Add sample size filtering (`--max-file-size`, default 25MB for L4)
 - [x] S3 sync filters server-side via `s3api` query
-- [x] WandB entity hardcoded to `PrinceOA`
+- [x] WandB entity configurable via `WANDB_ENTITY` env var (defaults to `PrinceOA`)
 - [x] GHA run link in WandB run notes (markdown, Overview tab)
 - [x] Wall-clock time logged as `wallclock_s` summary metric
 - [x] WandB run URL captured and linked in GHA summary
