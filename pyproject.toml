@@ -40,7 +40,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.4.2", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
-notebooks = ["nbconvert>=7.16.6", "ipykernel>=7.1.0", "papermill>=2.6.0"]
 docs = [
     "mkdocs-material>=9.4.0",
     "mkdocstrings[python]>=0.22.0",
