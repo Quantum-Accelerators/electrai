@@ -20,7 +20,7 @@ class HuggingFaceCallback(Callback):
 
     On clusters without internet (e.g. Princeton Della), checkpoints are
     queued in a JSON manifest and uploaded later via ``electrai hf-push``.
-    When ``hf_upload_immediate`` is True, uploads are attempted inline
+    When ``hf.upload_immediate`` is True, uploads are attempted inline
     (failures are logged but never crash training).
     """
 
