@@ -49,7 +49,7 @@ on:
         default: false
         type: boolean
       wandb_project:
-        description: 'WandB project name (empty=use WANDB_PROJECT var or elf-net-ci)'
+        description: 'WandB project name (empty=use WANDB_PROJECT var or elf-net-ci; "none"/"false"/"disabled" to skip)'
         default: ''
         type: string
       dataset_version:
@@ -129,7 +129,9 @@ jobs:
           fi
 
           WANDB_ARGS=""
-          if [ -n "$WANDB_API_KEY" ] && [ -n "$WANDB_PROJECT" ]; then
+          if echo "$WANDB_PROJECT" | grep -qiE '^(none|false|disabled)$'; then
+            echo "WandB logging: disabled (project=$WANDB_PROJECT)"
+          elif [ -n "$WANDB_API_KEY" ] && [ -n "$WANDB_PROJECT" ]; then
             WANDB_ARGS="--wandb-project $WANDB_PROJECT"
             echo "WandB logging: $WANDB_PROJECT"
           else
