@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from lightning.pytorch.callbacks import Callback
+
+if TYPE_CHECKING:
+    from types import SimpleNamespace
+
+logger = logging.getLogger(__name__)
+
+MANIFEST_FILENAME = "hf_upload_manifest.json"
+
+
+class HuggingFaceCallback(Callback):
+    """Tracks saved checkpoints for deferred upload to HuggingFace Hub.
+
+    On clusters without internet (e.g. Princeton Della), checkpoints are
+    queued in a JSON manifest and uploaded later via ``electrai hf-push``.
+    When ``hf_upload_immediate`` is True, uploads are attempted inline
+    (failures are logged but never crash training).
+    """
+
+    def __init__(self, cfg: SimpleNamespace) -> None:
+        super().__init__()
+        hf = cfg.hf
+        self.repo_id: str = hf["repo_id"]
+        self.every_n_epochs: int = hf.get("upload_every_n_epochs", 5)
+        self.upload_immediate: bool = hf.get("upload_immediate", False)
+        self.private: bool = hf.get("private", True)
+        self.ckpt_path = Path(getattr(cfg, "ckpt_path", "./checkpoints"))
+        self.manifest_path = self.ckpt_path / MANIFEST_FILENAME
+        self._manifest: list[dict] = []
+        self._load_existing_manifest()
+
+    def _load_existing_manifest(self) -> None:
+        if self.manifest_path.exists():
+            with Path.open(self.manifest_path) as f:
+                self._manifest = json.load(f)
+
+    def _save_manifest(self) -> None:
+        self.ckpt_path.mkdir(parents=True, exist_ok=True)
+        with Path.open(self.manifest_path, "w") as f:
+            json.dump(self._manifest, f, indent=2)
+
+    def _queue_checkpoint(self, ckpt_file: Path, epoch: int) -> None:
+        entry = {
+            "path": str(ckpt_file),
+            "epoch": epoch,
+            "repo_id": self.repo_id,
+            "uploaded": False,
+        }
+        self._manifest.append(entry)
+        self._save_manifest()
+        logger.info("Queued checkpoint for HF upload: %s", ckpt_file.name)
+
+    def on_train_epoch_end(self, trainer, pl_module) -> None:  # noqa: ARG002
+        epoch = trainer.current_epoch
+        if (epoch + 1) % self.every_n_epochs != 0:
+            return
+        if trainer.global_rank != 0:
+            return
+
+        last_ckpt = self.ckpt_path / "last.ckpt"
+        if not last_ckpt.exists():
+            return
+
+        self._queue_checkpoint(last_ckpt, epoch)
+
+        if self.upload_immediate:
+            _upload_single(self._manifest[-1])
+            self._save_manifest()
+
+    def on_train_end(self, trainer, pl_module) -> None:  # noqa: ARG002
+        if trainer.global_rank != 0:
+            return
+        # Queue best checkpoints that haven't been queued yet
+        queued_paths = {e["path"] for e in self._manifest}
+        for ckpt_file in self.ckpt_path.glob("ckpt_*.ckpt"):
+            if str(ckpt_file) not in queued_paths:
+                self._queue_checkpoint(ckpt_file, epoch=-1)
+                if self.upload_immediate:
+                    _upload_single(self._manifest[-1])
+        self._save_manifest()
+
+        pending = sum(1 for e in self._manifest if not e["uploaded"])
+        if pending:
+            logger.info(
+                "%d checkpoint(s) pending upload. "
+                "Run 'electrai hf-push --ckpt-path %s' from a node with "
+                "internet access.",
+                pending,
+                self.ckpt_path,
+            )
+
+
+def _upload_single(entry: dict) -> None:
+    """Attempt to upload a single checkpoint. Logs errors, never raises."""
+    try:
+        from huggingface_hub import upload_file
+
+        path = Path(entry["path"])
+        if not path.exists():
+            logger.warning("Checkpoint file not found, skipping: %s", path)
+            return
+        upload_file(
+            path_or_fileobj=str(path), path_in_repo=path.name, repo_id=entry["repo_id"]
+        )
+        entry["uploaded"] = True
+        logger.info("Uploaded %s to %s", path.name, entry["repo_id"])
+    except Exception:
+        logger.warning(
+            "HF upload failed for %s (will retry with hf-push)",
+            path.name,
+            exc_info=True,
+        )
+
+
+def hf_push(ckpt_path: str) -> None:
+    """Upload pending checkpoints from a manifest file.
+
+    Run this from a login node or machine with internet access.
+    """
+    ckpt_dir = Path(ckpt_path)
+    manifest_path = ckpt_dir / MANIFEST_FILENAME
+    if not manifest_path.exists():
+        logger.error("No manifest found at %s", manifest_path)
+        return
+
+    with Path.open(manifest_path) as f:
+        manifest = json.load(f)
+
+    pending = [e for e in manifest if not e["uploaded"]]
+    if not pending:
+        logger.info("All checkpoints already uploaded.")
+        return
+
+    logger.info("Uploading %d pending checkpoint(s)...", len(pending))
+    for entry in pending:
+        _upload_single(entry)
+
+    with Path.open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    still_pending = sum(1 for e in manifest if not e["uploaded"])
+    if still_pending:
+        logger.warning("%d checkpoint(s) still failed to upload.", still_pending)
+    else:
+        logger.info("All checkpoints uploaded successfully.")

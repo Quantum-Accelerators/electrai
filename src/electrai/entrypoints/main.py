@@ -32,12 +32,23 @@ def main() -> None:
     test_parser = subparsers.add_parser("test", help="Evaluate the model")
     test_parser.add_argument("--config", type=str, required=True)
 
+    hf_push_parser = subparsers.add_parser(
+        "hf-push", help="Upload pending checkpoints to HuggingFace Hub"
+    )
+    hf_push_parser.add_argument(
+        "--ckpt-path", type=str, required=True, help="Path to checkpoint directory"
+    )
+
     args = parser.parse_args()
 
     if args.command == "train":
         train(args)
     elif args.command == "test":
         test(args)
+    elif args.command == "hf-push":
+        from electrai.callbacks.hf_upload import hf_push
+
+        hf_push(args.ckpt_path)
     else:
         raise ValueError(f"Unknown command: {args.command}")
 
