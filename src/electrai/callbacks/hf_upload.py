@@ -46,9 +46,12 @@ class HuggingFaceCallback(Callback):
         with Path.open(self.manifest_path, "w") as f:
             json.dump(self._manifest, f, indent=2)
 
-    def _queue_checkpoint(self, ckpt_file: Path, epoch: int) -> None:
+    def _queue_checkpoint(
+        self, ckpt_file: Path, epoch: int, *, path_in_repo: str | None = None
+    ) -> None:
         entry = {
             "path": str(ckpt_file),
+            "path_in_repo": path_in_repo or ckpt_file.name,
             "epoch": epoch,
             "repo_id": self.repo_id,
             "uploaded": False,
@@ -57,7 +60,9 @@ class HuggingFaceCallback(Callback):
         self._save_manifest()
         logger.info("Queued checkpoint for HF upload: %s", ckpt_file.name)
 
-    def on_train_epoch_end(self, trainer, pl_module) -> None:  # noqa: ARG002
+    def on_validation_end(self, trainer, pl_module) -> None:  # noqa: ARG002
+        if trainer.sanity_checking:
+            return
         epoch = trainer.current_epoch
         if (epoch + 1) % self.every_n_epochs != 0:
             return
@@ -68,7 +73,9 @@ class HuggingFaceCallback(Callback):
         if not last_ckpt.exists():
             return
 
-        self._queue_checkpoint(last_ckpt, epoch)
+        self._queue_checkpoint(
+            last_ckpt, epoch, path_in_repo=f"last_epoch{epoch:03d}.ckpt"
+        )
 
         if self.upload_immediate:
             _upload_single(self._manifest[-1])
@@ -106,8 +113,11 @@ def _upload_single(entry: dict) -> None:
         if not path.exists():
             logger.warning("Checkpoint file not found, skipping: %s", path)
             return
+        path_in_repo = entry.get("path_in_repo", path.name)
         upload_file(
-            path_or_fileobj=str(path), path_in_repo=path.name, repo_id=entry["repo_id"]
+            path_or_fileobj=str(path),
+            path_in_repo=path_in_repo,
+            repo_id=entry["repo_id"],
         )
         entry["uploaded"] = True
         logger.info("Uploaded %s to %s", path.name, entry["repo_id"])
