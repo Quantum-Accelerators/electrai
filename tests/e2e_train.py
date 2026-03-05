@@ -382,7 +382,7 @@ def main(
     if verbose:
         echo(f"\nResults for {platform}:")
         echo(f"  Final val_loss: {final_val_loss:.6f}")
-        if final_train_loss:
+        if final_train_loss is not None:
             echo(f"  Final train_loss: {final_train_loss:.6f}")
         echo(f"  Epoch val_losses: {[f'{v:.6f}' for v in loss_callback.epoch_val_losses]}")
         echo(f"  Epoch train_losses: {[f'{v:.6f}' for v in loss_callback.epoch_train_losses]}")

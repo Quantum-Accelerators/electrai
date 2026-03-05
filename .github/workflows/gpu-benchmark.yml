@@ -100,10 +100,13 @@ jobs:
       - name: Sync S3 training data
         if: (inputs.s3_samples || '50') != '0'
         id: s3
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples || '50' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
         run: >
           uv run scripts/s3_sync.py
-          -n "${{ inputs.s3_samples || '50' }}"
-          -M "${{ inputs.max_file_size || '25' }}"
+          -n "$S3_SAMPLES"
+          -M "$MAX_FILE_SIZE"
           -v
 
       - name: Run GPU benchmark

@@ -89,10 +89,11 @@ jobs:
 
       - name: Run e2e training test (CPU baseline)
         env:
+          EPOCHS: ${{ inputs.epochs || '5' }}
           UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
         run: |
           # Run CPU test to verify determinism
-          uv run python tests/e2e_train.py --epochs 5 --verbose $UPDATE_EXPECTED
+          uv run python tests/e2e_train.py --epochs "$EPOCHS" --verbose $UPDATE_EXPECTED
 
       - name: Upload CPU expected values
         if: ${{ inputs.update_expected }}

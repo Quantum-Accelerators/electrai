@@ -30,21 +30,20 @@ import sys
 from pathlib import Path
 
 import boto3
-import click
+from click import command, option
 
 
 def err(*a, **kw):
     return print(*a, file=sys.stderr, **kw)  # noqa: T201
 
 
-# fmt: off
-@click.command()
-@click.option("-b", "--bucket", default="openathena", help="S3 bucket name")
-@click.option("-M", "--max-file-size", default=25.0, type=float, help="Skip files larger than N MB (0=no limit)")
-@click.option("-n", "--num-samples", default=10, type=int, help="Max samples to download")
-@click.option("-o", "--output", default="data/s3", help="Output directory")
-@click.option("-p", "--prefix", default="electrai", help="S3 key prefix")
-@click.option("-v", "--verbose", is_flag=True, help="Verbose output")
+@command
+@option("-b", "--bucket", default="openathena", help="S3 bucket name")
+@option("-M", "--max-file-size", default=25.0, type=float, help="Skip files larger than N MB (0=no limit)")  # fmt: skip
+@option("-n", "--num-samples", default=10, type=int, help="Max samples to download")
+@option("-o", "--output", default="data/s3", help="Output directory")
+@option("-p", "--prefix", default="electrai", help="S3 key prefix")
+@option("-v", "--verbose", is_flag=True, help="Verbose output")
 def main(
     bucket: str,
     max_file_size: float,
