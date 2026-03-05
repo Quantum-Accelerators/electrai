@@ -1,8 +1,8 @@
 # GPU E2E Training Test
 #
 # Runs deterministic e2e training tests on EC2 GPU instances.
-# Generates/verifies expected values for: linux, linux-gpu
 #
+# Can also be run in `update_expected` mode, which generates expected values for {linux, linux-gpu}.
 # These are the authoritative expected values for Linux since CI runs on EC2.
 # (Note: ubuntu-latest in gen-expected.yml produces slightly different values)
 #
