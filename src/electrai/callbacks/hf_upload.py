@@ -37,12 +37,12 @@ class HuggingFaceCallback(Callback):
 
     def _load_existing_manifest(self) -> None:
         if self.manifest_path.exists():
-            with Path.open(self.manifest_path) as f:
+            with self.manifest_path.open(encoding="utf-8") as f:
                 self._manifest = json.load(f)
 
     def _save_manifest(self) -> None:
         self.ckpt_path.mkdir(parents=True, exist_ok=True)
-        with Path.open(self.manifest_path, "w") as f:
+        with self.manifest_path.open("w", encoding="utf-8") as f:
             json.dump(self._manifest, f, indent=2)
 
     def _queue_checkpoint(
