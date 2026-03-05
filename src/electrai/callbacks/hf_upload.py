@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -72,9 +73,13 @@ class HuggingFaceCallback(Callback):
         if not last_ckpt.exists():
             return
 
-        self._queue_checkpoint(
-            last_ckpt, epoch, path_in_repo=f"last_epoch{epoch:03d}.ckpt"
-        )
+        # Copy to a stable filename so later hf-push uploads the correct
+        # snapshot even after last.ckpt is overwritten by subsequent epochs.
+        stable_name = f"last_epoch{epoch + 1:03d}.ckpt"
+        stable_path = self.ckpt_path / stable_name
+        shutil.copy2(last_ckpt, stable_path)
+
+        self._queue_checkpoint(stable_path, epoch, path_in_repo=stable_name)
 
         if self.upload_immediate:
             _upload_single(self._manifest[-1])
