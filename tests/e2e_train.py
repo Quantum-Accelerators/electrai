@@ -11,13 +11,13 @@ platforms and CPU architectures.
 
 Usage:
     # Run with defaults (5 epochs, checks val_loss)
-    ./tests/e2e_train.py
+    uv run python tests/e2e_train.py
 
     # Run more epochs, update expected values for current platform
-    ./tests/e2e_train.py --epochs 10 --update-expected
+    uv run python tests/e2e_train.py --epochs 10 --update-expected
 
     # Just train, don't check (for exploration)
-    ./tests/e2e_train.py --no-check
+    uv run python tests/e2e_train.py --no-check
 """
 
 from __future__ import annotations
