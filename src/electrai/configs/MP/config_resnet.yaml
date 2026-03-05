@@ -48,7 +48,6 @@ ckpt_path: ./checkpoints
 #   repo_id: your-username/your-repo  # must already exist on HF
 #   upload_every_n_epochs: 5
 #   upload_immediate: false  # set true on nodes with internet access
-#   private: true
 
 # test the model
 # save_pred: true

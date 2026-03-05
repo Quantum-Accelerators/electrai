@@ -30,7 +30,6 @@ class HuggingFaceCallback(Callback):
         self.repo_id: str = hf["repo_id"]
         self.every_n_epochs: int = hf.get("upload_every_n_epochs", 5)
         self.upload_immediate: bool = hf.get("upload_immediate", False)
-        self.private: bool = hf.get("private", True)
         self.ckpt_path = Path(getattr(cfg, "ckpt_path", "./checkpoints"))
         self.manifest_path = self.ckpt_path / MANIFEST_FILENAME
         self._manifest: list[dict] = []
@@ -47,7 +46,7 @@ class HuggingFaceCallback(Callback):
             json.dump(self._manifest, f, indent=2)
 
     def _queue_checkpoint(
-        self, ckpt_file: Path, epoch: int, *, path_in_repo: str | None = None
+        self, ckpt_file: Path, epoch: int | None, *, path_in_repo: str | None = None
     ) -> None:
         entry = {
             "path": str(ckpt_file),
@@ -86,12 +85,15 @@ class HuggingFaceCallback(Callback):
             return
         # Queue best checkpoints that haven't been queued yet
         queued_paths = {e["path"] for e in self._manifest}
+        had_immediate = False
         for ckpt_file in self.ckpt_path.glob("ckpt_*.ckpt"):
             if str(ckpt_file) not in queued_paths:
-                self._queue_checkpoint(ckpt_file, epoch=-1)
+                self._queue_checkpoint(ckpt_file, epoch=None)
                 if self.upload_immediate:
                     _upload_single(self._manifest[-1])
-        self._save_manifest()
+                    had_immediate = True
+        if had_immediate:
+            self._save_manifest()
 
         pending = sum(1 for e in self._manifest if not e["uploaded"])
         if pending:
@@ -106,10 +108,10 @@ class HuggingFaceCallback(Callback):
 
 def _upload_single(entry: dict) -> None:
     """Attempt to upload a single checkpoint. Logs errors, never raises."""
+    path = Path(entry["path"])
     try:
         from huggingface_hub import upload_file
 
-        path = Path(entry["path"])
         if not path.exists():
             logger.warning("Checkpoint file not found, skipping: %s", path)
             return
@@ -137,8 +139,7 @@ def hf_push(ckpt_path: str) -> None:
     ckpt_dir = Path(ckpt_path)
     manifest_path = ckpt_dir / MANIFEST_FILENAME
     if not manifest_path.exists():
-        logger.error("No manifest found at %s", manifest_path)
-        return
+        raise SystemExit(f"No manifest found at {manifest_path}")
 
     with Path.open(manifest_path) as f:
         manifest = json.load(f)
