@@ -34,7 +34,7 @@ For CI, we need:
 - Tags: `ci`, `weekly`, git SHA, branch name
 - Config logged: model size, data size, instance type, epochs
 
-### New Workflow: `gpu-weekly.yml`
+### New Workflow: `gpu-benchmark.yml`
 
 ```yaml
 name: Weekly GPU Training

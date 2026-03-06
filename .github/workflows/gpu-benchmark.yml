@@ -208,9 +208,11 @@ jobs:
           COMPARE_CPU: ${{ inputs.compare_cpu }}
           WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
           WANDB_ENTITY: ${{ vars.WANDB_ENTITY || 'PrinceOA' }}
+          GPU_TIME: ${{ steps.gpu.outputs.GPU_TIME }}
+          CPU_TIME: ${{ steps.cpu.outputs.CPU_TIME }}
+          WANDB_RUN_URL: ${{ steps.gpu.outputs.WANDB_RUN_URL }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          GPU_TIME=${{ steps.gpu.outputs.GPU_TIME }}
-
           if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
             DATA_DESC="$S3_SAMPLES samples (S3, ≤${MAX_FILE_SIZE}MB)"
           else
@@ -227,14 +229,13 @@ jobs:
           echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
           echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
           COMMIT_LINK="[\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
-          PR_NUM=$(curl -sf -H "Authorization: token ${{ github.token }}" \
+          PR_NUM=$(curl -sf -H "Authorization: token $GH_TOKEN" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
             | python3 -c "import sys,json; ps=json.load(sys.stdin); print(ps[0]['number'] if ps else '')" 2>/dev/null || true)
           if [ -n "$PR_NUM" ]; then
             COMMIT_LINK="${COMMIT_LINK} ([#${PR_NUM}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUM}))"
           fi
           echo "| Commit | ${COMMIT_LINK} |" >> $GITHUB_STEP_SUMMARY
-          WANDB_RUN_URL="${{ steps.gpu.outputs.WANDB_RUN_URL }}"
           if [ -n "$WANDB_RUN_URL" ]; then
             WANDB_RUN_ID=$(echo "$WANDB_RUN_URL" | grep -oP '[^/]+$')
             echo "| WandB | [${WANDB_PROJECT}](https://wandb.ai/${WANDB_ENTITY}/$WANDB_PROJECT) run [${WANDB_RUN_ID}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
@@ -245,7 +246,6 @@ jobs:
           echo "|--------|------|---------|" >> $GITHUB_STEP_SUMMARY
 
           if [ "$COMPARE_CPU" = "true" ]; then
-            CPU_TIME=${{ steps.cpu.outputs.CPU_TIME }}
             SPEEDUP=$(echo "scale=2; $CPU_TIME / $GPU_TIME" | bc)
             echo "| GPU | ${GPU_TIME}s | **${SPEEDUP}x** |" >> $GITHUB_STEP_SUMMARY
             echo "| CPU | ${CPU_TIME}s | 1.0x |" >> $GITHUB_STEP_SUMMARY
