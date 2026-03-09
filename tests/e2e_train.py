@@ -141,20 +141,17 @@ def main(
     # Model (configurable: small for fast CI, larger for benchmarks)
     cfg.n_channels = channels
     cfg.n_residual_blocks = residual_blocks
-    cfg.n_upscale_layers = 0  # No upscaling, same resolution
-    cfg.kernel_size1 = 3
-    cfg.kernel_size2 = 3
     cfg.use_checkpoint = gradient_checkpoint
 
     # Hydra-style model config for LightningGenerator (uses hydra.utils.instantiate)
     cfg.model = {
-        "_target_": "electrai.model.srgan_layernorm_pbc.GeneratorResNet",
-        "n_residual_blocks": residual_blocks,
-        "n_upscale_layers": 0,
+        "_target_": "electrai.model.resunet.ResUNet3D",
+        "in_channels": 1,
+        "out_channels": 1,
         "n_channels": channels,
-        "kernel_size1": 3,
-        "kernel_size2": 3,
-        "normalize": True,
+        "n_residual_blocks": residual_blocks,
+        "kernel_size": 3,
+        "depth": 2,
         "use_checkpoint": gradient_checkpoint,
     }
 
@@ -218,7 +215,7 @@ def main(
         echo(f"Train samples: {len(train_data)}, Val samples: {len(test_data)}")
 
     def dict_collate(batch):
-        """Collate tuples from MPDataset into dicts for LightningGenerator."""
+        """Collate tuples from RhoData into dicts for LightningGenerator."""
         collated = collate_fn(batch)
         if isinstance(collated, (list, tuple)):
             return {"data": collated[0], "label": collated[1]}
