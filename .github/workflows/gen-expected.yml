@@ -81,18 +81,25 @@ jobs:
 
       - name: Merge expected values
         run: |
-          # Each artifact has expected_values.json with only that platform's values
-          # Merge them into a single file
+          # Merge new platform values into existing file (preserves linux-gpu etc.)
           python3 << 'EOF'
           import json
+          from pathlib import Path
 
-          darwin_arm64 = json.load(open('tmp/darwin-arm64/expected_values.json'))
-          linux = json.load(open('tmp/linux/expected_values.json'))
+          existing = {}
+          existing_path = Path('tests/expected_values.json')
+          if existing_path.exists():
+              with open(existing_path) as f:
+                  existing = json.load(f)
 
-          merged = {
-              "darwin-arm64": darwin_arm64.get("darwin-arm64"),
-              "linux": linux.get("linux"),
-          }
+          with open('tmp/darwin-arm64/expected_values.json') as f:
+              darwin_arm64 = json.load(f)
+          with open('tmp/linux/expected_values.json') as f:
+              linux = json.load(f)
+
+          merged = {**existing}
+          merged["darwin-arm64"] = darwin_arm64.get("darwin-arm64")
+          merged["linux"] = linux.get("linux")
 
           with open('expected_values.json', 'w') as f:
               json.dump(merged, f, indent=2)
