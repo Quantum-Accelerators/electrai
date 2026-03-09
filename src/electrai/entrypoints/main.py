@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 
 import torch
 
@@ -23,6 +24,7 @@ def main() -> None:
     RuntimeError
         if no command was input
     """
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(description="Electrai Entry Point")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -38,6 +40,11 @@ def main() -> None:
     hf_push_parser.add_argument(
         "--ckpt-path", type=str, required=True, help="Path to checkpoint directory"
     )
+    hf_push_parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete local copies after successful upload",
+    )
 
     args = parser.parse_args()
 
@@ -48,7 +55,7 @@ def main() -> None:
     elif args.command == "hf-push":
         from electrai.callbacks.hf_upload import hf_push
 
-        hf_push(args.ckpt_path)
+        hf_push(args.ckpt_path, clean=args.clean)
 
 
 if __name__ == "__main__":

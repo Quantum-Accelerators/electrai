@@ -83,6 +83,8 @@ class HuggingFaceCallback(Callback):
 
         if self.upload_immediate:
             _upload_single(self._manifest[-1])
+            if self._manifest[-1]["uploaded"]:
+                stable_path.unlink(missing_ok=True)
             self._save_manifest()
 
     def on_train_end(self, trainer, pl_module) -> None:  # noqa: ARG002
@@ -136,7 +138,7 @@ def _upload_single(entry: dict) -> None:
         )
 
 
-def hf_push(ckpt_path: str) -> None:
+def hf_push(ckpt_path: str, *, clean: bool = False) -> None:
     """Upload pending checkpoints from a manifest file.
 
     Run this from a login node or machine with internet access.
@@ -146,7 +148,7 @@ def hf_push(ckpt_path: str) -> None:
     if not manifest_path.exists():
         raise SystemExit(f"No manifest found at {manifest_path}")
 
-    with Path.open(manifest_path) as f:
+    with manifest_path.open(encoding="utf-8") as f:
         manifest = json.load(f)
 
     pending = [e for e in manifest if not e["uploaded"]]
@@ -157,8 +159,10 @@ def hf_push(ckpt_path: str) -> None:
     logger.info("Uploading %d pending checkpoint(s)...", len(pending))
     for entry in pending:
         _upload_single(entry)
+        if clean and entry["uploaded"]:
+            Path(entry["path"]).unlink(missing_ok=True)
 
-    with Path.open(manifest_path, "w") as f:
+    with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     still_pending = sum(1 for e in manifest if not e["uploaded"])
