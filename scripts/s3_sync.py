@@ -5,8 +5,8 @@
 # ///
 """Sync training samples from S3 for benchmarking and local development.
 
-Downloads CHGCAR input/label pairs from s3://openathena/electrai/,
-filters by file size, and creates a map file for training.
+Downloads CHGCAR data/label pairs from s3://openathena/electrai/,
+filters by file size, and creates a filelist for RhoRead.
 Mirrors S3 structure under data/s3/ by default.
 
 Examples:
@@ -22,9 +22,7 @@ Examples:
 
 from __future__ import annotations
 
-import gzip
 import hashlib
-import json
 import os
 import sys
 from pathlib import Path
@@ -58,7 +56,7 @@ def main(
     Writes DATASET_HASH to $GITHUB_OUTPUT when running in CI.
     """
     out = Path(output)
-    input_dir = out / "input"
+    input_dir = out / "data"
     label_dir = out / "label"
     input_dir.mkdir(parents=True, exist_ok=True)
     label_dir.mkdir(parents=True, exist_ok=True)
@@ -114,12 +112,11 @@ def main(
 
     err(f"Downloaded {downloaded} samples")
 
-    # Create map file from whatever is in input_dir (supports incremental syncs)
+    # Create filelist from whatever is in data dir (supports incremental syncs)
     sample_ids = sorted(p.stem for p in input_dir.glob("*.CHGCAR"))
-    map_path = out / "map_subset.json.gz"
-    with gzip.open(map_path, "wt") as f:
-        json.dump({"GGA": sample_ids}, f)
-    err(f"Map: {map_path} ({len(sample_ids)} samples)")
+    filelist_path = out / "mp_filelist.txt"
+    filelist_path.write_text("\n".join(sample_ids) + "\n")
+    err(f"Filelist: {filelist_path} ({len(sample_ids)} samples)")
 
     # Dataset hash: short MD5 of sorted sample IDs
     ds_hash = hashlib.md5("|".join(sample_ids).encode()).hexdigest()[:8]

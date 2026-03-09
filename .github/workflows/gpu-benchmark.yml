@@ -125,7 +125,7 @@ jobs:
 
           DATA_ARGS=""
           if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
-            DATA_ARGS="--data-path data/s3/input --label-path data/s3/label --map-path data/s3/map_subset.json.gz"
+            DATA_ARGS="--data-root data/s3"
             echo "Using S3 data ($S3_SAMPLES samples)"
           else
             echo "Using repo test data (5 samples)"
@@ -179,7 +179,7 @@ jobs:
 
           DATA_ARGS=""
           if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
-            DATA_ARGS="--data-path data/s3/input --label-path data/s3/label --map-path data/s3/map_subset.json.gz"
+            DATA_ARGS="--data-root data/s3"
             echo "Using S3 data ($S3_SAMPLES samples)"
           else
             echo "Using repo test data (5 samples)"

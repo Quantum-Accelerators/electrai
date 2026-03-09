@@ -62,13 +62,11 @@ def get_platform(gpu: bool = False) -> str:
 @option("-B", "--residual-blocks", default=2, help="Number of residual blocks (default: 2, production: 16)")
 @option("-C", "--channels", default=8, help="Number of model channels (default: 8, production: 32-64)")
 @option("-c", "--check/--no-check", default=True, help="Check val_loss against expected value")
-@option("-d", "--data-path", default=None, help="Path to input data (default: data/MP/chgcars/input)")
+@option("-d", "--data-root", default=None, help="Path to data root dir containing mp_filelist.txt (default: data/MP/chgcars)")
 @option("-e", "--epochs", default=5, help="Number of training epochs")
 @option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
 @option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
-@option("-l", "--label-path", default=None, help="Path to label data (default: data/MP/chgcars/label)")
 @option("-M", "--max-file-size", default=0, type=float, help="Skip input files larger than N MB (0=no limit)")
-@option("-m", "--map-path", default=None, help="Path to map file (default: data/MP/map/map_sample.json.gz)")
 @option("-s", "--seed", default=42, help="Random seed for reproducibility")
 @option("-t", "--tolerance", default=0.001, help="Tolerance for val_loss comparison (absolute)")
 @option("-U", "--update-expected", is_flag=True, help="Update expected_values.json for current platform")
@@ -79,13 +77,11 @@ def main(
     residual_blocks: int,
     channels: int,
     check: bool,
-    data_path: str | None,
+    data_root: str | None,
     epochs: int,
     gradient_checkpoint: bool,
     gpu: bool,
-    label_path: str | None,
     max_file_size: float,
-    map_path: str | None,
     seed: int,
     tolerance: float,
     update_expected: bool,
@@ -97,10 +93,8 @@ def main(
 
     import torch
     from lightning.pytorch import Callback, Trainer, seed_everything
-    from torch.utils.data import DataLoader
 
-    from electrai.dataloader.collate import collate_fn
-    from electrai.dataloader.registry import get_data
+    from electrai.dataloader.dataset import RhoRead
     from electrai.lightning import LightningGenerator
 
     # Paths
@@ -122,21 +116,12 @@ def main(
 
     cfg = Config()
 
-    # Dataset
-    cfg.dataset_name = "mp"
-    cfg.data_path = data_path or str(repo_root / "data/MP/chgcars/input")
-    cfg.label_path = label_path or str(repo_root / "data/MP/chgcars/label")
-    cfg.map_path = map_path or str(repo_root / "data/MP/map/map_sample.json.gz")
-    cfg.rho_type = "chgcar"
-    cfg.functional = "GGA"
-    cfg.train_fraction = 0.6  # 3 train, 2 val from 5 samples
-    cfg.num_workers = 0  # Single-threaded for determinism
-    cfg.downsample_label = 1
-    cfg.downsample_data = 0
-    cfg.data_augmentation = False
-    cfg.random_seed = seed
-    cfg.normalize = True
-    cfg.data_precision = "f32"
+    # Dataset (RhoRead datamodule)
+    data_root_path = Path(data_root) if data_root else repo_root / "data/MP/chgcars"
+    filelist = data_root_path / "mp_filelist.txt"
+    if not filelist.exists():
+        echo(f"Error: filelist not found: {filelist}", err=True)
+        sys.exit(1)
 
     # Model (configurable: small for fast CI, larger for benchmarks)
     cfg.n_channels = channels
@@ -186,55 +171,38 @@ def main(
         echo(f"Platform: {platform}")
         echo(f"Config: epochs={cfg.epochs}, seed={seed}, channels={cfg.n_channels}, blocks={cfg.n_residual_blocks}")
         echo(f"Accelerator: {accelerator}")
-        echo(f"Data: {cfg.data_path}")
+        echo(f"Data: {filelist}")
 
-    # Load data
-    train_data, test_data = get_data(cfg)
-
-    # Filter by file size if requested (avoid OOM on large grids)
+    # Filter filelist by file size if requested (avoid OOM on large grids)
     if max_file_size > 0:
         max_bytes = int(max_file_size * 1024 * 1024)
-        for name, dataset in [("train", train_data), ("val", test_data)]:
-            original = len(dataset.data)
-            kept = []
-            for inp, lbl in dataset.data:
-                size = inp.stat().st_size
-                if size > max_bytes:
-                    echo(f"  skip {inp.name} ({size / 1048576:.1f}MB > {max_file_size}MB)", err=True)
-                else:
-                    kept.append((inp, lbl))
-            dataset.data = kept
-            filtered = original - len(kept)
-            if filtered > 0:
-                echo(f"Filtered {filtered}/{original} {name} samples > {max_file_size}MB", err=True)
-        if len(train_data) == 0 or len(test_data) == 0:
+        all_ids = filelist.read_text().strip().splitlines()
+        kept = []
+        for sample_id in all_ids:
+            chgcar = data_root_path / "data" / f"{sample_id}.CHGCAR"
+            if chgcar.exists() and chgcar.stat().st_size > max_bytes:
+                echo(f"  skip {sample_id} ({chgcar.stat().st_size / 1048576:.1f}MB > {max_file_size}MB)", err=True)
+            else:
+                kept.append(sample_id)
+        if len(kept) < len(all_ids):
+            echo(f"Filtered {len(all_ids) - len(kept)}/{len(all_ids)} samples > {max_file_size}MB", err=True)
+            # Write filtered filelist for RhoRead
+            filelist = data_root_path / "mp_filelist_filtered.txt"
+            filelist.write_text("\n".join(kept) + "\n")
+        if not kept:
             echo("Error: no samples remain after filtering", err=True)
             sys.exit(1)
 
-    if verbose:
-        echo(f"Train samples: {len(train_data)}, Val samples: {len(test_data)}")
-
-    def dict_collate(batch):
-        """Collate tuples from RhoData into dicts for LightningGenerator."""
-        collated = collate_fn(batch)
-        if isinstance(collated, (list, tuple)):
-            return {"data": collated[0], "label": collated[1]}
-        return collated
-
-    train_loader = DataLoader(
-        train_data,
+    # Create RhoRead datamodule
+    datamodule = RhoRead(
+        root=str(filelist),
+        precision="f32",
         batch_size=cfg.nbatch,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        generator=torch.Generator().manual_seed(seed),
-        collate_fn=dict_collate,
-    )
-    test_loader = DataLoader(
-        test_data,
-        batch_size=cfg.nbatch,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        collate_fn=dict_collate,
+        train_workers=0,
+        val_workers=0,
+        val_frac=0.4,
+        augmentation=False,
+        random_seed=seed,
     )
 
     # Model
@@ -265,12 +233,8 @@ def main(
     if wandb_project:
         from lightning.pytorch.loggers import WandbLogger
 
-        # Collect sample IDs from train+val datasets
-        sample_ids = sorted({
-            Path(inp).stem
-            for dataset in [train_data, test_data]
-            for inp, _lbl in dataset.data
-        })
+        # Collect sample IDs from filelist
+        sample_ids = sorted(filelist.read_text().strip().splitlines())
 
         # Auto-compute dataset version from sample IDs if not provided
         dataset_version = os.environ.get("DATASET_VERSION", "")
@@ -308,8 +272,7 @@ def main(
                 "epochs": epochs,
                 "gradient_checkpoint": gradient_checkpoint,
                 "max_file_size_mb": max_file_size,
-                "train_samples": len(train_data),
-                "val_samples": len(test_data),
+                "total_samples": len(sample_ids),
                 "sample_ids": sample_ids,
                 "dataset_version": dataset_version,
                 "seed": seed,
@@ -341,7 +304,7 @@ def main(
 
     # Train
     t0 = monotonic()
-    trainer.fit(model, train_loader, test_loader)
+    trainer.fit(model, datamodule=datamodule)
     train_wallclock = monotonic() - t0
 
     # Log summary metrics + wallclock to WandB
