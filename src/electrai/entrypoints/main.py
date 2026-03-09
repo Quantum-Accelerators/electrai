@@ -43,7 +43,7 @@ def main() -> None:
     hf_push_parser.add_argument(
         "--clean",
         action="store_true",
-        help="Delete local copies after successful upload",
+        help="Delete local checkpoint files after successful upload (includes best-model checkpoints)",
     )
 
     args = parser.parse_args()
