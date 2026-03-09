@@ -49,8 +49,6 @@ def main() -> None:
         from electrai.callbacks.hf_upload import hf_push
 
         hf_push(args.ckpt_path)
-    else:
-        raise ValueError(f"Unknown command: {args.command}")
 
 
 if __name__ == "__main__":
