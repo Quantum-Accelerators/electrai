@@ -265,6 +265,7 @@ def main(
             project=wandb_project,
             entity=os.environ.get("WANDB_ENTITY", "PrinceOA"),
             name=wandb_run_name,
+            group=dataset_version,
             tags=wandb_tags,
             config={
                 "channels": channels,
