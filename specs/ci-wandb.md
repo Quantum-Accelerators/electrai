@@ -37,7 +37,7 @@ For CI, we need:
 ### New Workflow: `gpu-benchmark.yml`
 
 ```yaml
-name: Weekly GPU Training
+name: GPU Benchmark
 on:
   schedule:
     - cron: '0 6 * * 1'   # Monday 6am UTC

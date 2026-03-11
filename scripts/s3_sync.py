@@ -7,7 +7,7 @@
 
 Downloads CHGCAR data/label pairs from s3://openathena/electrai/,
 filters by file size, and creates a filelist for RhoRead.
-Mirrors S3 structure under data/s3/ by default.
+Renames S3 ``input/`` → ``data/`` to match RhoRead's expected layout.
 
 Examples:
     # Download 10 samples (≤25MB each)
@@ -52,7 +52,8 @@ def main(
 ):
     """Sync training samples from S3.
 
-    Mirrors s3://{bucket}/{prefix}/ under the output directory.
+    Downloads s3://{bucket}/{prefix}/input/ → {output}/data/
+             s3://{bucket}/{prefix}/label/ → {output}/label/
     Writes DATASET_HASH to $GITHUB_OUTPUT when running in CI.
     """
     out = Path(output)
