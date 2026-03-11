@@ -1,0 +1,45 @@
+# Dataset / loader parameters
+data:
+  _target_: src.electrai.dataloader.dataset.RhoRead
+  # There should be either 'root' or 'datasets'
+  # root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga+u/mp_filelist.txt
+  # split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga+u/split.json
+  # val_frac: 0.1
+  datasets:
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/mp_filelist.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/split.json
+      val_frac: 0.1
+      functional_id: 1
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga+u/mp_filelist.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga+u/split.json
+      val_frac: 0.1
+      functional_id: 2
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+
+# Model
+model:
+  _target_: src.electrai.model.resunet_multihead.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 32
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+  use_multihead: false
+  num_heads: 2
+
+# Training parameters
+precision: 32
+epochs: 100
+lr: 0.001
+weight_decay: 0.0
+warmup_length: 1
+beta1: 0.9
+beta2: 0.99

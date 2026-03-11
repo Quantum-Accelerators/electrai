@@ -20,8 +20,8 @@ class LightningGenerator(LightningModule):
         self.model = instantiate(cfg.model)
         self.loss_fn = NormMAE()
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, x, fid=None):
+        return self.model(x, fid=fid)
 
     def training_step(self, batch):
         loss = self._loss_calculation(batch)
@@ -45,15 +45,16 @@ class LightningGenerator(LightningModule):
     def _loss_calculation(self, batch):
         x = batch["data"]
         y = batch["label"]
+        fid = batch["functional_id"]
         if isinstance(x, list):
             losses = []
             for x_i, y_i in zip(x, y, strict=True):
-                pred = self(x_i.unsqueeze(0))
+                pred = self(x_i.unsqueeze(0), fid=fid)
                 loss = self.loss_fn(pred, y_i.unsqueeze(0))
                 losses.append(loss)
             loss = torch.stack(losses).mean()
         else:
-            pred = self(x)
+            pred = self(x, fid=fid)
             loss = self.loss_fn(pred, y)
         return loss
 
