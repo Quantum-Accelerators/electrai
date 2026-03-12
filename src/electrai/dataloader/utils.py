@@ -32,6 +32,18 @@ def load_numpy_rho(
     label = torch.tensor(label, dtype=dtype_map[precision])
     if augmentation:
         data, label = rand_rotate([data, label])
+    if category == "qm9":
+        ds1 = 4
+        nx, ny, nz = data.size()[-3:]
+        nx = nx // ds1 * ds1
+        ny = ny // ds1 * ds1
+        nz = nz // ds1 * ds1
+        data = data[..., :nx, :ny, :nz]
+        nx, ny, nz = label.size()[-3:]
+        nx = nx // ds1 * ds1
+        ny = ny // ds1 * ds1
+        nz = nz // ds1 * ds1
+        label = label[..., :nx, :ny, :nz]
     return data, label
 
 
@@ -44,18 +56,13 @@ def load_chgcar(root: str | bytes | os.PathLike, index: str):
 
 
 def load_npy(root: str | bytes | os.PathLike, index: str):
-    data_size = np.loadtxt(
-        root / "data" / f"dsgdb9nsd_{index:06d}" / "grid_sizes_22.dat", dtype=int
-    )
-    label_size = np.loadtxt(
-        root / "label" / f"dsgdb9nsd_{index:06d}" / "grid_sizes_22.dat", dtype=int
-    )
-    data = np.load(root / "data" / f"dsgdb9nsd_{index:06d}" / "rho_22.npy").reshape(
-        data_size
-    )
-    label = np.load(root / "label" / f"dsgdb9nsd_{index:06d}" / "rho_22.npy").reshape(
-        label_size
-    )
+    index = int(index)
+    data_dir = root / "data" / f"dsgdb9nsd_{index:06d}"
+    label_dir = root / "label" / f"dsgdb9nsd_{index:06d}"
+    data_size = np.loadtxt(data_dir / "grid_sizes_22.dat", dtype=int)
+    label_size = np.loadtxt(label_dir / "grid_sizes_22.dat", dtype=int)
+    data = np.load(data_dir / "rho_22.npy").reshape(data_size)
+    label = np.load(label_dir / "rho_22.npy").reshape(label_size)
     # convert a.u. to e/(A^3)
     factor = 1.88973**3
     return data * factor, label * factor
