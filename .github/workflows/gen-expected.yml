@@ -1,8 +1,118 @@
+# Generate Expected Values (GHA Runners)
+#
+# Generates expected values on GitHub-hosted runners.
+# Generates/verifies expected values for: darwin-arm64, linux (ubuntu-latest)
+#
+# Note: The linux values from ubuntu-latest differ slightly from EC2.
+# For authoritative linux/linux-gpu values, use gpu-e2e.yml instead.
+# This workflow is useful for:
+#   - darwin-arm64 values (when no local Apple Silicon Mac available)
+#   - Documenting GHA runner vs EC2 differences
+#
+# To regenerate:
+#   gh workflow run gen-expected.yml
+#   gh run download <run-id> -n expected-values
+#   cp expected_values.json tests/
+
 name: Generate Expected Values
+
 on:
   workflow_dispatch:
+  push:
+    branches: [gen-expected]
+
+permissions:
+  contents: read
+
 jobs:
-  placeholder:
+  gen-macos-arm64:
+    runs-on: macos-latest  # Apple Silicon (arm64) as of late 2024
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate expected values (darwin-arm64)
+        run: uv run python scripts/e2e_train.py --update-expected --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: expected-darwin-arm64
+          path: tests/expected_values.json
+
+  gen-linux:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Placeholder workflow to preserve workflow name in GitHub Actions UI"
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate expected values (linux)
+        run: uv run python scripts/e2e_train.py --update-expected --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: expected-linux
+          path: tests/expected_values.json
+
+  merge:
+    needs: [gen-macos-arm64, gen-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download darwin-arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: expected-darwin-arm64
+          path: tmp/darwin-arm64
+
+      - name: Download linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: expected-linux
+          path: tmp/linux
+
+      - name: Merge expected values
+        run: |
+          # Merge new platform values into existing file (preserves linux-gpu etc.)
+          python3 << 'EOF'
+          import json
+          from pathlib import Path
+
+          existing = {}
+          existing_path = Path('tests/expected_values.json')
+          if existing_path.exists():
+              with open(existing_path) as f:
+                  existing = json.load(f)
+
+          with open('tmp/darwin-arm64/expected_values.json') as f:
+              darwin_arm64 = json.load(f)
+          with open('tmp/linux/expected_values.json') as f:
+              linux = json.load(f)
+
+          merged = {**existing}
+          merged["darwin-arm64"] = darwin_arm64.get("darwin-arm64")
+          merged["linux"] = linux.get("linux")
+
+          with open('expected_values.json', 'w') as f:
+              json.dump(merged, f, indent=2)
+              f.write('\n')
+
+          print("Merged expected values:")
+          print(json.dumps(merged, indent=2))
+          EOF
+
+      - name: Upload merged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: expected-values
+          path: expected_values.json

@@ -1,8 +1,260 @@
+# GPU Benchmark
+#
+# Runs GPU training benchmark with configurable model size.
+# Two modes:
+#   - GPU-only (default): benchmark GPU training time
+#   - CPU comparison: also run CPU for speedup comparison (use smaller configs)
+#
+# Examples:
+#   gh workflow run gpu-benchmark.yml                                          # GPU-only, 50 S3 samples
+#   gh workflow run gpu-benchmark.yml -f s3_samples=0                          # GPU-only, repo test data
+#   gh workflow run gpu-benchmark.yml -f compare_cpu=true -f s3_samples=0      # GPU vs CPU comparison
+#   gh workflow run gpu-benchmark.yml -f channels=64 -f residual_blocks=16     # Production model
+#   gh workflow run gpu-benchmark.yml -f s3_samples=50 -f wandb_project=elf-net-ci  # Log to WandB
+
 name: GPU Benchmark
+
+# Weekly schedule + manual trigger
 on:
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 6am UTC
   workflow_dispatch:
+    inputs:
+      instance_type:
+        description: 'EC2 instance type'
+        default: 'g6.xlarge'
+        type: string
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+      channels:
+        description: 'Number of model channels (8=tiny, 32=prod, 64=large)'
+        default: '32'
+        type: string
+      residual_blocks:
+        description: 'Number of residual blocks (2=tiny, 16=prod)'
+        default: '16'
+        type: string
+      s3_samples:
+        description: 'Number of S3 samples to use (0=use repo test data, 10-200 for S3)'
+        default: '50'
+        type: string
+      max_file_size:
+        description: 'Skip S3 samples larger than N MB (0=no limit, 25=safe for L4 24GB)'
+        default: '25'
+        type: string
+      compare_cpu:
+        description: 'Also run CPU benchmark for speedup comparison (slower)'
+        default: false
+        type: boolean
+      wandb_project:
+        description: 'WandB project name (empty=use WANDB_PROJECT var or elf-net-ci; "none"/"false"/"disabled" to skip)'
+        default: ''
+        type: string
+      dataset_version:
+        description: 'Dataset version tag for WandB (auto=hash of sample IDs; override with e.g. oa-s3-v1)'
+        default: ''
+        type: string
+      debug:
+        description: 'Debug mode (false/true/N minutes)'
+        default: 'false'
+        type: string
+
+permissions:
+  id-token: write  # Required for AWS OIDC
+  contents: read
+
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@v2
+    with:
+      ec2_instance_type: ${{ inputs.instance_type || 'g6.xlarge' }}
+      ec2_image_id: ami-0365bff494b18bf93  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.7 (Ubuntu 22.04)
+      ec2_root_device_size: '+10'
+      aws_tags: '[{"Key": "project", "Value": "electrai"}]'
+      debug: ${{ inputs.debug || 'false' }}
+    secrets:
+      GH_SA_TOKEN: ${{ secrets.GH_SA_TOKEN }}
+
+  benchmark:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
+    env:
+      EPOCHS: ${{ inputs.epochs || '5' }}
+      CHANNELS: ${{ inputs.channels || '32' }}
+      BLOCKS: ${{ inputs.residual_blocks || '16' }}
     steps:
-      - run: echo "Placeholder workflow to preserve workflow name in GitHub Actions UI"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check GPU
+        run: nvidia-smi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Sync S3 training data
+        if: (inputs.s3_samples || '50') != '0'
+        id: s3
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples || '50' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
+        run: >
+          uv run scripts/s3_sync.py
+          -n "$S3_SAMPLES"
+          -M "$MAX_FILE_SIZE"
+          -v
+
+      - name: Run GPU benchmark
+        id: gpu
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples || '50' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
+          WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          DATASET_VERSION: ${{ inputs.dataset_version || steps.s3.outputs.DATASET_HASH }}
+          INSTANCE_TYPE: ${{ inputs.instance_type || 'g6.xlarge' }}
+        run: |
+          echo "=== GPU BENCHMARK ==="
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES, max_file_size=${MAX_FILE_SIZE}MB"
+          echo ""
+
+          DATA_ARGS=""
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_ARGS="--data-root data/s3"
+            echo "Using S3 data ($S3_SAMPLES samples)"
+          else
+            echo "Using repo test data (5 samples)"
+          fi
+
+          WANDB_ARGS=""
+          if echo "$WANDB_PROJECT" | grep -qiE '^(none|false|disabled)$'; then
+            echo "WandB logging: disabled (project=$WANDB_PROJECT)"
+          elif [ -n "$WANDB_API_KEY" ] && [ -n "$WANDB_PROJECT" ]; then
+            WANDB_ARGS="--wandb-project $WANDB_PROJECT"
+            echo "WandB logging: $WANDB_PROJECT"
+          else
+            echo "WandB logging: disabled (no API key)"
+          fi
+
+          START=$(date +%s)
+          OUTPUT=$(uv run python scripts/e2e_train.py \
+            --gpu \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$BLOCKS" \
+            --gradient-checkpoint \
+            --max-file-size "$MAX_FILE_SIZE" \
+            --verbose \
+            --no-check \
+            $DATA_ARGS \
+            $WANDB_ARGS 2>&1 | tee /dev/stderr)
+          END=$(date +%s)
+          GPU_TIME=$((END - START))
+          echo ""
+          echo "GPU_TIME=${GPU_TIME}" >> $GITHUB_OUTPUT
+          echo "GPU training time: ${GPU_TIME}s"
+
+          # Capture WandB run URL from output
+          WANDB_RUN_URL=$(echo "$OUTPUT" | grep -oP 'WANDB_RUN_URL=\K.*' || true)
+          if [ -n "$WANDB_RUN_URL" ]; then
+            echo "WANDB_RUN_URL=${WANDB_RUN_URL}" >> $GITHUB_OUTPUT
+            echo "WandB run: $WANDB_RUN_URL"
+          fi
+
+      - name: Run CPU benchmark
+        id: cpu
+        if: inputs.compare_cpu
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples || '50' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
+        run: |
+          echo "=== CPU BENCHMARK ==="
+          echo "Config: epochs=$EPOCHS, channels=$CHANNELS, blocks=$BLOCKS, s3_samples=$S3_SAMPLES, max_file_size=${MAX_FILE_SIZE}MB"
+          echo ""
+
+          DATA_ARGS=""
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_ARGS="--data-root data/s3"
+            echo "Using S3 data ($S3_SAMPLES samples)"
+          else
+            echo "Using repo test data (5 samples)"
+          fi
+
+          START=$(date +%s)
+          uv run python scripts/e2e_train.py \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$BLOCKS" \
+            --gradient-checkpoint \
+            --max-file-size "$MAX_FILE_SIZE" \
+            --verbose \
+            --no-check \
+            $DATA_ARGS
+          END=$(date +%s)
+          CPU_TIME=$((END - START))
+          echo ""
+          echo "CPU_TIME=${CPU_TIME}" >> $GITHUB_OUTPUT
+          echo "CPU training time: ${CPU_TIME}s"
+
+      - name: Summary
+        env:
+          S3_SAMPLES: ${{ inputs.s3_samples || '50' }}
+          MAX_FILE_SIZE: ${{ inputs.max_file_size || '25' }}
+          COMPARE_CPU: ${{ inputs.compare_cpu }}
+          WANDB_PROJECT: ${{ inputs.wandb_project || vars.WANDB_PROJECT || 'elf-net-ci' }}
+          WANDB_ENTITY: ${{ vars.WANDB_ENTITY || 'PrinceOA' }}
+          GPU_TIME: ${{ steps.gpu.outputs.GPU_TIME }}
+          CPU_TIME: ${{ steps.cpu.outputs.CPU_TIME }}
+          WANDB_RUN_URL: ${{ steps.gpu.outputs.WANDB_RUN_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$S3_SAMPLES" != "0" ] && [ -n "$S3_SAMPLES" ]; then
+            DATA_DESC="$S3_SAMPLES samples (S3, ≤${MAX_FILE_SIZE}MB)"
+          else
+            DATA_DESC="5 samples (repo test data)"
+          fi
+
+          echo "## GPU Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Epochs | $EPOCHS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Channels | $CHANNELS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Residual Blocks | $BLOCKS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $DATA_DESC |" >> $GITHUB_STEP_SUMMARY
+          COMMIT_LINK="[\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+          PR_NUM=$(curl -sf -H "Authorization: token $GH_TOKEN" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+            | python3 -c "import sys,json; ps=json.load(sys.stdin); print(ps[0]['number'] if ps else '')" 2>/dev/null || true)
+          if [ -n "$PR_NUM" ]; then
+            COMMIT_LINK="${COMMIT_LINK} ([#${PR_NUM}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUM}))"
+          fi
+          echo "| Commit | ${COMMIT_LINK} |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$WANDB_RUN_URL" ]; then
+            WANDB_RUN_ID=$(echo "$WANDB_RUN_URL" | grep -oP '[^/]+$')
+            echo "| WandB | [${WANDB_PROJECT}](https://wandb.ai/${WANDB_ENTITY}/$WANDB_PROJECT) run [${WANDB_RUN_ID}](${WANDB_RUN_URL}) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | Time | Speedup |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|---------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$COMPARE_CPU" = "true" ]; then
+            SPEEDUP=$(echo "scale=2; $CPU_TIME / $GPU_TIME" | bc)
+            echo "| GPU | ${GPU_TIME}s | **${SPEEDUP}x** |" >> $GITHUB_STEP_SUMMARY
+            echo "| CPU | ${CPU_TIME}s | 1.0x |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| GPU | ${GPU_TIME}s | - |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "*CPU comparison skipped. Run with \`compare_cpu=true\` to include.*" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Show GPU memory usage
+        if: always()
+        run: nvidia-smi
