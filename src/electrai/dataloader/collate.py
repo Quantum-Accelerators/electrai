@@ -7,5 +7,5 @@ def collate_fn(batch):
     try:
         return default_collate(batch)
     except RuntimeError:
-        x, y, index = zip(*batch, strict=True)
-        return list(x), list(y), list(index)
+        x, y, index, dataset_id = zip(*batch, strict=True)
+        return list(x), list(y), list(index), list(dataset_id)
