@@ -142,7 +142,7 @@ jobs:
           fi
 
           START=$(date +%s)
-          OUTPUT=$(uv run python tests/e2e_train.py \
+          OUTPUT=$(uv run python scripts/e2e_train.py \
             --gpu \
             --epochs "$EPOCHS" \
             --channels "$CHANNELS" \
@@ -186,7 +186,7 @@ jobs:
           fi
 
           START=$(date +%s)
-          uv run python tests/e2e_train.py \
+          uv run python scripts/e2e_train.py \
             --epochs "$EPOCHS" \
             --channels "$CHANNELS" \
             --residual-blocks "$BLOCKS" \

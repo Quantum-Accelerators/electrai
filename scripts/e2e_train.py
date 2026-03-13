@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-End-to-end training test with deterministic seeding.
+End-to-end training CLI with deterministic seeding.
 
 Runs a minimal training loop on the sample data in data/MP/ and verifies
 that the final validation loss matches an expected value (within tolerance).
@@ -11,13 +11,13 @@ platforms and CPU architectures.
 
 Usage:
     # Run with defaults (5 epochs, checks val_loss)
-    uv run python tests/e2e_train.py
+    uv run python scripts/e2e_train.py
 
     # Run more epochs, update expected values for current platform
-    uv run python tests/e2e_train.py --epochs 10 --update-expected
+    uv run python scripts/e2e_train.py --epochs 10 --update-expected
 
     # Just train, don't check (for exploration)
-    uv run python tests/e2e_train.py --no-check
+    uv run python scripts/e2e_train.py --no-check
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ def get_platform(gpu: bool = False) -> str:
     """
     machine = platform_mod.machine()
     if sys.platform == "darwin":
-        # Distinguish Apple Silicon from Intel Macs
         if machine == "arm64":
             return "darwin-arm64"
         else:
@@ -57,38 +56,29 @@ def get_platform(gpu: bool = False) -> str:
         return f"{sys.platform}-{machine}"
 
 
-# fmt: off
-@command()
-@option("-B", "--residual-blocks", default=2, help="Number of residual blocks (default: 2, production: 16)")
-@option("-C", "--channels", default=8, help="Number of model channels (default: 8, production: 32-64)")
-@option("-c", "--check/--no-check", default=True, help="Check val_loss against expected value")
-@option("-d", "--data-root", default=None, help="Path to data root dir containing mp_filelist.txt (default: data/MP/chgcars)")
-@option("-e", "--epochs", default=5, help="Number of training epochs")
-@option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
-@option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
-@option("-M", "--max-file-size", default=0, type=float, help="Skip input files larger than N MB (0=no limit)")
-@option("-s", "--seed", default=42, help="Random seed for reproducibility")
-@option("-t", "--tolerance", default=0.001, help="Tolerance for val_loss comparison (absolute)")
-@option("-U", "--update-expected", is_flag=True, help="Update expected_values.json for current platform")
-@option("-v", "--verbose", is_flag=True, help="Verbose output")
-@option("-W", "--wandb-project", default=None, help="Enable WandB logging with this project name")
-# fmt: on
-def main(
-    residual_blocks: int,
-    channels: int,
-    check: bool,
-    data_root: str | None,
-    epochs: int,
-    gradient_checkpoint: bool,
-    gpu: bool,
-    max_file_size: float,
-    seed: int,
-    tolerance: float,
-    update_expected: bool,
-    verbose: bool,
-    wandb_project: str | None,
-):
-    """Run deterministic e2e training test."""
+def run_training(
+    channels: int = 8,
+    residual_blocks: int = 2,
+    epochs: int = 5,
+    seed: int = 42,
+    gpu: bool = False,
+    data_root: str | None = None,
+    gradient_checkpoint: bool = False,
+    max_file_size: float = 0,
+    wandb_project: str | None = None,
+    verbose: bool = False,
+) -> dict:
+    """Run e2e training and return results.
+
+    Returns dict with keys:
+    - platform: str (e.g. "darwin-arm64")
+    - final_val_loss: float
+    - final_train_loss: float | None
+    - epoch_val_losses: list[float]
+    - epoch_train_losses: list[float]
+    - wallclock_s: float
+    - wandb_run_url: str | None
+    """
     from time import monotonic
 
     import torch
@@ -97,9 +87,7 @@ def main(
     from electrai.dataloader.dataset import RhoRead
     from electrai.lightning import LightningGenerator
 
-    # Paths
     repo_root = Path(__file__).parent.parent
-    expected_values_file = Path(__file__).parent / "expected_values.json"
 
     # Force deterministic behavior (skip if WandB logging, which implies benchmark mode)
     if not wandb_project:
@@ -110,7 +98,6 @@ def main(
 
     seed_everything(seed, workers=True)
 
-    # Minimal config for testing
     class Config:
         pass
 
@@ -120,15 +107,12 @@ def main(
     data_root_path = Path(data_root) if data_root else repo_root / "data/MP/chgcars"
     filelist = data_root_path / "mp_filelist.txt"
     if not filelist.exists():
-        echo(f"Error: filelist not found: {filelist}", err=True)
-        sys.exit(1)
+        raise FileNotFoundError(f"filelist not found: {filelist}")
 
-    # Model (configurable: small for fast CI, larger for benchmarks)
+    # Model
     cfg.n_channels = channels
     cfg.n_residual_blocks = residual_blocks
     cfg.use_checkpoint = gradient_checkpoint
-
-    # Hydra-style model config for LightningGenerator (uses hydra.utils.instantiate)
     cfg.model = {
         "_target_": "electrai.model.resunet.ResUNet3D",
         "in_channels": 1,
@@ -156,22 +140,25 @@ def main(
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             accelerator = "mps"
         else:
-            echo(
-                "Warning: --gpu requested but no GPU available, falling back to CPU",
-                err=True,
-            )
+            if verbose:
+                echo(
+                    "Warning: gpu requested but no GPU available, falling back to CPU",
+                    err=True,
+                )
             accelerator = "cpu"
     else:
         accelerator = "cpu"
 
-    # Platform detection based on resolved accelerator (not just --gpu flag)
     platform = get_platform(gpu=(accelerator == "cuda"))
 
     if verbose:
-        echo(f"Platform: {platform}")
-        echo(f"Config: epochs={cfg.epochs}, seed={seed}, channels={cfg.n_channels}, blocks={cfg.n_residual_blocks}")
-        echo(f"Accelerator: {accelerator}")
-        echo(f"Data: {filelist}")
+        echo(f"Platform: {platform}", err=True)
+        echo(
+            f"Config: epochs={epochs}, seed={seed}, channels={channels}, blocks={residual_blocks}",
+            err=True,
+        )
+        echo(f"Accelerator: {accelerator}", err=True)
+        echo(f"Data: {filelist}", err=True)
 
     # Filter filelist by file size if requested (avoid OOM on large grids)
     if max_file_size > 0:
@@ -181,19 +168,23 @@ def main(
         for sample_id in all_ids:
             chgcar = data_root_path / "data" / f"{sample_id}.CHGCAR"
             if chgcar.exists() and chgcar.stat().st_size > max_bytes:
-                echo(f"  skip {sample_id} ({chgcar.stat().st_size / 1048576:.1f}MB > {max_file_size}MB)", err=True)
+                if verbose:
+                    echo(
+                        f"  skip {sample_id} ({chgcar.stat().st_size / 1048576:.1f}MB > {max_file_size}MB)",
+                        err=True,
+                    )
             else:
                 kept.append(sample_id)
         if len(kept) < len(all_ids):
-            echo(f"Filtered {len(all_ids) - len(kept)}/{len(all_ids)} samples > {max_file_size}MB", err=True)
-            # Write filtered filelist for RhoRead
+            echo(
+                f"Filtered {len(all_ids) - len(kept)}/{len(all_ids)} samples > {max_file_size}MB",
+                err=True,
+            )
             filelist = data_root_path / "mp_filelist_filtered.txt"
             filelist.write_text("\n".join(kept) + "\n")
         if not kept:
-            echo("Error: no samples remain after filtering", err=True)
-            sys.exit(1)
+            raise ValueError("no samples remain after filtering")
 
-    # Create RhoRead datamodule
     datamodule = RhoRead(
         root=str(filelist),
         precision="f32",
@@ -205,21 +196,19 @@ def main(
         random_seed=seed,
     )
 
-    # Model
     model = LightningGenerator(cfg)
 
-    # Loss tracking callback
     class EpochLossCallback(Callback):
         def __init__(self):
             self.epoch_train_losses: list[float] = []
             self.epoch_val_losses: list[float] = []
 
-        def on_train_epoch_end(self, trainer, pl_module):
+        def on_train_epoch_end(self, trainer, _pl_module):
             train_loss = trainer.callback_metrics.get("train_loss_epoch")
             if train_loss is not None:
                 self.epoch_train_losses.append(float(train_loss))
 
-        def on_validation_epoch_end(self, trainer, pl_module):
+        def on_validation_epoch_end(self, trainer, _pl_module):
             val_loss = trainer.callback_metrics.get("val_loss_epoch")
             if val_loss is None:
                 val_loss = trainer.callback_metrics.get("val_loss")
@@ -230,13 +219,11 @@ def main(
 
     # WandB logger (optional)
     logger = False
+    wandb_run_url = None
     if wandb_project:
         from lightning.pytorch.loggers import WandbLogger
 
-        # Collect sample IDs from filelist
         sample_ids = sorted(filelist.read_text().strip().splitlines())
-
-        # Auto-compute dataset version from sample IDs if not provided
         dataset_version = os.environ.get("DATASET_VERSION", "")
         if not dataset_version:
             dataset_version = hashlib.md5("|".join(sample_ids).encode()).hexdigest()[:8]
@@ -246,7 +233,6 @@ def main(
             wandb_tags.append("gpu")
         if dataset_version:
             wandb_tags.append(f"ds:{dataset_version}")
-        # Pick up CI metadata from env
         git_sha = os.environ.get("GITHUB_SHA", "")[:8]
         if git_sha:
             wandb_tags.append(f"sha:{git_sha}")
@@ -283,12 +269,10 @@ def main(
                 "github_ref": os.environ.get("GITHUB_REF", ""),
             },
         )
-        # Add GHA link as run notes (markdown, visible in WandB Overview tab)
         if run_id and repo:
             gha_url = f"https://github.com/{repo}/actions/runs/{run_id}"
             logger.experiment.notes = f"[GHA run {run_id}]({gha_url})"
 
-    # Trainer
     trainer = Trainer(
         max_epochs=cfg.epochs,
         logger=logger,
@@ -303,52 +287,101 @@ def main(
         log_every_n_steps=1,
     )
 
-    # Train
     t0 = monotonic()
     trainer.fit(model, datamodule=datamodule)
     train_wallclock = monotonic() - t0
 
-    # Log summary metrics + wallclock to WandB
     if wandb_project and logger.experiment:
         logger.experiment.summary["wallclock_s"] = train_wallclock
-        run_url = logger.experiment.get_url()
-        if run_url:
-            echo(f"WANDB_RUN_URL={run_url}")
+        wandb_run_url = logger.experiment.get_url()
 
     # Get final losses
     final_val_loss = trainer.callback_metrics.get("val_loss_epoch")
     if final_val_loss is None:
         final_val_loss = trainer.callback_metrics.get("val_loss")
     if final_val_loss is None:
-        echo(
-            "Error: final validation loss not found in trainer.callback_metrics "
-            "(expected 'val_loss_epoch' or 'val_loss')",
-            err=True,
+        raise RuntimeError(
+            "final validation loss not found in trainer.callback_metrics "
+            "(expected 'val_loss_epoch' or 'val_loss')"
         )
-        sys.exit(1)
     final_val_loss = float(final_val_loss)
 
     final_train_loss = trainer.callback_metrics.get("train_loss_epoch")
     if final_train_loss is not None:
         final_train_loss = float(final_train_loss)
 
-    # Results
-    results = {
+    return {
+        "platform": platform,
         "final_val_loss": final_val_loss,
         "final_train_loss": final_train_loss,
         "epoch_val_losses": loss_callback.epoch_val_losses,
         "epoch_train_losses": loss_callback.epoch_train_losses,
+        "wallclock_s": train_wallclock,
+        "wandb_run_url": wandb_run_url,
     }
+
+
+# fmt: off
+@command()
+@option("-B", "--residual-blocks", default=2, help="Number of residual blocks (default: 2, production: 16)")
+@option("-C", "--channels", default=8, help="Number of model channels (default: 8, production: 32-64)")
+@option("-c", "--check/--no-check", default=True, help="Check val_loss against expected value")
+@option("-d", "--data-root", default=None, help="Path to data root dir containing mp_filelist.txt (default: data/MP/chgcars)")
+@option("-e", "--epochs", default=5, help="Number of training epochs")
+@option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
+@option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
+@option("-M", "--max-file-size", default=0, type=float, help="Skip input files larger than N MB (0=no limit)")
+@option("-s", "--seed", default=42, help="Random seed for reproducibility")
+@option("-t", "--tolerance", default=0.001, help="Tolerance for val_loss comparison (absolute)")
+@option("-U", "--update-expected", is_flag=True, help="Update expected_values.json for current platform")
+@option("-v", "--verbose", is_flag=True, help="Verbose output")
+@option("-W", "--wandb-project", default=None, help="Enable WandB logging with this project name")
+def main(
+    residual_blocks: int,
+    channels: int,
+    check: bool,
+    data_root: str | None,
+    epochs: int,
+    gradient_checkpoint: bool,
+    gpu: bool,
+    max_file_size: float,
+    seed: int,
+    tolerance: float,
+    update_expected: bool,
+    verbose: bool,
+    wandb_project: str | None,
+):
+    """Run deterministic e2e training test."""
+    expected_values_file = Path(__file__).parent.parent / "tests" / "expected_values.json"
+
+    results = run_training(
+        channels=channels,
+        residual_blocks=residual_blocks,
+        epochs=epochs,
+        seed=seed,
+        gpu=gpu,
+        data_root=data_root,
+        gradient_checkpoint=gradient_checkpoint,
+        max_file_size=max_file_size,
+        wandb_project=wandb_project,
+        verbose=verbose,
+    )
+
+    platform = results["platform"]
+    final_val_loss = results["final_val_loss"]
 
     if verbose:
         echo(f"\nResults for {platform}:")
         echo(f"  Final val_loss: {final_val_loss:.6f}")
-        if final_train_loss is not None:
-            echo(f"  Final train_loss: {final_train_loss:.6f}")
-        echo(f"  Epoch val_losses: {[f'{v:.6f}' for v in loss_callback.epoch_val_losses]}")
-        echo(f"  Epoch train_losses: {[f'{v:.6f}' for v in loss_callback.epoch_train_losses]}")
+        if results["final_train_loss"] is not None:
+            echo(f"  Final train_loss: {results['final_train_loss']:.6f}")
+        echo(f"  Epoch val_losses: {[f'{v:.6f}' for v in results['epoch_val_losses']]}")
+        echo(f"  Epoch train_losses: {[f'{v:.6f}' for v in results['epoch_train_losses']]}")
 
     echo(f"Final val_loss: {final_val_loss:.6f}")
+
+    if results["wandb_run_url"]:
+        echo(f"WANDB_RUN_URL={results['wandb_run_url']}")
 
     # Update expected values file if requested
     if update_expected:
@@ -357,7 +390,12 @@ def main(
         else:
             expected_values = {}
 
-        expected_values[platform] = results
+        expected_values[platform] = {
+            "final_val_loss": results["final_val_loss"],
+            "final_train_loss": results["final_train_loss"],
+            "epoch_val_losses": results["epoch_val_losses"],
+            "epoch_train_losses": results["epoch_train_losses"],
+        }
         expected_values_file.write_text(json.dumps(expected_values, indent=2) + "\n")
         echo(f"Updated {expected_values_file} for platform '{platform}'")
         return
@@ -394,11 +432,10 @@ def main(
                 err=True,
             )
 
-            # Show per-epoch comparison if available
-            if expected.get("epoch_val_losses") and loss_callback.epoch_val_losses:
+            if expected.get("epoch_val_losses") and results["epoch_val_losses"]:
                 echo("\nPer-epoch val_loss comparison:", err=True)
                 for i, (actual, exp) in enumerate(zip(
-                    loss_callback.epoch_val_losses,
+                    results["epoch_val_losses"],
                     expected["epoch_val_losses"], strict=False,
                 )):
                     epoch_diff = abs(actual - exp)

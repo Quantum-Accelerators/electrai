@@ -74,7 +74,7 @@ jobs:
           UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
         run: |
           # Run with GPU acceleration
-          uv run python tests/e2e_train.py \
+          uv run python scripts/e2e_train.py \
             --gpu \
             --epochs "$EPOCHS" \
             --verbose \
@@ -93,7 +93,7 @@ jobs:
           UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
         run: |
           # Run CPU test to verify determinism
-          uv run python tests/e2e_train.py --epochs "$EPOCHS" --verbose $UPDATE_EXPECTED
+          uv run python scripts/e2e_train.py --epochs "$EPOCHS" --verbose $UPDATE_EXPECTED
 
       - name: Upload CPU expected values
         if: ${{ inputs.update_expected }}
