@@ -86,7 +86,7 @@ jobs:
       BLOCKS: ${{ inputs.residual_blocks || '16' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check GPU
         run: nvidia-smi

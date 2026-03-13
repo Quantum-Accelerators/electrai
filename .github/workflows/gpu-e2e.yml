@@ -57,7 +57,7 @@ jobs:
     runs-on: ${{ needs.ec2.outputs.id }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check GPU
         run: nvidia-smi
