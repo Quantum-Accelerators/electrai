@@ -39,7 +39,9 @@ image = (
     .add_local_dir(str(ROOT / "tests"), remote_path="/root/electrai/tests")
     .add_local_dir(str(ROOT / "scripts"), remote_path="/root/electrai/scripts")
     .add_local_dir(str(ROOT / "data"), remote_path="/root/electrai/data")
-    .add_local_file(str(ROOT / "pyproject.toml"), remote_path="/root/electrai/pyproject.toml")
+    .add_local_file(
+        str(ROOT / "pyproject.toml"), remote_path="/root/electrai/pyproject.toml"
+    )
 )
 
 app = modal.App("electrai-ci", image=image)
@@ -49,10 +51,14 @@ app = modal.App("electrai-ci", image=image)
 def run_e2e_test(epochs: int = 5, check: bool = True):
     """Run e2e training test on GPU."""
     import subprocess
+
     cmd = [
-        "python", "scripts/e2e_train.py",
-        "--gpu", "--verbose",
-        "--epochs", str(epochs),
+        "python",
+        "scripts/e2e_train.py",
+        "--gpu",
+        "--verbose",
+        "--epochs",
+        str(epochs),
     ]
     if not check:
         cmd.append("--no-check")

@@ -1,0 +1,32 @@
+name: GPU E2E (Modal)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Modal
+        run: uv pip install --system modal
+
+      - name: Run e2e test on Modal GPU
+        env:
+          EPOCHS: ${{ inputs.epochs || '5' }}
+        run: modal run modal/ci.py --epochs "$EPOCHS"
