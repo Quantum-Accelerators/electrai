@@ -60,7 +60,7 @@ class HuggingFaceCallback(Callback):
         self._save_manifest()
         logger.info("Queued checkpoint for HF upload: %s", ckpt_file.name)
 
-    def on_validation_end(self, trainer, pl_module) -> None:  # noqa: ARG002
+    def on_train_epoch_end(self, trainer, pl_module) -> None:  # noqa: ARG002
         if trainer.sanity_checking:
             return
         epoch = trainer.current_epoch
@@ -118,7 +118,13 @@ def _upload_single(entry: dict) -> None:
     path = Path(entry["path"])
     try:
         from huggingface_hub import upload_file
-
+    except ImportError:
+        logger.warning(
+            "huggingface-hub is not installed. "
+            "Run 'pip install huggingface-hub' to enable uploads."
+        )
+        return
+    try:
         if not path.exists():
             logger.warning("Checkpoint file not found, skipping: %s", path)
             return
