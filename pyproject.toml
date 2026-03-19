@@ -165,8 +165,33 @@ skip-magic-trailing-comma = true
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**" = ["ANN", "ARG", "D", "E402", "PTH", "S101"]
-"src/resenet_density/**" = ["E722", "E741", "F403", "F405", "F841", "E741", "PD901", "PLW2901", "PTH123", "SIM115", "T201"]
+"tests/**" = [
+    "ANN",     # flake8-annotations (no type annotations required)
+    "ARG",     # flake8-unused-arguments (test fixtures, callbacks)
+    "D",       # pydocstyle (no docstrings required)
+    "E402",    # module-level import not at top (sys.path manipulation)
+    "PLW1510", # subprocess.run without explicit `check`
+    "PTH",     # flake8-use-pathlib (not required in tests)
+    "RUF028",  # fmt: on/off between decorators and def
+    "S101",    # assert used
+    "T201",    # print used
+]
+"examples/**" = [
+    "ARG",  # flake8-unused-arguments (Lightning callbacks)
+    "T201", # print used (notebooks)
+]
+"src/resenet_density/**" = [
+    "E722",    # bare except
+    "E741",    # ambiguous variable name
+    "F403",    # star imports
+    "F405",    # may be undefined from star import
+    "F841",    # unused variable
+    "PD901",   # pandas df variable name
+    "PLW2901", # redefined loop variable
+    "PTH123",  # open() vs Path.open()
+    "SIM115",  # open without context manager
+    "T201",    # print used
+]
 
 [tool.docformatter]
 pre-summary-newline = true
