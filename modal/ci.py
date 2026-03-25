@@ -8,23 +8,13 @@ import modal
 
 ROOT = Path(__file__).parent.parent
 
+# Dependencies read from pyproject.toml (shared with train.py, populate_volume.py)
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git")
-    .pip_install(
-        "torch~=2.9",
-        "torchvision>=0.24",
-        "lightning~=2.5",
-        "numpy~=2.3",
-        "scikit-learn>=1.7",
-        "pymatgen>=2025.10",
-        "pyyaml>=6.0",
-        "zarr>=3.1",
-        "hydra-core>=1.3",
-        "wandb>=0.12",
-        "click",
+    .pip_install_from_pyproject(
+        str(ROOT / "pyproject.toml"), optional_dependencies=["dev"]
     )
-    # Source code + test data (copy=True so pip install -e works after)
     .add_local_dir(str(ROOT / "src"), remote_path="/root/electrai/src", copy=True)
     .add_local_dir(
         str(ROOT / "scripts"), remote_path="/root/electrai/scripts", copy=True
@@ -36,13 +26,13 @@ image = (
         remote_path="/root/electrai/pyproject.toml",
         copy=True,
     )
-    .run_commands("cd /root/electrai && pip install -e .")
+    .run_commands("cd /root/electrai && pip install --no-deps -e .")
 )
 
 app = modal.App("electrai-ci", image=image)
 
 
-@app.function(gpu="L4", timeout=600)
+@app.function(gpu="L4", timeout=600, retries=0)
 def run_e2e_test(epochs: int = 5, check: bool = True):
     """Run e2e training test on GPU."""
     import json

@@ -114,12 +114,53 @@ jobs:
 - **CPU baseline test** — could add a second `@app.function(gpu=None)` call, but CPU tests already run in `gen-expected.yml`
 - **`update_expected` mode** — would need to get the file back out of Modal (print to stdout and capture, or use a Modal Volume). Defer for now.
 - **Artifact upload** — same challenge; not needed for the basic CI pass/fail
-- **WandB logging** — could add by passing `--wandb-project` and setting `WANDB_API_KEY` secret. Straightforward to add later.
-- **S3 data sync** — only needed for `gpu-benchmark.yml` (larger dataset). The e2e test uses the small checked-in dataset.
+
+## Training on Modal (`modal/train.py`)
+
+Full training entrypoint for running real experiments on Modal, replacing Lambda Labs.
+
+### Data: `electrai-data` Volume
+
+`dataset_4` (2,885 samples, ~205 GiB) synced from Della (Globus source of truth) → S3 → Modal Volume:
+- S3: `s3://openathena/electrai/mp/chg_datasets/dataset_4/`
+- Volume mount: `/data/mp/chg_datasets/dataset_4/{data,label}/`
+
+Populate script: `modal/populate_volume.py` (S3 → Volume via `boto3`).
+
+### Checkpoints: `electrai-checkpoints` Volume
+
+Persists across runs. Mounted at `/checkpoints`.
+
+### Usage
+
+```bash
+# Default: ResUNet, dataset_4, 50 epochs, L4
+modal run modal/train.py
+
+# A100, custom hyperparams
+modal run modal/train.py --gpu A100 --channels 64 --epochs 50
+
+# Use existing config file
+modal run modal/train.py --config path/to/config.yaml --gpu A100
+```
+
+### Data provenance
+
+```
+Globus (ROSENGROUP share)
+  └── /mp/chg_datasets/dataset_4/   (canonical, on Della)
+        ├── Della → S3 (aws s3 sync, one-time)
+        │     └── s3://openathena/electrai/mp/chg_datasets/dataset_4/
+        │           └── S3 → Modal Volume (modal/populate_volume.py)
+        └── Della → Lambda LLFS (Globus transfer, Betsy's prior setup)
+              └── /home/ubuntu/betsy-electrai-2/dataset2/
+```
 
 ## Secrets required
 
-- `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` — need to be set on the electrai repo (or at org level). helico has these set already; check whether they're org-wide or repo-level.
+- `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` — repo secrets for GHA workflow
+- `wandb-credentials` — Modal secret with `WANDB_API_KEY` (for training)
+- `aws-credentials` — Modal secret with AWS creds (for `populate_volume.py`)
 
 No `GH_SA_TOKEN` needed (no runner registration).
 
