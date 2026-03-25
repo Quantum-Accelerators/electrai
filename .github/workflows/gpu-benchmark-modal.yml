@@ -1,0 +1,68 @@
+name: GPU Benchmark (Modal)
+
+on:
+  workflow_dispatch:
+    inputs:
+      gpu:
+        description: 'GPU type (L4, A10G, A100, H100)'
+        default: 'L4'
+        type: string
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+      channels:
+        description: 'Number of model channels (8=tiny, 32=prod, 64=large)'
+        default: '32'
+        type: string
+      residual_blocks:
+        description: 'Number of residual blocks (2=tiny, 16=prod)'
+        default: '16'
+        type: string
+      samples:
+        description: 'Number of samples (0=all eligible)'
+        default: '50'
+        type: string
+      dataset:
+        description: 'Dataset: s3 (205 samples, matches EC2) or dataset_4 (2885 samples)'
+        default: 's3'
+        type: string
+      wandb_project:
+        description: 'WandB project name'
+        default: 'elf-net-ci'
+        type: string
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Modal
+        run: uv pip install --system modal
+
+      - name: Run benchmark
+        env:
+          GPU: ${{ inputs.gpu || 'L4' }}
+          EPOCHS: ${{ inputs.epochs || '5' }}
+          CHANNELS: ${{ inputs.channels || '32' }}
+          RESIDUAL_BLOCKS: ${{ inputs.residual_blocks || '16' }}
+          SAMPLES: ${{ inputs.samples || '50' }}
+          DATASET: ${{ inputs.dataset || 's3' }}
+          WANDB_PROJECT: ${{ inputs.wandb_project || 'elf-net-ci' }}
+        run: |
+          modal run modal/benchmark.py \
+            --gpu "$GPU" \
+            --epochs "$EPOCHS" \
+            --channels "$CHANNELS" \
+            --residual-blocks "$RESIDUAL_BLOCKS" \
+            --samples "$SAMPLES" \
+            --dataset "$DATASET" \
+            --wandb-project "$WANDB_PROJECT"
