@@ -21,7 +21,7 @@ def _resolve_checkpoint(cfg) -> Path:
     1. cfg.ckpt_file — explicit path to a specific .ckpt file
     2. cfg.ckpt_path / "last.ckpt"
     3. cfg.ckpt_path / "best.ckpt"
-    4. Best ckpt_*.ckpt in cfg.ckpt_path (lowest val_loss in filename)
+    4. Latest ckpt_*.ckpt in cfg.ckpt_path (highest epoch by lexicographic sort)
     """
     ckpt_file = getattr(cfg, "ckpt_file", None)
     if ckpt_file is not None:
@@ -41,10 +41,10 @@ def _resolve_checkpoint(cfg) -> Path:
         if candidate.exists():
             return candidate
 
-    # Glob for ckpt_*.ckpt and pick best (lowest val_loss in filename)
+    # Glob for ckpt_*.ckpt and pick the latest epoch by lexicographic sort
     candidates = sorted(ckpt_path.glob("ckpt_*.ckpt"))
     if candidates:
-        return candidates[-1]  # last by sort order = latest epoch
+        return candidates[-1]
 
     raise FileNotFoundError(
         f"No checkpoint found in {ckpt_path}. "
