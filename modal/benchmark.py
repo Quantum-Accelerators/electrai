@@ -112,7 +112,6 @@ def run_benchmark(
     # Build filelist from files on disk (S3 set has no mp_filelist.txt)
     data_dir = ds_root / input_dir
     all_ids = sorted(p.stem for p in data_dir.glob("*.CHGCAR"))
-    all_ids = [s for s in all_ids if s]  # filter blanks
     log.info("Dataset %r: %d total samples in %s", dataset, len(all_ids), data_dir)
 
     # Filter by file size (avoid OOM on large grids)
@@ -176,7 +175,7 @@ def run_benchmark(
             label_link.symlink_to(ds_root / "label")
         log.info("Using volume directly (no local copy)")
 
-    Path(data_root, "mp_filelist.txt").write_text("\n".join(subset))
+    Path(data_root, "mp_filelist.txt").write_text("\n".join(subset) + "\n")
 
     # Always use gradient checkpointing (32ch/16blk needs it even for ≤25MB files)
     use_grad_ckpt = True
@@ -195,11 +194,14 @@ def run_benchmark(
 
     # Set WandB run name and env vars for platform tagging
     import os
+    import time
 
     os.environ["INSTANCE_TYPE"] = f"modal-{gpu_type}"
-    # Set workflow-like name so WandB run name is descriptive
+    # Set workflow-like name so WandB run name is descriptive.
+    # GHA sets GITHUB_RUN_NUMBER; for local runs, use timestamp.
     os.environ["GITHUB_WORKFLOW"] = "Modal Benchmark"
-    os.environ.setdefault("GITHUB_RUN_NUMBER", f"{dataset}-{samples}s")
+    if "GITHUB_RUN_NUMBER" not in os.environ:
+        os.environ["GITHUB_RUN_NUMBER"] = time.strftime("%y%m%d-%H%M")
 
     results = run_training(
         channels=channels,
@@ -263,3 +265,14 @@ def main(
         results["wallclock_s"],
         gpu,
     )
+
+    # Print parseable output for GHA summary
+    wandb_url = results.get("wandb_run_url") or ""
+    print(f"BENCHMARK_VAL_LOSS={results['final_val_loss']:.6f}")  # noqa: T201
+    print(f"BENCHMARK_TRAIN_LOSS={results['final_train_loss']:.6f}")  # noqa: T201
+    print(f"BENCHMARK_WALLCLOCK={results['wallclock_s']:.0f}")  # noqa: T201
+    print(f"BENCHMARK_GPU={gpu}")  # noqa: T201
+    print(f"BENCHMARK_DATASET={dataset}")  # noqa: T201
+    print(f"BENCHMARK_SAMPLES={samples}")  # noqa: T201
+    if wandb_url:
+        print(f"BENCHMARK_WANDB_URL={wandb_url}")  # noqa: T201

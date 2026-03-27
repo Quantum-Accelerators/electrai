@@ -49,6 +49,7 @@ jobs:
         run: uv pip install --system modal
 
       - name: Run benchmark
+        id: bench
         env:
           GPU: ${{ inputs.gpu || 'L4' }}
           EPOCHS: ${{ inputs.epochs || '5' }}
@@ -58,11 +59,57 @@ jobs:
           DATASET: ${{ inputs.dataset || 's3' }}
           WANDB_PROJECT: ${{ inputs.wandb_project || 'elf-net-ci' }}
         run: |
-          modal run modal/benchmark.py \
+          OUTPUT=$(modal run modal/benchmark.py \
             --gpu "$GPU" \
             --epochs "$EPOCHS" \
             --channels "$CHANNELS" \
             --residual-blocks "$RESIDUAL_BLOCKS" \
             --samples "$SAMPLES" \
             --dataset "$DATASET" \
-            --wandb-project "$WANDB_PROJECT"
+            --wandb-project "$WANDB_PROJECT" 2>&1 | tee /dev/stderr)
+
+          # Parse metrics from output
+          for key in VAL_LOSS TRAIN_LOSS WALLCLOCK GPU DATASET SAMPLES WANDB_URL; do
+            val=$(echo "$OUTPUT" | grep -oP "BENCHMARK_${key}=\K.*" || true)
+            if [ -n "$val" ]; then
+              echo "BENCHMARK_${key}=${val}" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Summary
+        env:
+          EPOCHS: ${{ inputs.epochs || '5' }}
+          CHANNELS: ${{ inputs.channels || '32' }}
+          RESIDUAL_BLOCKS: ${{ inputs.residual_blocks || '16' }}
+          VAL_LOSS: ${{ steps.bench.outputs.BENCHMARK_VAL_LOSS }}
+          TRAIN_LOSS: ${{ steps.bench.outputs.BENCHMARK_TRAIN_LOSS }}
+          WALLCLOCK: ${{ steps.bench.outputs.BENCHMARK_WALLCLOCK }}
+          GPU: ${{ steps.bench.outputs.BENCHMARK_GPU }}
+          DATASET: ${{ steps.bench.outputs.BENCHMARK_DATASET }}
+          SAMPLES: ${{ steps.bench.outputs.BENCHMARK_SAMPLES }}
+          WANDB_URL: ${{ steps.bench.outputs.BENCHMARK_WANDB_URL }}
+          WANDB_PROJECT: ${{ inputs.wandb_project || 'elf-net-ci' }}
+        run: |
+          echo "## GPU Benchmark Results (Modal)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Parameter | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platform | Modal ($GPU) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Epochs | $EPOCHS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Channels | $CHANNELS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Residual Blocks | $RESIDUAL_BLOCKS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dataset | $DATASET ($SAMPLES samples) |" >> "$GITHUB_STEP_SUMMARY"
+          COMMIT_LINK="[\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+          echo "| Commit | $COMMIT_LINK |" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$WANDB_URL" ]; then
+            WANDB_RUN_ID=$(echo "$WANDB_URL" | grep -oP '[^/]+$')
+            echo "| WandB | [$WANDB_PROJECT](https://wandb.ai/PrinceOA/$WANDB_PROJECT) run [$WANDB_RUN_ID]($WANDB_URL) |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| val_loss | $VAL_LOSS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| train_loss | $TRAIN_LOSS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Wallclock | ${WALLCLOCK}s |" >> "$GITHUB_STEP_SUMMARY"
