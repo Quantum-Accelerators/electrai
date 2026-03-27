@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,6 +74,22 @@ def test(args):
     lit_model = LightningGenerator(cfg)
 
     # -----------------------------
+    # W&B (optional)
+    # -----------------------------
+    wandb_mode = getattr(cfg, "wandb_mode", "disabled").lower()
+    os.environ["WANDB_MODE"] = wandb_mode
+    if wandb_mode != "disabled":
+        from lightning.pytorch.loggers import WandbLogger
+
+        wandb_logger = WandbLogger(
+            project=getattr(cfg, "wb_pname", "electrai"),
+            entity=getattr(cfg, "entity", None),
+            config=vars(cfg),
+        )
+    else:
+        wandb_logger = None
+
+    # -----------------------------
     # Trainer
     # -----------------------------
     if cfg.save_pred:
@@ -85,7 +102,7 @@ def test(args):
     for directory in [log_dir, tmp_dir]:
         directory.mkdir(exist_ok=True, parents=True)
     trainer = Trainer(
-        logger=None,
+        logger=wandb_logger,
         callbacks=None,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
@@ -114,6 +131,11 @@ def test(args):
         summary_text = summarize(metrics_csv, output_dir=log_dir)
         logger.info("\n%s", summary_text)
         plot_distribution(metrics_csv, output_dir=log_dir)
+
+        if wandb_logger is not None:
+            from electrai.scripts.analyze.summarize import log_to_wandb
+
+            log_to_wandb(metrics_csv, output_dir=log_dir)
 
         # Optional: saturation analysis (always possible with enriched CSV)
         analyze_cfg = getattr(cfg, "analyze", None)

@@ -186,6 +186,49 @@ def plot_distribution(metrics_path: str | Path, output_dir: str | Path) -> None:
     logger.info("Saved %s", output_dir / "nmae_distribution.png")
 
 
+def log_to_wandb(metrics_path: str | Path, output_dir: str | Path) -> None:
+    """Log distribution plot and per-sample metrics to an active W&B run."""
+    import wandb
+
+    if wandb.run is None:
+        logger.warning("No active W&B run, skipping W&B logging")
+        return
+
+    df = pd.read_csv(metrics_path)
+    output_dir = Path(output_dir)
+
+    # Log the distribution PNG as an image
+    png_path = output_dir / "nmae_distribution.png"
+    if png_path.exists():
+        wandb.log({"test/nmae_distribution": wandb.Image(str(png_path))})
+
+    # Log per-sample NMAE as a table for interactive exploration
+    table_cols = ["index", "nmae"]
+    if "loss" in df.columns:
+        table_cols.append("loss")
+    if "max_pred" in df.columns:
+        table_cols.extend(["max_pred", "max_target"])
+    table = wandb.Table(dataframe=df[table_cols])
+    wandb.log({"test/metrics": table})
+
+    # Log a native W&B histogram for the overview panel
+    wandb.log({"test/nmae_histogram": wandb.Histogram(df["nmae"].to_numpy())})
+
+    # Log scalar summary stats
+    nmae = df["nmae"]
+    wandb.log(
+        {
+            "test/nmae_mean": nmae.mean(),
+            "test/nmae_median": nmae.median(),
+            "test/nmae_p95": np.percentile(nmae, 95),
+            "test/nmae_p99": np.percentile(nmae, 99),
+            "test/nmae_max": nmae.max(),
+        }
+    )
+
+    logger.info("Logged test metrics to W&B")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Summarize test metrics")
     parser.add_argument(
