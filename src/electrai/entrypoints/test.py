@@ -145,6 +145,7 @@ def test(args):
             from electrai.scripts.analyze.analyze_saturation import analyze_metrics
 
             saturation_dir = log_dir / "saturation"
+            saturation_dir.mkdir(exist_ok=True, parents=True)
             try:
                 analyze_metrics(metrics_csv, saturation_dir)
             except (KeyError, ValueError) as e:
