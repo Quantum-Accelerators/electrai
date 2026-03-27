@@ -31,77 +31,80 @@ def summarize(metrics_path: str | Path, output_dir: str | Path | None = None) ->
     also writes summary.txt there.
     """
     df = pd.read_csv(metrics_path)
-    lines: list[str] = []
-
-    lines.append("=" * 60)
-    lines.append("Test Evaluation Summary")
-    lines.append("=" * 60)
-    lines.append(f"Samples evaluated: {len(df)}")
-    lines.append("")
-
-    # --- NMAE statistics ---
     nmae = df["nmae"]
-    lines.append("NMAE (Normalized Mean Absolute Error)")
-    lines.append("-" * 40)
-    lines.append(f"  Mean:   {nmae.mean():.4%}")
-    lines.append(f"  Median: {nmae.median():.4%}")
-    lines.append(f"  Std:    {nmae.std():.4%}")
-    lines.append(f"  Min:    {nmae.min():.4%}")
-    lines.append(f"  Max:    {nmae.max():.4%}")
-    lines.append("")
-    lines.extend(f"  P{p}:    {np.percentile(nmae, p):.4%}" for p in _PERCENTILES)
-    lines.append("")
-    for thresh in _NMAE_THRESHOLDS:
-        count = (nmae > thresh).sum()
-        lines.append(f"  > {thresh:.0%}: {count} ({count / len(nmae):.1%} of samples)")
-    lines.append("")
+
+    percentile_lines = "\n".join(
+        f"  P{p}:    {np.percentile(nmae, p):.4%}" for p in _PERCENTILES
+    )
+    threshold_lines = "\n".join(
+        f"  > {t:.0%}: {(nmae > t).sum()} ({(nmae > t).sum() / len(nmae):.1%} of samples)"
+        for t in _NMAE_THRESHOLDS
+    )
+
+    sections = [
+        f"""\
+{"=" * 60}
+Test Evaluation Summary
+{"=" * 60}
+Samples evaluated: {len(df)}
+
+NMAE (Normalized Mean Absolute Error)
+{"-" * 40}
+  Mean:   {nmae.mean():.4%}
+  Median: {nmae.median():.4%}
+  Std:    {nmae.std():.4%}
+  Min:    {nmae.min():.4%}
+  Max:    {nmae.max():.4%}
+
+{percentile_lines}
+
+{threshold_lines}"""
+    ]
 
     # --- Loss statistics (if loss column exists and differs from NMAE) ---
     if "loss" in df.columns:
         loss = df["loss"]
         loss_differs = not np.allclose(loss.to_numpy(), nmae.to_numpy(), atol=1e-6)
         if loss_differs:
-            lines.append("Training Loss (differs from NMAE)")
-            lines.append("-" * 40)
-            lines.append(f"  Mean:   {loss.mean():.6f}")
-            lines.append(f"  Median: {loss.median():.6f}")
-            lines.append(f"  Std:    {loss.std():.6f}")
-            lines.append(f"  Min:    {loss.min():.6f}")
-            lines.append(f"  Max:    {loss.max():.6f}")
-            lines.append("")
-            lines.extend(
+            loss_pct = "\n".join(
                 f"  P{p}:    {np.percentile(loss, p):.6f}" for p in _PERCENTILES
             )
-            lines.append("")
+            sections.append(f"""\
+Training Loss (differs from NMAE)
+{"-" * 40}
+  Mean:   {loss.mean():.6f}
+  Median: {loss.median():.6f}
+  Std:    {loss.std():.6f}
+  Min:    {loss.min():.6f}
+  Max:    {loss.max():.6f}
+
+{loss_pct}""")
         else:
-            lines.append("Training Loss: identical to NMAE (loss_fn = normmae)")
-            lines.append("")
+            sections.append("Training Loss: identical to NMAE (loss_fn = normmae)")
 
     # --- Duration statistics ---
     if "duration_ms" in df.columns:
         dur = df["duration_ms"]
-        lines.append("Inference Timing")
-        lines.append("-" * 40)
-        lines.append(f"  Mean per sample: {dur.mean():.1f} ms")
-        lines.append(f"  Total:           {dur.sum() / 1000:.1f} s")
-        lines.append("")
+        sections.append(f"""\
+Inference Timing
+{"-" * 40}
+  Mean per sample: {dur.mean():.1f} ms
+  Total:           {dur.sum() / 1000:.1f} s""")
 
     # --- Peak density statistics ---
     if "max_pred" in df.columns and "max_target" in df.columns:
         ratio = df["max_pred"] / df["max_target"]
-        lines.append("Peak Density (max_pred / max_target)")
-        lines.append("-" * 40)
-        lines.append(f"  Mean ratio:   {ratio.mean():.4f}")
-        lines.append(f"  Median ratio: {ratio.median():.4f}")
         saturated = (ratio < 0.8).sum()
-        lines.append(
-            f"  Saturated (ratio < 0.8): {saturated} ({saturated / len(ratio):.1%})"
-        )
-        lines.append("")
+        sections.append(f"""\
+Peak Density (max_pred / max_target)
+{"-" * 40}
+  Mean ratio:   {ratio.mean():.4f}
+  Median ratio: {ratio.median():.4f}
+  Saturated (ratio < 0.8): {saturated} ({saturated / len(ratio):.1%})""")
 
-    lines.append("=" * 60)
+    sections.append("=" * 60)
 
-    summary_text = "\n".join(lines)
+    summary_text = "\n\n".join(sections)
 
     if output_dir is not None:
         output_dir = Path(output_dir)
