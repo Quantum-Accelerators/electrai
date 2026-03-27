@@ -19,7 +19,6 @@ class LightningGenerator(LightningModule):
         self.cfg = cfg
         self.model = instantiate(cfg.model)
         self.loss_fn = NormMAE()
-        self.normmae_fn = NormMAE()
 
     def forward(self, x):
         return self.model(x)
@@ -97,21 +96,19 @@ class LightningGenerator(LightningModule):
         start.record()
         preds = self(x)
         loss = self.loss_fn(preds, y)
-        normmae = self.normmae_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
         elapsed = start.elapsed_time(end)
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
-        self.log("test_normmae", normmae, prog_bar=False, sync_dist=True)
 
         # Per-sample statistics over spatial dims (keep batch dim)
         spatial_dims = tuple(range(1, preds.ndim))  # all dims except batch
         out = {
             "target": y.detach().cpu(),
             "index": indices,
-            "nmae": normmae.detach().cpu(),
+            "nmae": loss.detach().cpu(),
             "loss": loss.detach().cpu(),
             "max_pred": preds.amax(dim=spatial_dims).detach().cpu(),
             "max_target": y.amax(dim=spatial_dims).detach().cpu(),
