@@ -106,16 +106,18 @@ class LightningGenerator(LightningModule):
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
         self.log("test_normmae", normmae, prog_bar=False, sync_dist=True)
 
+        # Per-sample statistics over spatial dims (keep batch dim)
+        spatial_dims = tuple(range(1, preds.ndim))  # all dims except batch
         out = {
             "target": y.detach().cpu(),
             "index": indices,
             "nmae": normmae.detach().cpu(),
             "loss": loss.detach().cpu(),
-            "max_pred": preds.amax().detach().cpu(),
-            "max_target": y.amax().detach().cpu(),
-            "mean_pred": preds.mean().detach().cpu(),
-            "mean_target": y.mean().detach().cpu(),
-            "num_electrons": y.sum().detach().cpu(),
+            "max_pred": preds.amax(dim=spatial_dims).detach().cpu(),
+            "max_target": y.amax(dim=spatial_dims).detach().cpu(),
+            "mean_pred": preds.mean(dim=spatial_dims).detach().cpu(),
+            "mean_target": y.mean(dim=spatial_dims).detach().cpu(),
+            "num_electrons": y.sum(dim=spatial_dims).detach().cpu(),
             "duration_ms": elapsed,
         }
         if self.save_pred:
@@ -124,8 +126,6 @@ class LightningGenerator(LightningModule):
 
     def on_test_batch_end(self, outputs, _batch, batch_idx):
         indices = outputs["index"]
-        nmae = outputs["nmae"]
-        loss = outputs["loss"]
 
         if self.save_pred:
             preds = outputs["pred"]
@@ -136,24 +136,35 @@ class LightningGenerator(LightningModule):
                     preds[i].squeeze(0).cpu().numpy(),
                 )
 
-        # Ensure scalar tensors are iterable
-        for key in ("nmae", "loss"):
+        # Ensure scalar tensors are iterable (batch_size=1 produces 0-d tensors)
+        per_sample_keys = (
+            "nmae",
+            "loss",
+            "max_pred",
+            "max_target",
+            "mean_pred",
+            "mean_target",
+            "num_electrons",
+        )
+        for key in per_sample_keys:
             val = outputs[key]
             if isinstance(val, torch.Tensor) and val.ndim == 0:
                 outputs[key] = val.unsqueeze(0)
-        nmae = outputs["nmae"]
-        loss = outputs["loss"]
+
+        n_samples = len(indices)
+        duration_per_sample = outputs["duration_ms"] / n_samples
 
         tmp_csv = (
             self.tmp_dir / f"metrics_rank_{self.global_rank}_batch_{batch_idx}.csv"
         )
         with tmp_csv.open("w") as f:
-            for idx, n, lo in zip(indices, nmae, loss, strict=True):
+            for i, idx in enumerate(indices):
                 f.write(
-                    f"rank_{self.global_rank},{idx},{n.item()},{lo.item()},"
-                    f"{outputs['max_pred'].item()},{outputs['max_target'].item()},"
-                    f"{outputs['mean_pred'].item()},{outputs['mean_target'].item()},"
-                    f"{outputs['num_electrons'].item()},{outputs['duration_ms']}\n"
+                    f"rank_{self.global_rank},{idx},"
+                    f"{outputs['nmae'][i].item()},{outputs['loss'][i].item()},"
+                    f"{outputs['max_pred'][i].item()},{outputs['max_target'][i].item()},"
+                    f"{outputs['mean_pred'][i].item()},{outputs['mean_target'][i].item()},"
+                    f"{outputs['num_electrons'][i].item()},{duration_per_sample}\n"
                 )
 
     def on_test_epoch_end(self):
