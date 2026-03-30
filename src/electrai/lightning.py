@@ -9,7 +9,12 @@ import torch.distributed as dist
 from hydra.utils import instantiate
 from lightning.pytorch import LightningModule
 
-from electrai.model.loss.charge import NormMAE
+from electrai.model.loss.charge import DensityWeightedNormMAE, NormMAE
+
+_LOSS_REGISTRY = {
+    "normmae": NormMAE,
+    "density_weighted_normmae": DensityWeightedNormMAE,
+}
 
 
 class LightningGenerator(LightningModule):
@@ -18,7 +23,23 @@ class LightningGenerator(LightningModule):
         self.save_hyperparameters()
         self.cfg = cfg
         self.model = instantiate(cfg.model)
-        self.loss_fn = NormMAE()
+        self.loss_fn = self._build_loss_fn(cfg)
+        self.normmae_fn = NormMAE()
+
+    @staticmethod
+    def _build_loss_fn(cfg):
+        loss_name = getattr(cfg, "loss_fn", "normmae")
+        if loss_name not in _LOSS_REGISTRY:
+            raise ValueError(
+                f"Unknown loss_fn {loss_name!r}. "
+                f"Available: {list(_LOSS_REGISTRY.keys())}"
+            )
+        loss_cls = _LOSS_REGISTRY[loss_name]
+        if loss_cls is DensityWeightedNormMAE:
+            alpha = float(getattr(cfg, "loss_alpha", 1.0))
+            power = float(getattr(cfg, "loss_power", 1.0))
+            return loss_cls(alpha=alpha, power=power)
+        return loss_cls()
 
     def forward(self, x):
         return self.model(x)
@@ -36,25 +57,42 @@ class LightningGenerator(LightningModule):
         return loss
 
     def validation_step(self, batch):
-        loss = self._loss_calculation(batch)
+        loss, normmae = self._loss_calculation(batch, compute_normmae=True)
         self.log(
             "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
         )
+        self.log(
+            "val_normmae",
+            normmae,
+            prog_bar=False,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
         return loss
 
-    def _loss_calculation(self, batch):
+    def _loss_calculation(self, batch, compute_normmae=False):
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):
             losses = []
+            normmae_losses = []
             for x_i, y_i in zip(x, y, strict=True):
                 pred = self(x_i.unsqueeze(0))
                 loss = self.loss_fn(pred, y_i.unsqueeze(0))
                 losses.append(loss)
+                if compute_normmae:
+                    normmae_losses.append(self.normmae_fn(pred, y_i.unsqueeze(0)))
             loss = torch.stack(losses).mean()
+            if compute_normmae:
+                normmae = torch.stack(normmae_losses).mean()
         else:
             pred = self(x)
             loss = self.loss_fn(pred, y)
+            if compute_normmae:
+                normmae = self.normmae_fn(pred, y)
+        if compute_normmae:
+            return loss, normmae
         return loss
 
     def configure_optimizers(self):
@@ -96,12 +134,14 @@ class LightningGenerator(LightningModule):
         start.record()
         preds = self(x)
         loss = self.loss_fn(preds, y)
+        normmae = self.normmae_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
         elapsed = start.elapsed_time(end)
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
+        self.log("test_normmae", normmae, prog_bar=False, sync_dist=True)
 
         out = {
             "target": y.detach().cpu(),
