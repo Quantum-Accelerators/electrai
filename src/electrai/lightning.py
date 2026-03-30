@@ -71,26 +71,36 @@ class LightningGenerator(LightningModule):
         )
         return loss
 
+    @property
+    def _loss_is_normmae(self):
+        return isinstance(self.loss_fn, NormMAE)
+
     def _loss_calculation(self, batch, compute_normmae=False):
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):
             losses = []
-            normmae_losses = []
+            normmae_losses = (
+                [] if compute_normmae and not self._loss_is_normmae else None
+            )
             for x_i, y_i in zip(x, y, strict=True):
                 pred = self(x_i.unsqueeze(0))
                 loss = self.loss_fn(pred, y_i.unsqueeze(0))
                 losses.append(loss)
-                if compute_normmae:
+                if normmae_losses is not None:
                     normmae_losses.append(self.normmae_fn(pred, y_i.unsqueeze(0)))
             loss = torch.stack(losses).mean()
             if compute_normmae:
-                normmae = torch.stack(normmae_losses).mean()
+                normmae = (
+                    loss
+                    if self._loss_is_normmae
+                    else torch.stack(normmae_losses).mean()
+                )
         else:
             pred = self(x)
             loss = self.loss_fn(pred, y)
             if compute_normmae:
-                normmae = self.normmae_fn(pred, y)
+                normmae = loss if self._loss_is_normmae else self.normmae_fn(pred, y)
         if compute_normmae:
             return loss, normmae
         return loss
@@ -134,7 +144,7 @@ class LightningGenerator(LightningModule):
         start.record()
         preds = self(x)
         loss = self.loss_fn(preds, y)
-        normmae = self.normmae_fn(preds, y)
+        normmae = loss if self._loss_is_normmae else self.normmae_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
@@ -146,7 +156,7 @@ class LightningGenerator(LightningModule):
         out = {
             "target": y.detach().cpu(),
             "index": indices,
-            "nmae": loss.detach().cpu(),
+            "nmae": normmae.detach().cpu(),
             "duration": elapsed,
         }
         if self.save_pred:

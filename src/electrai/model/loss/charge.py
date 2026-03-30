@@ -3,19 +3,26 @@ from __future__ import annotations
 import torch
 
 
-class NormMAE(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.mae = torch.nn.L1Loss(reduction="none")
+class _ChargeLoss(torch.nn.Module):
+    """Base class providing list-dispatch for variable-size batch inputs."""
 
     def forward(self, output, target):
         if isinstance(output, torch.Tensor):
             return self._forward(output, target)
 
         losses = []
-        for out, tar in zip(output, target, strict=False):
+        for out, tar in zip(output, target, strict=True):
             losses.append(self._forward(out.unsqueeze(0), tar.unsqueeze(0)))
         return torch.stack(losses).mean()
+
+    def _forward(self, output, target):
+        raise NotImplementedError
+
+
+class NormMAE(_ChargeLoss):
+    def __init__(self):
+        super().__init__()
+        self.mae = torch.nn.L1Loss(reduction="none")
 
     def _forward(self, output, target):
         mae = self.mae(output, target)
@@ -24,7 +31,7 @@ class NormMAE(torch.nn.Module):
         return torch.sum(mae)
 
 
-class DensityWeightedNormMAE(torch.nn.Module):
+class DensityWeightedNormMAE(_ChargeLoss):
     """NormMAE with density-dependent weighting to penalize errors at high-density voxels.
 
     Weight function: w(rho) = 1 + alpha * (rho / rho_max)^power
@@ -37,18 +44,13 @@ class DensityWeightedNormMAE(torch.nn.Module):
         self.power = power
         self.mae = torch.nn.L1Loss(reduction="none")
 
-    def forward(self, output, target):
-        if isinstance(output, torch.Tensor):
-            return self._forward(output, target)
-        losses = []
-        for out, tar in zip(output, target, strict=False):
-            losses.append(self._forward(out.unsqueeze(0), tar.unsqueeze(0)))
-        return torch.stack(losses).mean()
-
     def _forward(self, output, target):
         mae = self.mae(output, target)
         rho_max = target.amax(dim=(-3, -2, -1), keepdim=True).clamp(min=1e-8)
-        weights = 1.0 + self.alpha * (target / rho_max) ** self.power
+        normalized = target / rho_max
+        if self.power != 1.0:
+            normalized = normalized**self.power
+        weights = 1.0 + self.alpha * normalized
         weighted_mae = weights * mae
         nelec = torch.sum(target, dim=(-3, -2, -1))
         weighted_mae = weighted_mae / nelec[..., None, None, None]
