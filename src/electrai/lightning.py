@@ -24,7 +24,9 @@ class LightningGenerator(LightningModule):
         self.cfg = cfg
         self.model = instantiate(cfg.model)
         self.loss_fn = self._build_loss_fn(cfg)
-        self.normmae_fn = NormMAE()
+        self.normmae_fn = (
+            self.loss_fn if isinstance(self.loss_fn, NormMAE) else NormMAE()
+        )
 
     @staticmethod
     def _build_loss_fn(cfg):
@@ -76,6 +78,7 @@ class LightningGenerator(LightningModule):
         return isinstance(self.loss_fn, NormMAE)
 
     def _loss_calculation(self, batch, compute_normmae=False):
+        normmae: torch.Tensor | None = None
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):

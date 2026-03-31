@@ -76,3 +76,15 @@ class TestDensityWeightedNormMAE:
         output = target + 0.01
         loss = DensityWeightedNormMAE(alpha=1.0)(output, target)
         assert torch.isfinite(loss)
+
+    def test_mismatched_list_lengths_raises(self):
+        outputs = [torch.rand(1, 4, 4, 4) for _ in range(3)]
+        targets = [torch.rand(1, 4, 4, 4) + 0.1 for _ in range(2)]
+        with pytest.raises(ValueError, match="zip"):
+            DensityWeightedNormMAE(alpha=1.0)(outputs, targets)
+
+    def test_list_with_non_unity_power(self, list_tensor_pair):
+        outputs, targets = list_tensor_pair
+        loss = DensityWeightedNormMAE(alpha=1.0, power=2.0)(outputs, targets)
+        assert loss.ndim == 0
+        assert torch.isfinite(loss)

@@ -26,7 +26,7 @@ class NormMAE(_ChargeLoss):
 
     def _forward(self, output, target):
         mae = self.mae(output, target)
-        nelec = torch.sum(target, axis=(-3, -2, -1))
+        nelec = torch.sum(target, dim=(-3, -2, -1))
         mae = mae / nelec[..., None, None, None]
         return torch.sum(mae)
 
@@ -47,7 +47,7 @@ class DensityWeightedNormMAE(_ChargeLoss):
     def _forward(self, output, target):
         mae = self.mae(output, target)
         rho_max = target.amax(dim=(-3, -2, -1), keepdim=True).clamp(min=1e-8)
-        normalized = target / rho_max
+        normalized = (target / rho_max).clamp(min=0)
         if self.power != 1.0:
             normalized = normalized**self.power
         weights = 1.0 + self.alpha * normalized
