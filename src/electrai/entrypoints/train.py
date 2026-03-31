@@ -9,8 +9,7 @@ import yaml
 from hydra.utils import instantiate
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
-
-from electrai.lightning import LightningGenerator
+from src.electrai.lightning import LightningGenerator
 
 
 def train(args):
@@ -41,7 +40,7 @@ def train(args):
         from lightning.pytorch.loggers import WandbLogger
 
         wandb_logger = WandbLogger(
-            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg)
+            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg), name=cfg.run_name
         )
     else:
         wandb_logger = None

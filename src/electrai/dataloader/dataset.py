@@ -5,11 +5,10 @@ from typing import TYPE_CHECKING
 
 import torch
 from lightning.pytorch import LightningDataModule
+from src.electrai.dataloader import utils
+from src.electrai.dataloader.collate import collate_fn
+from src.electrai.dataloader.split import split_data
 from torch.utils.data import DataLoader, Dataset
-
-from electrai.dataloader import utils
-from electrai.dataloader.collate import collate_fn
-from electrai.dataloader.split import split_data
 
 if TYPE_CHECKING:
     import os
@@ -123,6 +122,8 @@ class RhoData(Dataset):
             precision=self.precision,
             augmentation=self.aug,
         )
-        data = data.unsqueeze(0)
-        label = label.unsqueeze(0)
+        if data.ndim == 3:
+            data = data.unsqueeze(0)
+        if label.ndim == 3:
+            label = label.unsqueeze(0)
         return {"data": data, "label": label, "index": index}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,11 +37,51 @@ def load_numpy_rho(
 
 
 def load_chgcar(root: str | bytes | os.PathLike, index: str):
-    data = Chgcar.from_file(root / "data" / f"{index}.CHGCAR")
-    label = Chgcar.from_file(root / "label" / f"{index}.CHGCAR")
-    data = data.data["total"] / data.structure.lattice.volume
-    label = label.data["total"] / label.structure.lattice.volume
-    return data, label
+    elements = {"Li", "Na", "K", "Mg", "Ca", "Al", "Ga", "C", "Si", "N", "P", "O", "S"}
+    nelecs = {
+        "Li": 3,
+        "Na": 7,
+        "K": 9,
+        "Mg": 8,
+        "Ca": 10,
+        "Al": 3,
+        "Ga": 13,
+        "C": 4,
+        "Si": 4,
+        "N": 5,
+        "P": 5,
+        "O": 6,
+        "S": 6,
+    }
+    idx_to_element = dict(enumerate(sorted(elements)))
+    root = Path(root)
+    label_chg = Chgcar.from_file(root / "label" / f"{index}.CHGCAR")
+    voxel_volume = label_chg.structure.lattice.volume / np.prod(
+        label_chg.data["total"].shape
+    )
+    label = label_chg.data["total"] / label_chg.structure.lattice.volume
+    files = Path.glob.glob(str(root / "data" / f"{index}_*.CHGCAR"))
+    density = np.zeros((13, *label.shape), dtype=float)
+    presence = np.zeros((13, *label.shape), dtype=float)
+    chg_sum = np.zeros(label.shape, dtype=float)
+    for f in files:
+        path = Path(f)
+        chg = Chgcar.from_file(path)
+        m = re.match(rf"^{re.escape(index)}_(\d+)\.CHGCAR$", path.name)
+        k = int(m.group(1))
+        el = idx_to_element[k]
+        n_atoms = int(chg.structure.composition[el])
+        voxel_volume = chg.structure.lattice.volume / np.prod(chg.data["total"].shape)
+        chg_data = chg.data["total"] / chg.structure.lattice.volume
+        t = n_atoms * (nelecs[el] / voxel_volume) / np.sum(chg_data)
+        chg_data *= t
+        chg_sum += chg_data
+        channel_sum = np.sum(chg_data)
+        if channel_sum > 0:
+            density[k] = chg_data / channel_sum
+            presence[k] = 1.0
+    stacked = np.concatenate([density, presence, chg_sum[None]], axis=0)
+    return stacked, label
 
 
 def load_npy(root: str | bytes | os.PathLike, index: str):

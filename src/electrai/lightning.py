@@ -8,8 +8,7 @@ import torch
 import torch.distributed as dist
 from hydra.utils import instantiate
 from lightning.pytorch import LightningModule
-
-from electrai.model.loss.charge import NormMAE
+from src.electrai.model.loss.charge import NormMAE
 
 
 class LightningGenerator(LightningModule):

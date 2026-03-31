@@ -110,8 +110,9 @@ class ResUNet3D(nn.Module):
             out = torch.cat([out, skips.pop()], dim=1)
             out = dec(out)
         out = self.out_conv(out)
+        total_in = x[:, -1:, ...]
         out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
-        return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
+        return out * torch.sum(total_in, axis=(-3, -2, -1))[..., None, None, None]
 
 
 class PeriodicUpsampleConv3d(nn.Module):
