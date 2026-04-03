@@ -45,16 +45,46 @@ class LightningGenerator(LightningModule):
     def _loss_calculation(self, batch):
         x = batch["data"]
         y = batch["label"]
-        if isinstance(x, list):
+        recycle_steps = getattr(self.cfg, "recycle_steps", 1)
+
+        if recycle_steps <= 1:
+            # No recycling — original single-pass behavior
+            if isinstance(x, list):
+                losses = []
+                for x_i, y_i in zip(x, y, strict=True):
+                    pred = self(x_i.unsqueeze(0))
+                    loss = self.loss_fn(pred, y_i.unsqueeze(0))
+                    losses.append(loss)
+                loss = torch.stack(losses).mean()
+            else:
+                pred = self(x)
+                loss = self.loss_fn(pred, y)
+        elif isinstance(x, list):
             losses = []
             for x_i, y_i in zip(x, y, strict=True):
-                pred = self(x_i.unsqueeze(0))
-                loss = self.loss_fn(pred, y_i.unsqueeze(0))
+                x_orig = x_i.unsqueeze(0)
+                pred = torch.zeros_like(x_orig)
+                for step in range(recycle_steps):
+                    inp = torch.cat([x_orig, pred], dim=1)
+                    if step < recycle_steps - 1:
+                        with torch.no_grad():
+                            pred = self(inp)
+                    else:
+                        pred = self(inp)
+                        loss = self.loss_fn(pred, y_i.unsqueeze(0))
                 losses.append(loss)
             loss = torch.stack(losses).mean()
         else:
-            pred = self(x)
-            loss = self.loss_fn(pred, y)
+            x_orig = x
+            pred = torch.zeros_like(x_orig)
+            for step in range(recycle_steps):
+                inp = torch.cat([x_orig, pred], dim=1)
+                if step < recycle_steps - 1:
+                    with torch.no_grad():
+                        pred = self(inp)
+                else:
+                    pred = self(inp)
+                    loss = self.loss_fn(pred, y)
         return loss
 
     def configure_optimizers(self):

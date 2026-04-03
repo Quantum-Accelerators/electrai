@@ -111,7 +111,9 @@ class ResUNet3D(nn.Module):
             out = dec(out)
         out = self.out_conv(out)
         out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
-        return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
+        # Use only the first channel (original data) for charge conservation scaling
+        x_ref = x[:, :1]
+        return out * torch.sum(x_ref, axis=(-3, -2, -1))[..., None, None, None]
 
 
 class PeriodicUpsampleConv3d(nn.Module):
