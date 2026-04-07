@@ -65,6 +65,7 @@ def run_training(
     data_root: str | None = None,
     gradient_checkpoint: bool = False,
     max_file_size: float = 0,
+    devices: int = 1,
     wandb_project: str | None = None,
     verbose: bool = False,
 ) -> dict:
@@ -284,13 +285,16 @@ def run_training(
             gha_url = f"https://github.com/{repo}/actions/runs/{run_id}"
             logger.experiment.notes = f"[GHA run {run_id}]({gha_url})"
 
+    strategy = "ddp" if devices > 1 else "auto"
+
     trainer = Trainer(
         max_epochs=cfg.epochs,
         logger=logger,
         enable_checkpointing=False,
         enable_progress_bar=verbose,
         accelerator=accelerator,
-        devices=1,
+        devices=devices,
+        strategy=strategy,
         precision=cfg.model_precision,
         deterministic=not wandb_project,
         gradient_clip_val=cfg.gradient_clip_value,

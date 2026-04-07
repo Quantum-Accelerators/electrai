@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       gpu:
-        description: 'GPU type (L4, A10G, A100, H100)'
+        description: 'GPU spec (L4, A100, A100:2 for 2×A100, H100:4, etc.)'
         default: 'L4'
         type: string
       epochs:

@@ -73,11 +73,12 @@ DATASETS = {
 }
 
 
-GPU_TYPE = os.environ.get("MODAL_GPU", "L4")
+# e.g. "L4", "A100", "A100:2" for 2x A100
+GPU_SPEC = os.environ.get("MODAL_GPU", "L4")
 
 
 @app.function(
-    gpu=GPU_TYPE,
+    gpu=GPU_SPEC,
     volumes={"/data": data_volume},
     secrets=[modal.Secret.from_name("wandb-credentials")],
     timeout=7200,
@@ -200,7 +201,12 @@ def run_benchmark(
     import os
     import time
 
-    os.environ["INSTANCE_TYPE"] = f"modal-{gpu_type}"
+    # Detect GPU count from MODAL_GPU spec (e.g. "A100:2" → 2)
+    import torch
+
+    num_gpus = torch.cuda.device_count()
+    os.environ["INSTANCE_TYPE"] = f"modal-{gpu_type}x{num_gpus}"
+    log.info("GPUs detected: %d (%s)", num_gpus, gpu_type)
     # Set workflow-like name so WandB run name is descriptive.
     # GHA sets GITHUB_RUN_NUMBER; for local runs, use timestamp.
     os.environ["GITHUB_WORKFLOW"] = "Modal Benchmark"
@@ -216,6 +222,7 @@ def run_benchmark(
         gradient_checkpoint=use_grad_ckpt,
         data_root=data_root,
         max_file_size=0,  # already filtered above
+        devices=num_gpus,
         wandb_project=wandb_project,
         verbose=True,
     )
@@ -255,12 +262,12 @@ def main(
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger(__name__)
 
-    if gpu != GPU_TYPE:
+    if gpu != GPU_SPEC:
         log.warning(
             "GPU override via --gpu %s, but function is pinned to %s. "
             "Set MODAL_GPU=%s env var before running.",
             gpu,
-            GPU_TYPE,
+            GPU_SPEC,
             gpu,
         )
 
