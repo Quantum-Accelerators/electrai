@@ -220,6 +220,15 @@ def run_benchmark(
     log.info("train_loss: %.6f", results["final_train_loss"])
     log.info("Wallclock: %.1fs", results["wallclock_s"])
     log.info("GPU: %s (Modal)", gpu_type)
+    epoch_times = results.get("epoch_times", [])
+    if epoch_times:
+        for i, t in enumerate(epoch_times):
+            log.info("  Epoch %d: %.1fs", i, t)
+        log.info("  Mean epoch: %.1fs", sum(epoch_times) / len(epoch_times))
+        log.info(
+            "  Overhead (wallclock - sum epochs): %.1fs",
+            results["wallclock_s"] - sum(epoch_times),
+        )
 
     return results
 

@@ -202,8 +202,19 @@ def run_training(
         def __init__(self):
             self.epoch_train_losses: list[float] = []
             self.epoch_val_losses: list[float] = []
+            self.epoch_times: list[float] = []
+            self._epoch_start: float = 0
+
+        def on_train_epoch_start(self, _trainer, _pl_module):
+            from time import monotonic
+
+            self._epoch_start = monotonic()
 
         def on_train_epoch_end(self, trainer, _pl_module):
+            from time import monotonic
+
+            if self._epoch_start:
+                self.epoch_times.append(monotonic() - self._epoch_start)
             train_loss = trainer.callback_metrics.get("train_loss_epoch")
             if train_loss is not None:
                 self.epoch_train_losses.append(float(train_loss))
@@ -316,6 +327,7 @@ def run_training(
         "final_train_loss": final_train_loss,
         "epoch_val_losses": loss_callback.epoch_val_losses,
         "epoch_train_losses": loss_callback.epoch_train_losses,
+        "epoch_times": loss_callback.epoch_times,
         "wallclock_s": train_wallclock,
         "wandb_run_url": wandb_run_url,
     }
@@ -377,6 +389,11 @@ def main(
             echo(f"  Final train_loss: {results['final_train_loss']:.6f}")
         echo(f"  Epoch val_losses: {[f'{v:.6f}' for v in results['epoch_val_losses']]}")
         echo(f"  Epoch train_losses: {[f'{v:.6f}' for v in results['epoch_train_losses']]}")
+        epoch_times = results.get("epoch_times", [])
+        if epoch_times:
+            echo(f"  Epoch times: {[f'{t:.1f}s' for t in epoch_times]}")
+            echo(f"  Mean epoch: {sum(epoch_times) / len(epoch_times):.1f}s")
+            echo(f"  Overhead (wallclock - sum epochs): {results['wallclock_s'] - sum(epoch_times):.1f}s")
 
     echo(f"Final val_loss: {final_val_loss:.6f}")
 
