@@ -52,6 +52,7 @@ jobs:
         id: bench
         env:
           GPU: ${{ inputs.gpu || 'L4' }}
+          MODAL_GPU: ${{ inputs.gpu || 'L4' }}
           EPOCHS: ${{ inputs.epochs || '5' }}
           CHANNELS: ${{ inputs.channels || '32' }}
           RESIDUAL_BLOCKS: ${{ inputs.residual_blocks || '16' }}

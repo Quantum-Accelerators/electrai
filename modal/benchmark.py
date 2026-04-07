@@ -15,7 +15,7 @@ Usage:
     modal run modal/benchmark.py --dataset dataset_4 --channels 8 --residual-blocks 2
 
     # Production model on A100 with dataset_4
-    modal run modal/benchmark.py --dataset dataset_4 --gpu A100 --channels 32 --residual-blocks 16
+    MODAL_GPU=A100 modal run modal/benchmark.py --dataset dataset_4 --channels 32 --residual-blocks 16
 
     # All S3 samples
     modal run modal/benchmark.py --samples 0
@@ -26,6 +26,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import modal
@@ -72,8 +73,11 @@ DATASETS = {
 }
 
 
+GPU_TYPE = os.environ.get("MODAL_GPU", "L4")
+
+
 @app.function(
-    gpu="L4",
+    gpu=GPU_TYPE,
     volumes={"/data": data_volume},
     secrets=[modal.Secret.from_name("wandb-credentials")],
     timeout=7200,
@@ -251,11 +255,16 @@ def main(
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger(__name__)
 
-    benchmark_fn = run_benchmark
-    if gpu != "L4":
-        benchmark_fn = run_benchmark.with_options(gpu=gpu)
+    if gpu != GPU_TYPE:
+        log.warning(
+            "GPU override via --gpu %s, but function is pinned to %s. "
+            "Set MODAL_GPU=%s env var before running.",
+            gpu,
+            GPU_TYPE,
+            gpu,
+        )
 
-    results = benchmark_fn.remote(
+    results = run_benchmark.remote(
         epochs=epochs,
         channels=channels,
         residual_blocks=residual_blocks,
