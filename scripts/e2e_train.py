@@ -285,7 +285,7 @@ def run_training(
             gha_url = f"https://github.com/{repo}/actions/runs/{run_id}"
             logger.experiment.notes = f"[GHA run {run_id}]({gha_url})"
 
-    strategy = "ddp" if devices > 1 else "auto"
+    strategy = "ddp_notebook" if devices > 1 else "auto"
 
     trainer = Trainer(
         max_epochs=cfg.epochs,
