@@ -213,24 +213,104 @@ def run_benchmark(
     if "GITHUB_RUN_NUMBER" not in os.environ:
         os.environ["GITHUB_RUN_NUMBER"] = time.strftime("%y%m%d-%H%M")
 
-    results = run_training(
-        channels=channels,
-        residual_blocks=residual_blocks,
-        epochs=epochs,
-        seed=seed,
-        gpu=True,
-        gradient_checkpoint=use_grad_ckpt,
-        data_root=data_root,
-        max_file_size=0,  # already filtered above
-        devices=num_gpus,
-        wandb_project=wandb_project,
-        verbose=True,
-    )
+    if num_gpus > 1:
+        # Multi-GPU: use torchrun with the production entrypoint (real DDP, no GIL)
+        import subprocess
+        import sys
+        from time import monotonic
 
-    log.info("val_loss: %.6f", results["final_val_loss"])
-    log.info("train_loss: %.6f", results["final_train_loss"])
+        import yaml
+
+        cfg = {
+            "data": {
+                "_target_": "electrai.dataloader.dataset.RhoRead",
+                "root": f"{data_root}/mp_filelist.txt",
+                "split_file": None,
+                "precision": "f32",
+                "batch_size": 1,
+                "train_workers": 4 * num_gpus,
+                "val_workers": 2,
+                "pin_memory": False,
+                "val_frac": 0.4,
+                "drop_last": False,
+                "augmentation": False,
+                "random_seed": seed,
+            },
+            "model": {
+                "_target_": "electrai.model.resunet.ResUNet3D",
+                "in_channels": 1,
+                "out_channels": 1,
+                "n_channels": channels,
+                "n_residual_blocks": residual_blocks,
+                "kernel_size": 3,
+                "depth": 2,
+                "use_checkpoint": use_grad_ckpt,
+            },
+            "precision": 32,
+            "epochs": epochs,
+            "lr": 0.001,
+            "weight_decay": 0.0,
+            "warmup_length": 1,
+            "gradient_clip_value": 1.0,
+            "wandb_mode": "online" if wandb_project else "disabled",
+            "entity": "PrinceOA",
+            "wb_pname": wandb_project or "elf-net-ci-test",
+            "ckpt_path": "/tmp/checkpoints",
+        }
+        config_path = Path("/tmp/benchmark_config.yaml")
+        with config_path.open("w") as f:
+            yaml.dump(cfg, f, default_flow_style=False)
+
+        log.info("Launching torchrun with %d GPUs", num_gpus)
+        t0 = monotonic()
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "torch.distributed.run",
+                f"--nproc_per_node={num_gpus}",
+                "-m",
+                "electrai.entrypoints.main",
+                "train",
+                "--config",
+                str(config_path),
+            ],
+            cwd="/root/electrai",
+            check=False,
+        )
+        wallclock = monotonic() - t0
+
+        if result.returncode != 0:
+            raise RuntimeError(f"torchrun failed with exit code {result.returncode}")
+
+        results = {
+            "final_val_loss": 0.0,  # TODO: capture from torchrun output
+            "final_train_loss": 0.0,
+            "epoch_times": [],
+            "wallclock_s": wallclock,
+            "wandb_run_url": None,
+        }
+    else:
+        # Single GPU: use run_training directly (better metrics capture)
+        results = run_training(
+            channels=channels,
+            residual_blocks=residual_blocks,
+            epochs=epochs,
+            seed=seed,
+            gpu=True,
+            gradient_checkpoint=use_grad_ckpt,
+            data_root=data_root,
+            max_file_size=0,  # already filtered above
+            devices=1,
+            train_workers=4,
+            wandb_project=wandb_project,
+            verbose=True,
+        )
+
+    log.info("val_loss: %s", results.get("final_val_loss", "?"))
+    log.info("train_loss: %s", results.get("final_train_loss", "?"))
     log.info("Wallclock: %.1fs", results["wallclock_s"])
-    log.info("GPU: %s (Modal)", gpu_type)
+    log.info("GPU: %s x%d (Modal)", gpu_type, num_gpus)
     epoch_times = results.get("epoch_times", [])
     if epoch_times:
         for i, t in enumerate(epoch_times):

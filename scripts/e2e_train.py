@@ -66,6 +66,7 @@ def run_training(
     gradient_checkpoint: bool = False,
     max_file_size: float = 0,
     devices: int = 1,
+    train_workers: int = 0,
     wandb_project: str | None = None,
     verbose: bool = False,
 ) -> dict:
@@ -190,8 +191,8 @@ def run_training(
         root=str(filelist),
         precision="f32",
         batch_size=cfg.nbatch,
-        train_workers=0,
-        val_workers=0,
+        train_workers=train_workers,
+        val_workers=min(train_workers, 2),
         val_frac=0.4,
         augmentation=False,
         random_seed=seed,
