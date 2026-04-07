@@ -58,30 +58,70 @@ The 6s extra setup/teardown on Modal includes:
 - FUSE filesystem mount for Volume
 - WandB initialization through gVisor's network stack
 
-### Scaling: 50 vs 100 samples
+### Scaling: 50 vs 100 samples (L4, nvproxy overhead)
 
 | | 50 samples | 100 samples |
 |---|---|---|
-| EC2 epoch (steady) | 128.5s | 300.7s |
-| Modal epoch (steady) | 141.9s | 333.5s |
+| EC2 L4 epoch (steady) | 128.5s | 300.7s |
+| Modal L4 epoch (steady) | 141.9s | 333.5s |
 | **Steady-state ratio** | **1.10x** | **1.11x** |
-| EC2 epoch 0 | 127.6s | 298.2s |
-| Modal epoch 0 | 197.2s | 351.1s |
+| EC2 L4 epoch 0 | 127.6s | 298.2s |
+| Modal L4 epoch 0 | 197.2s | 351.1s |
 | **Epoch-0 ratio** | **1.55x** | **1.18x** |
 | Total wallclock ratio | 1.20x | 1.12x |
 
 The epoch-0 warmup penalty is roughly fixed (~50-70s extra) and amortizes with more steps per epoch. Steady-state overhead is consistent at ~10-11%.
 
+### GPU comparison: L4 vs A100 (100 samples, S3 ≤25MB)
+
+| Epoch | EC2 L4 | Modal L4 | Modal A100 |
+|-------|--------|----------|------------|
+| 0 | 298.2s | 351.1s | 195.9s |
+| 1-4 avg | 300.7s | 333.5s | 166.6s |
+| **Wallclock** | **1505s** | **1693s** | **870s** |
+| val_loss | 0.235 | 0.243 | 0.243 |
+
+- **A100 is 1.74x faster than L4** on the same data/config (Modal platform)
+- **Modal A100 is 1.73x faster than EC2 L4** (different GPU + nvproxy overhead cancel out)
+- Inferred nvproxy overhead on A100: ~11% (same as L4, assuming bare-metal A100 ≈ 150s/epoch)
+
+### Dataset_4 on A100 (large grids, no file size filter)
+
+50 samples from dataset_4 (files up to 73MB, much larger grids than S3 set):
+
+| Epoch | Modal A100 |
+|-------|------------|
+| 0 | 579.0s |
+| 1-4 avg | 479.7s |
+| **Wallclock** | **2520s (42 min)** |
+| val_loss | 0.163 |
+
+Lower val_loss (0.163 vs 0.243) reflects the different/larger grid data.
+
+### Cost projections
+
+| Scenario | GPU | Samples | Epochs | Est. time | Est. cost |
+|----------|-----|---------|--------|-----------|-----------|
+| CI benchmark | L4 | 50 (S3) | 5 | ~13 min | ~$0.17 |
+| Mid benchmark | A100 | 100 (S3) | 5 | ~15 min | ~$0.45 |
+| Dataset_4 benchmark | A100 | 50 | 5 | ~42 min | ~$1.26 |
+| Full dataset_2 training | 1×A100 | 5,867 | 50 | ~19 hr | ~$34 |
+| Full dataset_2 training | 4×A100 DDP | 5,867 | 50 | ~5 hr (est) | ~$36 |
+| Full dataset_2 training | 8×A100 DDP | 5,867 | 50 | ~3 hr (est) | ~$42 |
+
+Modal A100 pricing: ~$1.80/hr. DDP estimates assume ~80% scaling efficiency.
+
 ### Amortization for production runs
 
 For Betsy's `dataset_2` runs (~5,867 samples, 50 epochs, A100):
 ```
-Della/EC2 runtime: ~2 hours
-Expected Modal overhead: ~10%
-Estimated Modal runtime: ~2.2 hours
+Della runtime: ~2 hours (4×A100 DDP)
+Modal 1×A100 estimate: ~19 hours
+Modal 4×A100 DDP estimate: ~5 hours ($36)
 ```
 
-On 8×A100 DDP (future): communication overhead may interact differently with gVisor's network stack — needs separate benchmarking.
+The single-GPU estimate is much longer because Betsy uses 4-GPU DDP on Della.
+Multi-GPU on Modal requires the `@clustered` decorator (beta) — needs separate benchmarking.
 
 ## Volume I/O
 
@@ -132,4 +172,28 @@ Epoch 4: 334.8s
 Mean epoch: 337.0s
 Overhead (wallclock - sum epochs): 8.1s
 val_loss: 0.242915
+```
+
+### Modal (A100, dataset=s3, 100 samples)
+```
+Epoch 0: 195.9s
+Epoch 1: 166.2s
+Epoch 2: 167.5s
+Epoch 3: 166.2s
+Epoch 4: 166.6s
+Mean epoch: 172.5s
+Overhead (wallclock - sum epochs): 7.7s
+val_loss: 0.243293
+```
+
+### Modal (A100, dataset=dataset_4, 50 samples, no file size filter)
+```
+Epoch 0: 579.0s
+Epoch 1: 482.3s
+Epoch 2: 476.2s
+Epoch 3: 484.0s
+Epoch 4: 476.4s
+Mean epoch: 499.6s
+Overhead (wallclock - sum epochs): 22.6s
+val_loss: 0.163158
 ```
