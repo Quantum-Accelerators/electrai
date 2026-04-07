@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -60,7 +59,7 @@ class HuggingFaceCallback(Callback):
         self._save_manifest()
         logger.info("Queued checkpoint for HF upload: %s", ckpt_file.name)
 
-    def on_train_epoch_end(self, trainer, pl_module) -> None:  # noqa: ARG002
+    def on_validation_end(self, trainer, pl_module) -> None:  # noqa: ARG002
         if trainer.sanity_checking:
             return
         epoch = trainer.current_epoch
@@ -69,15 +68,12 @@ class HuggingFaceCallback(Callback):
         if trainer.global_rank != 0:
             return
 
-        last_ckpt = self.ckpt_path / "last.ckpt"
-        if not last_ckpt.exists():
-            return
-
-        # Copy to a stable filename so later hf-push uploads the correct
-        # snapshot even after last.ckpt is overwritten by subsequent epochs.
+        # Save the current state to a stable epoch-specific file. This is
+        # independent of ModelCheckpoint's last.ckpt (which Lightning reorders
+        # to run after us in this hook, so last.ckpt would still be stale).
         stable_name = f"last_epoch{epoch + 1:03d}.ckpt"
         stable_path = self.ckpt_path / stable_name
-        shutil.copy2(last_ckpt, stable_path)
+        trainer.save_checkpoint(stable_path)
 
         self._queue_checkpoint(stable_path, epoch, path_in_repo=stable_name)
 
@@ -149,6 +145,14 @@ def hf_push(ckpt_path: str, *, clean: bool = False) -> None:
 
     Run this from a login node or machine with internet access.
     """
+    try:
+        import huggingface_hub  # noqa: F401
+    except ImportError as e:
+        raise SystemExit(
+            "huggingface-hub is not installed. "
+            "Run 'uv sync --extra hf' to enable uploads."
+        ) from e
+
     ckpt_dir = Path(ckpt_path)
     manifest_path = ckpt_dir / MANIFEST_FILENAME
     if not manifest_path.exists():
