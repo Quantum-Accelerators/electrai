@@ -7,7 +7,7 @@ Both platforms run the same code (`scripts/e2e_train.py`) with identical config:
 - **Data**: 50 samples from `s3://openathena/electrai/input/` (≤25MB each)
 - **Training**: 5 epochs, seed=42, batch_size=1
 - **GPU**: NVIDIA L4 (22 GB)
-- **WandB project**: `elf-net-ci`
+- **WandB project**: [`elf-net-ci`][wb-ci], [`elf-net-ci-test`][wb-test]
 
 | Platform | Instance | GPU Access | Container Isolation |
 |----------|----------|------------|---------------------|
@@ -15,6 +15,8 @@ Both platforms run the same code (`scripts/e2e_train.py`) with identical config:
 | Modal | L4 | nvproxy (gVisor ioctl proxy) | gVisor (user-space kernel) |
 
 ## Per-Epoch Timing (2026-04-07)
+
+50 S3 samples, 5 epochs. [EC2 GHA][gha-ec2-50] / [Modal GHA][gha-modal-50].
 
 | Epoch | EC2 (s) | Modal (s) | Ratio |
 |-------|---------|-----------|-------|
@@ -60,6 +62,8 @@ The 6s extra setup/teardown on Modal includes:
 
 ### Scaling: 50 vs 100 samples (L4, nvproxy overhead)
 
+100-sample runs: [EC2 GHA][gha-ec2-100] ([WandB][wb-ec2-100]) / [Modal L4 GHA][gha-modal-l4-100] ([WandB][wb-modal-l4-100]) / [Modal A100 GHA][gha-modal-a100-100] ([WandB][wb-modal-a100-100]).
+
 | | 50 samples | 100 samples |
 |---|---|---|
 | EC2 L4 epoch (steady) | 128.5s | 300.7s |
@@ -87,7 +91,7 @@ The epoch-0 warmup penalty is roughly fixed (~50-70s extra) and amortizes with m
 
 ### Dataset_4 on A100 (large grids, no file size filter)
 
-50 samples from dataset_4 (files up to 73MB, much larger grids than S3 set):
+50 samples from dataset_4 (files up to 73MB, much larger grids than S3 set). [GHA][gha-modal-a100-d4-50] / [WandB][wb-modal-a100-d4-50].
 
 | Epoch | Modal A100 |
 |-------|------------|
@@ -106,6 +110,8 @@ Lightning's standard `ddp` strategy (uses `torch.multiprocessing.spawn`) crashes
 
 ### Multi-GPU scaling: 187 S3 samples, 5 epochs
 
+[1×A100 WandB][wb-1xa100-187] / [2×A100 WandB][wb-2xa100-187] / [4×A100 WandB][wb-4xa100-187].
+
 | Config | Wallclock | Speedup |
 |--------|-----------|---------|
 | 1×A100 (`run_training`, 4 workers) | 927s | 1.0x |
@@ -115,6 +121,8 @@ Lightning's standard `ddp` strategy (uses `torch.multiprocessing.spawn`) crashes
 Limited scaling due to small sample count (28-57 train steps/GPU/epoch).
 
 ### Multi-GPU scaling: 1,000 dataset_4 samples, 2 epochs
+
+[1×A100 GHA][gha-1xa100-1000] ([WandB][wb-1xa100-1000]) / [2×A100 GHA][gha-2xa100-1000] ([WandB][wb-2xa100-1000]) / [4×A100 GHA][gha-4xa100-1000] ([WandB][wb-4xa100-1000]).
 
 | Config | Steps/epoch/GPU | Wallclock | Speedup | GPU util (when active) | Active % |
 |--------|-----------------|-----------|---------|----------------------|----------|
@@ -131,7 +139,7 @@ All GPUs hit 90-100% when actively computing. The "active %" reflects periodic i
 ### Data workers impact
 
 Adding `train_workers` was a major improvement:
-- 1×A100 without workers (old code): 870s, 46% GPU util
+- 1×A100 without workers (old code): 870s, 46% GPU util ([WandB][wb-modal-a100-100-noworkers])
 - 1×A100 with 4 workers: ~496s (estimated), 90% GPU util
 - **~1.75x speedup from workers alone**
 
@@ -177,14 +185,14 @@ Tested separately: Modal Volume reads at ~49 MB/s vs local SSD at ~762 MB/s (15x
 
 ## Raw Data
 
-### EC2 (GPU Benchmark, `g6.xlarge`, 50 samples)
+### EC2 L4, 50 S3 samples, 5 epochs ([GHA][gha-ec2-50])
 ```
 Epoch times: ['127.6s', '128.1s', '128.5s', '129.3s', '128.8s']
 Mean epoch: 128.5s
 Overhead (wallclock - sum epochs): 3.5s
 ```
 
-### Modal (L4, dataset=s3, 50 samples)
+### Modal L4, 50 S3 samples, 5 epochs ([GHA][gha-modal-50] / [WandB][wb-modal-50])
 ```
 Epoch 0: 197.2s
 Epoch 1: 141.3s
@@ -195,7 +203,7 @@ Mean epoch: 152.9s
 Overhead (wallclock - sum epochs): 9.3s
 ```
 
-### EC2 (GPU Benchmark, `g6.xlarge`, 100 samples)
+### EC2 L4, 100 S3 samples, 5 epochs ([GHA][gha-ec2-100] / [WandB][wb-ec2-100])
 ```
 Epoch times: ['298.2s', '300.2s', '300.8s', '300.5s', '301.2s']
 Mean epoch: 300.2s
@@ -203,7 +211,7 @@ Overhead (wallclock - sum epochs): 4.1s
 val_loss: 0.235187
 ```
 
-### Modal (L4, dataset=s3, 100 samples)
+### Modal L4, 100 S3 samples, 5 epochs ([GHA][gha-modal-l4-100] / [WandB][wb-modal-l4-100])
 ```
 Epoch 0: 351.1s
 Epoch 1: 334.1s
@@ -215,7 +223,7 @@ Overhead (wallclock - sum epochs): 8.1s
 val_loss: 0.242915
 ```
 
-### Modal (A100, dataset=s3, 100 samples)
+### Modal 1×A100, 100 S3 samples, 5 epochs ([GHA][gha-modal-a100-100] / [WandB][wb-modal-a100-100])
 ```
 Epoch 0: 195.9s
 Epoch 1: 166.2s
@@ -227,7 +235,7 @@ Overhead (wallclock - sum epochs): 7.7s
 val_loss: 0.243293
 ```
 
-### Modal (A100, dataset=dataset_4, 50 samples, no file size filter)
+### Modal 1×A100, 50 dataset_4 samples, 5 epochs ([GHA][gha-modal-a100-d4-50] / [WandB][wb-modal-a100-d4-50])
 ```
 Epoch 0: 579.0s
 Epoch 1: 482.3s
@@ -239,7 +247,7 @@ Overhead (wallclock - sum epochs): 22.6s
 val_loss: 0.163158
 ```
 
-### Modal (1×A100, dataset=s3, 187 samples, 5 epochs)
+### Modal 1×A100, 187 S3 samples, 5 epochs ([WandB][wb-1xa100-187])
 ```
 Mean epoch: 183.8s
 Wallclock: 926.6s
@@ -247,38 +255,34 @@ Overhead: 7.6s
 GPU 0: 90% util (when active)
 ```
 
-### Modal (2×A100 torchrun, dataset=s3, 187 samples, 5 epochs)
+### Modal 2×A100 torchrun, 187 S3 samples, 5 epochs ([WandB][wb-2xa100-187])
 ```
 Wallclock: 719s (speedup: 1.29x)
 GPU 0: 94%, GPU 1: 69%
 ```
 
-### Modal (4×A100 torchrun, dataset=s3, 187 samples, 5 epochs)
+### Modal 4×A100 torchrun, 187 S3 samples, 5 epochs ([WandB][wb-4xa100-187])
 ```
 Wallclock: 525s (speedup: 1.77x)
 GPU 0-3: 79-83% avg, 92-97% when active
 ```
 
-### Modal (1×A100, dataset=dataset_4, 1000 samples, 2 epochs)
+### Modal 1×A100, 1000 dataset_4 samples, 2 epochs ([GHA][gha-1xa100-1000] / [WandB][wb-1xa100-1000])
 ```
 Steps/epoch: 600
 Wallclock: ~7140s (119 min)
 GPU 0: 90% when active, 54% active time
-GHA: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112212490
-WandB: Modal Benchmark#260408-0108
 ```
 
-### Modal (2×A100 torchrun, dataset=dataset_4, 1000 samples, 2 epochs)
+### Modal 2×A100 torchrun, 1000 dataset_4 samples, 2 epochs ([GHA][gha-2xa100-1000] / [WandB][wb-2xa100-1000])
 ```
 Steps/epoch: 300
 Wallclock: 3565s (59 min) — speedup: 2.00x
 GPU 0: 96% when active, 82% active time
 GPU 1: 94% when active, 82% active time
-GHA: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112219405
-WandB: Modal 2xA100 dataset_4 1000s 2ep
 ```
 
-### Modal (4×A100 torchrun, dataset=dataset_4, 1000 samples, 2 epochs)
+### Modal 4×A100 torchrun, 1000 dataset_4 samples, 2 epochs ([GHA][gha-4xa100-1000] / [WandB][wb-4xa100-1000])
 ```
 Steps/epoch: 150
 Wallclock: 2256s (38 min) — speedup: 3.16x
@@ -286,6 +290,31 @@ GPU 0: 100% when active, 83% active time
 GPU 1: 99% when active, 83% active time
 GPU 2: 100% when active, 75% active time
 GPU 3: 100% when active, 75% active time
-GHA: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112226168
-WandB: Modal 4xA100 dataset_4 1000s 2ep
 ```
+
+<!-- GHA run links -->
+[gha-ec2-50]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24092095128
+[gha-modal-50]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24092066067
+[gha-ec2-100]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24094632673
+[gha-modal-l4-100]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24094614519
+[gha-modal-a100-100]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24103642324
+[gha-modal-a100-d4-50]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24100220728
+[gha-1xa100-1000]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112212490
+[gha-2xa100-1000]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112219405
+[gha-4xa100-1000]: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112226168
+
+<!-- WandB run links -->
+[wb-ci]: https://wandb.ai/PrinceOA/elf-net-ci
+[wb-test]: https://wandb.ai/PrinceOA/elf-net-ci-test
+[wb-modal-50]: https://wandb.ai/PrinceOA/elf-net-ci/runs/y9cdfids
+[wb-ec2-100]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/n37g2x2j
+[wb-modal-l4-100]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/h7xfq7w6
+[wb-modal-a100-100]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/cg1n5is4
+[wb-modal-a100-100-noworkers]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/cg1n5is4
+[wb-modal-a100-d4-50]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/7rx1ze41
+[wb-1xa100-187]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/evobk3xs
+[wb-2xa100-187]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/gaybe1k3
+[wb-4xa100-187]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/4r07if0k
+[wb-1xa100-1000]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/zcpqunmx
+[wb-2xa100-1000]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/ohryawsu
+[wb-4xa100-1000]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/4a7wc4qx
