@@ -88,6 +88,10 @@ def run_benchmark(
     epochs: int = 5,
     channels: int = 32,
     residual_blocks: int = 16,
+    depth: int = 2,
+    kernel_size: int = 3,
+    lr: float = 0.001,
+    val_frac: float = 0.4,
     samples: int = 50,
     max_file_size: float = -1,
     seed: int = 42,
@@ -95,6 +99,7 @@ def run_benchmark(
     gpu_type: str = "L4",
     dataset: str = "s3",
     local_copy: bool = False,
+    run_name: str = "",
 ):
     """Run benchmark and return results."""
     import logging
@@ -205,13 +210,18 @@ def run_benchmark(
     import torch
 
     num_gpus = torch.cuda.device_count()
-    os.environ["INSTANCE_TYPE"] = f"modal-{gpu_type}x{num_gpus}"
+    gpu_label = f"{gpu_type}x{num_gpus}" if num_gpus > 1 else gpu_type
+    os.environ["INSTANCE_TYPE"] = f"modal-{gpu_label}"
     log.info("GPUs detected: %d (%s)", num_gpus, gpu_type)
-    # Set workflow-like name so WandB run name is descriptive.
-    # GHA sets GITHUB_RUN_NUMBER; for local runs, use timestamp.
-    os.environ["GITHUB_WORKFLOW"] = "Modal Benchmark"
-    if "GITHUB_RUN_NUMBER" not in os.environ:
-        os.environ["GITHUB_RUN_NUMBER"] = time.strftime("%y%m%d-%H%M")
+
+    # Auto-generate WandB run name if not provided
+    if not run_name:
+        run_name = (
+            f"Modal {gpu_label} {dataset} {samples}s {epochs}ep "
+            f"{channels}ch/{residual_blocks}blk"
+        )
+    os.environ["GITHUB_WORKFLOW"] = run_name
+    os.environ["GITHUB_RUN_NUMBER"] = ""
 
     if num_gpus > 1:
         # Multi-GPU: use torchrun with the production entrypoint (real DDP, no GIL)
@@ -231,7 +241,7 @@ def run_benchmark(
                 "train_workers": 4 * num_gpus,
                 "val_workers": 2,
                 "pin_memory": False,
-                "val_frac": 0.4,
+                "val_frac": val_frac,
                 "drop_last": False,
                 "augmentation": False,
                 "random_seed": seed,
@@ -242,13 +252,13 @@ def run_benchmark(
                 "out_channels": 1,
                 "n_channels": channels,
                 "n_residual_blocks": residual_blocks,
-                "kernel_size": 3,
-                "depth": 2,
+                "kernel_size": kernel_size,
+                "depth": depth,
                 "use_checkpoint": use_grad_ckpt,
             },
             "precision": 32,
             "epochs": epochs,
-            "lr": 0.001,
+            "lr": lr,
             "weight_decay": 0.0,
             "warmup_length": 1,
             "gradient_clip_value": 1.0,
@@ -333,6 +343,10 @@ def run_benchmark(
         results = run_training(
             channels=channels,
             residual_blocks=residual_blocks,
+            depth=depth,
+            kernel_size=kernel_size,
+            lr=lr,
+            val_frac=val_frac,
             epochs=epochs,
             seed=seed,
             gpu=True,
@@ -368,12 +382,17 @@ def main(
     epochs: int = 5,
     channels: int = 32,
     residual_blocks: int = 16,
+    depth: int = 2,
+    kernel_size: int = 3,
+    lr: float = 0.001,
+    val_frac: float = 0.4,
     samples: int = 50,
     max_file_size: float = -1,
     seed: int = 42,
     wandb_project: str = "elf-net-ci",
     dataset: str = "s3",
     local_copy: bool = False,
+    run_name: str = "",
 ):
     import logging
 
@@ -393,6 +412,10 @@ def main(
         epochs=epochs,
         channels=channels,
         residual_blocks=residual_blocks,
+        depth=depth,
+        kernel_size=kernel_size,
+        lr=lr,
+        val_frac=val_frac,
         samples=samples,
         max_file_size=max_file_size,
         seed=seed,
@@ -400,6 +423,7 @@ def main(
         gpu_type=gpu,
         dataset=dataset,
         local_copy=local_copy,
+        run_name=run_name,
     )
 
     log.info(

@@ -59,6 +59,10 @@ def get_platform(gpu: bool = False) -> str:
 def run_training(
     channels: int = 8,
     residual_blocks: int = 2,
+    depth: int = 2,
+    kernel_size: int = 3,
+    lr: float = 0.001,
+    val_frac: float = 0.4,
     epochs: int = 5,
     seed: int = 42,
     gpu: bool = False,
@@ -121,15 +125,15 @@ def run_training(
         "out_channels": 1,
         "n_channels": channels,
         "n_residual_blocks": residual_blocks,
-        "kernel_size": 3,
-        "depth": 2,
+        "kernel_size": kernel_size,
+        "depth": depth,
         "use_checkpoint": gradient_checkpoint,
     }
 
     # Training
     cfg.epochs = epochs
     cfg.nbatch = 1
-    cfg.lr = 0.001
+    cfg.lr = lr
     cfg.weight_decay = 0.0
     cfg.warmup_length = 1
     cfg.model_precision = 32
@@ -193,7 +197,7 @@ def run_training(
         batch_size=cfg.nbatch,
         train_workers=train_workers,
         val_workers=min(train_workers, 2),
-        val_frac=0.4,
+        val_frac=val_frac,
         augmentation=False,
         random_seed=seed,
     )
@@ -343,10 +347,14 @@ def run_training(
 @option("-B", "--residual-blocks", default=2, help="Number of residual blocks (default: 2, production: 16)")
 @option("-C", "--channels", default=8, help="Number of model channels (default: 8, production: 32-64)")
 @option("-c", "--check/--no-check", default=True, help="Check val_loss against expected value")
+@option("-D", "--depth", default=2, help="Model depth (number of encoder/decoder levels)")
 @option("-d", "--data-root", default=None, help="Path to data root dir containing mp_filelist.txt (default: data/MP/chgcars)")
 @option("-e", "--epochs", default=5, help="Number of training epochs")
+@option("-F", "--val-frac", default=0.4, type=float, help="Fraction of data for validation (default: 0.4)")
 @option("-G", "--gradient-checkpoint", is_flag=True, help="Enable gradient checkpointing (saves VRAM, slower)")
 @option("-g", "--gpu", is_flag=True, help="Use GPU acceleration (if available)")
+@option("-K", "--kernel-size", default=3, help="Convolution kernel size (default: 3, Betsy uses 5)")
+@option("-l", "--lr", default=0.001, type=float, help="Learning rate")
 @option("-M", "--max-file-size", default=0, type=float, help="Skip input files larger than N MB (0=no limit)")
 @option("-s", "--seed", default=42, help="Random seed for reproducibility")
 @option("-t", "--tolerance", default=0.001, help="Tolerance for val_loss comparison (absolute)")
@@ -357,10 +365,14 @@ def main(
     residual_blocks: int,
     channels: int,
     check: bool,
+    depth: int,
     data_root: str | None,
     epochs: int,
+    val_frac: float,
     gradient_checkpoint: bool,
     gpu: bool,
+    kernel_size: int,
+    lr: float,
     max_file_size: float,
     seed: int,
     tolerance: float,
@@ -374,6 +386,10 @@ def main(
     results = run_training(
         channels=channels,
         residual_blocks=residual_blocks,
+        depth=depth,
+        kernel_size=kernel_size,
+        lr=lr,
+        val_frac=val_frac,
         epochs=epochs,
         seed=seed,
         gpu=gpu,

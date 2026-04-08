@@ -16,8 +16,24 @@ on:
         default: '32'
         type: string
       residual_blocks:
-        description: 'Number of residual blocks (2=tiny, 16=prod)'
+        description: 'Number of residual blocks (1=Betsy, 2=tiny, 16=prod)'
         default: '16'
+        type: string
+      depth:
+        description: 'Model depth (encoder/decoder levels)'
+        default: '2'
+        type: string
+      kernel_size:
+        description: 'Convolution kernel size (3=default, 5=Betsy)'
+        default: '3'
+        type: string
+      lr:
+        description: 'Learning rate'
+        default: '0.001'
+        type: string
+      val_frac:
+        description: 'Validation fraction (0.005=Betsy, 0.4=benchmark default)'
+        default: '0.4'
         type: string
       samples:
         description: 'Number of samples (0=all eligible)'
@@ -30,6 +46,10 @@ on:
       wandb_project:
         description: 'WandB project name'
         default: 'elf-net-ci'
+        type: string
+      run_name:
+        description: 'WandB run name (auto-generated if empty)'
+        default: ''
         type: string
 
 jobs:
@@ -56,18 +76,28 @@ jobs:
           EPOCHS: ${{ inputs.epochs || '5' }}
           CHANNELS: ${{ inputs.channels || '32' }}
           RESIDUAL_BLOCKS: ${{ inputs.residual_blocks || '16' }}
+          DEPTH: ${{ inputs.depth || '2' }}
+          KERNEL_SIZE: ${{ inputs.kernel_size || '3' }}
+          LR: ${{ inputs.lr || '0.001' }}
+          VAL_FRAC: ${{ inputs.val_frac || '0.4' }}
           SAMPLES: ${{ inputs.samples || '50' }}
           DATASET: ${{ inputs.dataset || 's3' }}
           WANDB_PROJECT: ${{ inputs.wandb_project || 'elf-net-ci' }}
+          RUN_NAME: ${{ inputs.run_name }}
         run: |
           OUTPUT=$(modal run modal/benchmark.py \
             --gpu "$GPU" \
             --epochs "$EPOCHS" \
             --channels "$CHANNELS" \
             --residual-blocks "$RESIDUAL_BLOCKS" \
+            --depth "$DEPTH" \
+            --kernel-size "$KERNEL_SIZE" \
+            --lr "$LR" \
+            --val-frac "$VAL_FRAC" \
             --samples "$SAMPLES" \
             --dataset "$DATASET" \
-            --wandb-project "$WANDB_PROJECT" 2>&1 | tee /dev/stderr)
+            --wandb-project "$WANDB_PROJECT" \
+            ${RUN_NAME:+--run-name "$RUN_NAME"} 2>&1 | tee /dev/stderr)
 
           # Parse metrics from output
           for key in VAL_LOSS TRAIN_LOSS WALLCLOCK GPU DATASET SAMPLES WANDB_URL; do
