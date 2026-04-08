@@ -158,19 +158,15 @@ Adding `train_workers` was a major improvement:
 
 Modal A100 pricing: ~$1.80/GPU/hr.
 
-### Amortization for production runs
+### Comparison with Della (Betsy's runs)
 
-For Betsy's `dataset_2` runs (~5,867 samples, 50 epochs, A100):
-```
-Della runtime: ~2 hours (4×A100 DDP)
-Modal 4×A100 estimate: ~33 hours (extrapolated from 1,000 samples)
-```
+Betsy's closest comparable run: [`resunet-128-dataset`][wb-betsy-d4] — dataset_4, 2,885 samples, 50 epochs on Della (probably 4×A100 DDP):
+- **Runtime: 6.1 hours**
+- **Config: 16 channels, depth=3, kernel_size=5, val_frac=0.005**
 
-The large gap vs Della likely reflects:
-- Della uses NVMe local storage (not FUSE Volume)
-- Della's A100 SXM4 may have higher interconnect bandwidth (NVLink)
-- Betsy uses `train_workers=8` with data already on local disk
-- 10% nvproxy overhead compounds over many epochs
+**Not directly comparable to our benchmarks** (32ch, depth=2, kernel_size=3, val_frac=0.4). Our model has ~4x more parameters and trains on only 60% of data (vs 99.5%). A proper comparison requires running the same config on both platforms.
+
+Betsy's `dataset_2` baseline runs (5,867 samples, 50 epochs): ~2.1 hours on Della. Same caveat about different model config applies.
 
 ## Volume I/O
 
@@ -318,3 +314,4 @@ GPU 3: 100% when active, 75% active time
 [wb-1xa100-1000]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/zcpqunmx
 [wb-2xa100-1000]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/ohryawsu
 [wb-4xa100-1000]: https://wandb.ai/PrinceOA/elf-net-ci-test/runs/4a7wc4qx
+[wb-betsy-d4]: https://wandb.ai/PrinceOA/mp-resunet-ablation/runs/n739i5kd
