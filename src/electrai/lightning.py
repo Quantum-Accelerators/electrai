@@ -38,7 +38,12 @@ class LightningGenerator(LightningModule):
     def validation_step(self, batch):
         loss = self._loss_calculation(batch)
         self.log(
-            "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
+            "val_loss",
+            loss,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
         )
         return loss
 

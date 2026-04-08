@@ -40,6 +40,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.4.2", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
+hpo = ["optuna>=3.6.0", "optuna-integration>=3.6.0"]
 docs = [
     "mkdocs-material>=9.4.0",
     "mkdocstrings[python]>=0.22.0",
