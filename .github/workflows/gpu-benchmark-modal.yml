@@ -79,15 +79,15 @@ jobs:
 
       - name: Summary
         env:
+          GPU: ${{ inputs.gpu || 'L4' }}
           EPOCHS: ${{ inputs.epochs || '5' }}
           CHANNELS: ${{ inputs.channels || '32' }}
           RESIDUAL_BLOCKS: ${{ inputs.residual_blocks || '16' }}
+          SAMPLES: ${{ inputs.samples || '50' }}
+          DATASET: ${{ inputs.dataset || 's3' }}
           VAL_LOSS: ${{ steps.bench.outputs.BENCHMARK_VAL_LOSS }}
           TRAIN_LOSS: ${{ steps.bench.outputs.BENCHMARK_TRAIN_LOSS }}
           WALLCLOCK: ${{ steps.bench.outputs.BENCHMARK_WALLCLOCK }}
-          GPU: ${{ steps.bench.outputs.BENCHMARK_GPU }}
-          DATASET: ${{ steps.bench.outputs.BENCHMARK_DATASET }}
-          SAMPLES: ${{ steps.bench.outputs.BENCHMARK_SAMPLES }}
           WANDB_URL: ${{ steps.bench.outputs.BENCHMARK_WANDB_URL }}
           WANDB_PROJECT: ${{ inputs.wandb_project || 'elf-net-ci' }}
         run: |
@@ -104,13 +104,19 @@ jobs:
           COMMIT_LINK="[\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
           echo "| Commit | $COMMIT_LINK |" >> "$GITHUB_STEP_SUMMARY"
           if [ -n "$WANDB_URL" ]; then
-            WANDB_RUN_ID=$(echo "$WANDB_URL" | grep -oP '[^/]+$')
+            WANDB_RUN_ID="${WANDB_URL##*/}"
             echo "| WandB | [$WANDB_PROJECT](https://wandb.ai/PrinceOA/$WANDB_PROJECT) run [$WANDB_RUN_ID]($WANDB_URL) |" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Results" >> "$GITHUB_STEP_SUMMARY"
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| val_loss | $VAL_LOSS |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| train_loss | $TRAIN_LOSS |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Wallclock | ${WALLCLOCK}s |" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$VAL_LOSS" ]; then
+            echo "| val_loss | $VAL_LOSS |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$TRAIN_LOSS" ]; then
+            echo "| train_loss | $TRAIN_LOSS |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$WALLCLOCK" ]; then
+            echo "| Wallclock | ${WALLCLOCK}s |" >> "$GITHUB_STEP_SUMMARY"
+          fi

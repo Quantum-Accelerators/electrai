@@ -261,9 +261,19 @@ def run_benchmark(
         with config_path.open("w") as f:
             yaml.dump(cfg, f, default_flow_style=False)
 
+        # Pass naming env vars so the production entrypoint's WandB logger uses them
+        run_env = {
+            **os.environ,
+            "INSTANCE_TYPE": f"modal-{gpu_type}x{num_gpus}",
+            "GITHUB_WORKFLOW": os.environ.get("GITHUB_WORKFLOW", "Modal Benchmark"),
+            "GITHUB_RUN_NUMBER": os.environ.get(
+                "GITHUB_RUN_NUMBER", time.strftime("%y%m%d-%H%M")
+            ),
+        }
+
         log.info("Launching torchrun with %d GPUs", num_gpus)
         t0 = monotonic()
-        result = subprocess.run(
+        proc = subprocess.run(
             [
                 sys.executable,
                 "-m",
@@ -276,19 +286,47 @@ def run_benchmark(
                 str(config_path),
             ],
             cwd="/root/electrai",
+            capture_output=True,
+            text=True,
+            env=run_env,
             check=False,
         )
         wallclock = monotonic() - t0
 
-        if result.returncode != 0:
-            raise RuntimeError(f"torchrun failed with exit code {result.returncode}")
+        # Log torchrun output
+        if proc.stdout:
+            for line in proc.stdout.splitlines()[-20:]:
+                log.info("[torchrun] %s", line)
+        if proc.stderr:
+            for line in proc.stderr.splitlines()[-20:]:
+                log.info("[torchrun:err] %s", line)
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"torchrun failed with exit code {proc.returncode}")
+
+        # Parse val_loss from torchrun output (Lightning logs it)
+        import re
+
+        final_val = 0.0
+        final_train = 0.0
+        wandb_url = None
+        for line in (proc.stdout + proc.stderr).splitlines():
+            m = re.search(r"val_loss_epoch=(\d+\.\d+)", line)
+            if m:
+                final_val = float(m.group(1))
+            m = re.search(r"train_loss_epoch=(\d+\.\d+)", line)
+            if m:
+                final_train = float(m.group(1))
+            m = re.search(r"(https://wandb\.ai/\S+)", line)
+            if m:
+                wandb_url = m.group(1)
 
         results = {
-            "final_val_loss": 0.0,  # TODO: capture from torchrun output
-            "final_train_loss": 0.0,
+            "final_val_loss": final_val,
+            "final_train_loss": final_train,
             "epoch_times": [],
             "wallclock_s": wallclock,
-            "wandb_run_url": None,
+            "wandb_run_url": wandb_url,
         }
     else:
         # Single GPU: use run_training directly (better metrics capture)
