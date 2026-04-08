@@ -98,41 +98,82 @@ The epoch-0 warmup penalty is roughly fixed (~50-70s extra) and amortizes with m
 
 Lower val_loss (0.163 vs 0.243) reflects the different/larger grid data.
 
-### Cost projections
+## Multi-GPU Scaling (DDP)
 
-| Scenario | GPU | Samples | Epochs | Est. time | Est. cost |
-|----------|-----|---------|--------|-----------|-----------|
-| CI benchmark | L4 | 50 (S3) | 5 | ~13 min | ~$0.17 |
-| Mid benchmark | A100 | 100 (S3) | 5 | ~15 min | ~$0.45 |
-| Dataset_4 benchmark | A100 | 50 | 5 | ~42 min | ~$1.26 |
-| Full dataset_2 training | 1×A100 | 5,867 | 50 | ~19 hr | ~$34 |
-| Full dataset_2 training | 4×A100 DDP | 5,867 | 50 | ~5 hr (est) | ~$36 |
-| Full dataset_2 training | 8×A100 DDP | 5,867 | 50 | ~3 hr (est) | ~$42 |
+### DDP strategy comparison
 
-Modal A100 pricing: ~$1.80/hr. DDP estimates assume ~80% scaling efficiency.
+Lightning's standard `ddp` strategy (uses `torch.multiprocessing.spawn`) crashes on Modal with `missing output for previous input` — gVisor incompatibility with process forking. `ddp_notebook` (thread-based) works but is GIL-bound (~50% GPU util). **`torchrun`** (subprocess-based, same as Betsy's Della setup) works well.
+
+### Multi-GPU scaling: 187 S3 samples, 5 epochs
+
+| Config | Wallclock | Speedup |
+|--------|-----------|---------|
+| 1×A100 (`run_training`, 4 workers) | 927s | 1.0x |
+| 2×A100 (`torchrun`, 8 workers) | 719s | 1.29x |
+| 4×A100 (`torchrun`, 16 workers) | 525s | 1.77x |
+
+Limited scaling due to small sample count (28-57 train steps/GPU/epoch).
+
+### Multi-GPU scaling: 1,000 dataset_4 samples, 2 epochs
+
+| Config | Steps/epoch/GPU | Wallclock | Speedup | GPU util (when active) | Active % |
+|--------|-----------------|-----------|---------|----------------------|----------|
+| 1×A100 | 600 | ~7140s (119 min) | 1.0x | 90% | 54% |
+| 2×A100 | 300 | 3565s (59 min) | **2.00x** | 94-96% | 82% |
+| 4×A100 | 150 | 2256s (38 min) | **3.16x** | 99-100% | 75-83% |
+
+Excellent scaling at this sample count. GPUs reach 90-100% utilization when active; idle periods are epoch transitions, validation, and data loading gaps.
+
+### GPU utilization details (1,000 dataset_4 samples)
+
+All GPUs hit 90-100% when actively computing. The "active %" reflects periodic idle time (validation, epoch boundaries). Multi-GPU runs are actually MORE active than single-GPU (82% vs 54%) because `torchrun` data workers keep the pipeline fed better across multiple processes.
+
+### Data workers impact
+
+Adding `train_workers` was a major improvement:
+- 1×A100 without workers (old code): 870s, 46% GPU util
+- 1×A100 with 4 workers: ~496s (estimated), 90% GPU util
+- **~1.75x speedup from workers alone**
+
+### Cost projections (updated with measured data)
+
+| Scenario | GPU | Samples | Epochs | Measured time | Est. cost |
+|----------|-----|---------|--------|---------------|-----------|
+| CI benchmark | L4 | 50 (S3) | 5 | 13 min | $0.17 |
+| Mid benchmark | 1×A100 | 100 (S3) | 5 | 15 min | $0.45 |
+| Dataset_4 benchmark | 1×A100 | 50 | 5 | 42 min | $1.26 |
+| Dataset_4 scaling | 1×A100 | 1,000 | 2 | 119 min | $3.57 |
+| Dataset_4 scaling | 2×A100 | 1,000 | 2 | 59 min | $3.54 |
+| Dataset_4 scaling | 4×A100 | 1,000 | 2 | 38 min | $4.56 |
+| Full dataset_4 | 4×A100 | 2,885 | 50 | ~16 hr (est) | ~$115 |
+| Full dataset_2 | 4×A100 | 5,867 | 50 | ~33 hr (est) | ~$238 |
+
+Modal A100 pricing: ~$1.80/GPU/hr.
 
 ### Amortization for production runs
 
 For Betsy's `dataset_2` runs (~5,867 samples, 50 epochs, A100):
 ```
 Della runtime: ~2 hours (4×A100 DDP)
-Modal 1×A100 estimate: ~19 hours
-Modal 4×A100 DDP estimate: ~5 hours ($36)
+Modal 4×A100 estimate: ~33 hours (extrapolated from 1,000 samples)
 ```
 
-The single-GPU estimate is much longer because Betsy uses 4-GPU DDP on Della.
-Multi-GPU on Modal requires the `@clustered` decorator (beta) — needs separate benchmarking.
+The large gap vs Della likely reflects:
+- Della uses NVMe local storage (not FUSE Volume)
+- Della's A100 SXM4 may have higher interconnect bandwidth (NVLink)
+- Betsy uses `train_workers=8` with data already on local disk
+- 10% nvproxy overhead compounds over many epochs
 
 ## Volume I/O
 
-Tested separately: Modal Volume reads at ~49 MB/s vs local SSD at ~762 MB/s (15x slower). However, copying data to local `/tmp/` before training showed negligible improvement (~10s), confirming that training is GPU-bound, not I/O-bound, for this dataset size.
+Tested separately: Modal Volume reads at ~49 MB/s vs local SSD at ~762 MB/s (15x slower). However, copying data to local `/tmp/` before training showed negligible improvement for small datasets (~10s). For larger datasets (1,000+ samples), Volume I/O may contribute to the single-GPU "active %" gap (54% for 1×A100 vs 82% for multi-GPU with more workers).
 
 ## Recommendations
 
 1. **For CI benchmarks**: Accept 10-20% overhead; the faster cold start (~30s vs ~3-5 min EC2 boot) partially compensates
-2. **For production training**: The 10% steady-state overhead is likely acceptable given Modal's GPU availability advantage over Lambda Labs
-3. **For Modal team**: The epoch-0 warmup penalty is the most impactful issue; CUDA context initialization through nvproxy could potentially be optimized or cached
-4. **For multi-GPU (future)**: DDP adds inter-GPU communication overhead that may interact differently with gVisor's network stack; needs separate benchmarking
+2. **For production training**: Use `torchrun` (not `ddp` or `ddp_notebook`). Scale `train_workers` with GPU count (4× per GPU).
+3. **For Modal team**: (a) Epoch-0 warmup penalty through nvproxy; (b) `torch.multiprocessing.spawn` crashes under gVisor
+4. **For cost efficiency**: 2×A100 offers the best $/speedup ratio (2.0x speedup for 2x cost). 4×A100 is 3.16x for 4x cost (79% efficient).
 
 ## Raw Data
 
@@ -196,4 +237,55 @@ Epoch 4: 476.4s
 Mean epoch: 499.6s
 Overhead (wallclock - sum epochs): 22.6s
 val_loss: 0.163158
+```
+
+### Modal (1×A100, dataset=s3, 187 samples, 5 epochs)
+```
+Mean epoch: 183.8s
+Wallclock: 926.6s
+Overhead: 7.6s
+GPU 0: 90% util (when active)
+```
+
+### Modal (2×A100 torchrun, dataset=s3, 187 samples, 5 epochs)
+```
+Wallclock: 719s (speedup: 1.29x)
+GPU 0: 94%, GPU 1: 69%
+```
+
+### Modal (4×A100 torchrun, dataset=s3, 187 samples, 5 epochs)
+```
+Wallclock: 525s (speedup: 1.77x)
+GPU 0-3: 79-83% avg, 92-97% when active
+```
+
+### Modal (1×A100, dataset=dataset_4, 1000 samples, 2 epochs)
+```
+Steps/epoch: 600
+Wallclock: ~7140s (119 min)
+GPU 0: 90% when active, 54% active time
+GHA: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112212490
+WandB: Modal Benchmark#260408-0108
+```
+
+### Modal (2×A100 torchrun, dataset=dataset_4, 1000 samples, 2 epochs)
+```
+Steps/epoch: 300
+Wallclock: 3565s (59 min) — speedup: 2.00x
+GPU 0: 96% when active, 82% active time
+GPU 1: 94% when active, 82% active time
+GHA: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112219405
+WandB: Modal 2xA100 dataset_4 1000s 2ep
+```
+
+### Modal (4×A100 torchrun, dataset=dataset_4, 1000 samples, 2 epochs)
+```
+Steps/epoch: 150
+Wallclock: 2256s (38 min) — speedup: 3.16x
+GPU 0: 100% when active, 83% active time
+GPU 1: 99% when active, 83% active time
+GPU 2: 100% when active, 75% active time
+GPU 3: 100% when active, 75% active time
+GHA: https://github.com/Quantum-Accelerators/electrai/actions/runs/24112226168
+WandB: Modal 4xA100 dataset_4 1000s 2ep
 ```
