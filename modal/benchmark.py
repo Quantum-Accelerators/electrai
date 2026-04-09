@@ -99,6 +99,7 @@ def run_benchmark(
     gpu_type: str = "L4",
     dataset: str = "s3",
     local_copy: bool = False,
+    gradient_checkpoint: bool = True,
     run_name: str = "",
 ):
     """Run benchmark and return results."""
@@ -187,8 +188,7 @@ def run_benchmark(
 
     Path(data_root, "mp_filelist.txt").write_text("\n".join(subset) + "\n")
 
-    # Always use gradient checkpointing (32ch/16blk needs it even for ≤25MB files)
-    use_grad_ckpt = True
+    use_grad_ckpt = gradient_checkpoint
 
     log.info(
         "Benchmark: gpu=%s, epochs=%d, channels=%d, blocks=%d, samples=%d, "
@@ -392,6 +392,7 @@ def main(
     wandb_project: str = "elf-net-ci",
     dataset: str = "s3",
     local_copy: bool = False,
+    gradient_checkpoint: bool = True,
     run_name: str = "",
 ):
     import logging
@@ -423,6 +424,7 @@ def main(
         gpu_type=gpu,
         dataset=dataset,
         local_copy=local_copy,
+        gradient_checkpoint=gradient_checkpoint,
         run_name=run_name,
     )
 
