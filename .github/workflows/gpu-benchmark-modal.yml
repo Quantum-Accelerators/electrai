@@ -51,6 +51,10 @@ on:
         description: 'Enable gradient checkpointing (saves VRAM, ~2x slower)'
         default: 'true'
         type: string
+      local_copy:
+        description: 'Copy data to local SSD before training (slower start, faster I/O)'
+        default: 'false'
+        type: string
       run_name:
         description: 'WandB run name (auto-generated if empty)'
         default: ''
@@ -89,6 +93,7 @@ jobs:
           WANDB_PROJECT: ${{ inputs.wandb_project || 'elf-net-ci' }}
           RUN_NAME: ${{ inputs.run_name }}
           GRAD_CKPT: ${{ inputs.gradient_checkpoint == 'true' && '--gradient-checkpoint' || '--no-gradient-checkpoint' }}
+          LOCAL_COPY: ${{ inputs.local_copy == 'true' && '--local-copy' || '--no-local-copy' }}
         run: |
           OUTPUT=$(modal run modal/benchmark.py \
             --gpu "$GPU" \
@@ -103,6 +108,7 @@ jobs:
             --dataset "$DATASET" \
             --wandb-project "$WANDB_PROJECT" \
             $GRAD_CKPT \
+            $LOCAL_COPY \
             ${RUN_NAME:+--run-name "$RUN_NAME"} 2>&1 | tee /dev/stderr)
 
           # Parse metrics from output

@@ -282,34 +282,21 @@ def run_benchmark(
         }
 
         log.info("Launching torchrun with %d GPUs", num_gpus)
+        log_file = Path("/tmp/torchrun.log")
         t0 = monotonic()
+        # Stream output live (visible in Modal/GHA logs) and save for parsing
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "torch.distributed.run",
-                f"--nproc_per_node={num_gpus}",
-                "-m",
-                "electrai.entrypoints.main",
-                "train",
-                "--config",
-                str(config_path),
-            ],
+            f"{sys.executable} -m torch.distributed.run"
+            f" --nproc_per_node={num_gpus}"
+            f" -m electrai.entrypoints.main"
+            f" train --config {config_path}"
+            f" 2>&1 | tee {log_file}",
             cwd="/root/electrai",
-            capture_output=True,
-            text=True,
+            shell=True,
             env=run_env,
             check=False,
         )
         wallclock = monotonic() - t0
-
-        # Log torchrun output
-        if proc.stdout:
-            for line in proc.stdout.splitlines()[-20:]:
-                log.info("[torchrun] %s", line)
-        if proc.stderr:
-            for line in proc.stderr.splitlines()[-20:]:
-                log.info("[torchrun:err] %s", line)
 
         if proc.returncode != 0:
             raise RuntimeError(f"torchrun failed with exit code {proc.returncode}")
@@ -317,10 +304,11 @@ def run_benchmark(
         # Parse val_loss from torchrun output (Lightning logs it)
         import re
 
+        output = log_file.read_text() if log_file.exists() else ""
         final_val = 0.0
         final_train = 0.0
         wandb_url = None
-        for line in (proc.stdout + proc.stderr).splitlines():
+        for line in output.splitlines():
             m = re.search(r"val_loss_epoch=(\d+\.\d+)", line)
             if m:
                 final_val = float(m.group(1))
