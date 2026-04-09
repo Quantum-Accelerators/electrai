@@ -8,8 +8,6 @@ from electrai.entrypoints.test import test
 from electrai.entrypoints.train import train
 
 torch.backends.cudnn.conv.fp32_precision = "tf32"
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
 
 
 def main() -> None:
