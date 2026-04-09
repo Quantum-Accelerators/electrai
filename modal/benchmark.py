@@ -97,6 +97,7 @@ def run_benchmark(
     seed: int = 42,
     wandb_project: str = "elf-net-ci",
     gpu_type: str = "L4",
+    train_workers: int = 8,
     dataset: str = "s3",
     local_copy: bool = False,
     gradient_checkpoint: bool = True,
@@ -204,7 +205,6 @@ def run_benchmark(
 
     # Set WandB run name and env vars for platform tagging
     import os
-    import time
 
     # Detect GPU count from MODAL_GPU spec (e.g. "A100:2" → 2)
     import torch
@@ -238,7 +238,7 @@ def run_benchmark(
                 "split_file": None,
                 "precision": "f32",
                 "batch_size": 1,
-                "train_workers": 4 * num_gpus,
+                "train_workers": train_workers,
                 "val_workers": 2,
                 "pin_memory": False,
                 "val_frac": val_frac,
@@ -274,11 +274,11 @@ def run_benchmark(
         # Pass naming env vars so the production entrypoint's WandB logger uses them
         run_env = {
             **os.environ,
-            "INSTANCE_TYPE": f"modal-{gpu_type}x{num_gpus}",
-            "GITHUB_WORKFLOW": os.environ.get("GITHUB_WORKFLOW", "Modal Benchmark"),
-            "GITHUB_RUN_NUMBER": os.environ.get(
-                "GITHUB_RUN_NUMBER", time.strftime("%y%m%d-%H%M")
-            ),
+            "INSTANCE_TYPE": f"modal-{gpu_label}",
+            "GITHUB_WORKFLOW": run_name
+            or os.environ.get("GITHUB_WORKFLOW", "Modal Benchmark"),
+            "GITHUB_RUN_NUMBER": os.environ.get("GITHUB_RUN_NUMBER", ""),
+            "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
         }
 
         log.info("Launching torchrun with %d GPUs", num_gpus)
@@ -354,7 +354,7 @@ def run_benchmark(
             data_root=data_root,
             max_file_size=0,  # already filtered above
             devices=1,
-            train_workers=4,
+            train_workers=train_workers,
             wandb_project=wandb_project,
             verbose=True,
         )
@@ -390,6 +390,7 @@ def main(
     max_file_size: float = -1,
     seed: int = 42,
     wandb_project: str = "elf-net-ci",
+    train_workers: int = 8,
     dataset: str = "s3",
     local_copy: bool = False,
     gradient_checkpoint: bool = True,
@@ -422,6 +423,7 @@ def main(
         seed=seed,
         wandb_project=wandb_project,
         gpu_type=gpu,
+        train_workers=train_workers,
         dataset=dataset,
         local_copy=local_copy,
         gradient_checkpoint=gradient_checkpoint,
