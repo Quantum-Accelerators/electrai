@@ -265,6 +265,7 @@ def run_benchmark(
             "wandb_mode": "online" if wandb_project else "disabled",
             "entity": "PrinceOA",
             "wb_pname": wandb_project or "elf-net-ci-test",
+            "wb_run_name": run_name or None,
             "ckpt_path": "/tmp/checkpoints",
         }
         config_path = Path("/tmp/benchmark_config.yaml")

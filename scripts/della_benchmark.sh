@@ -12,7 +12,9 @@ module load anaconda3/2025.6
 conda activate electrai
 module load proxy/default
 
-cd /scratch/gpfs/ROSENGROUP/ho0950/electrai
+# Use ELECTRAI_DIR if set, otherwise the repo containing this script
+ELECTRAI_DIR="${ELECTRAI_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$ELECTRAI_DIR"
 
 export PYTHONPATH=$(pwd)
 export PYTORCH_ALLOC_CONF=expandable_segments:True
