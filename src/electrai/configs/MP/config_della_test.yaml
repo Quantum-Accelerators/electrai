@@ -3,7 +3,7 @@
 # Dataset / loader parameters
 data:
   _target_: electrai.dataloader.dataset.RhoRead
-  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_2/mp_filelist.txt
   split_file: null
   precision: f32
   batch_size: 1
@@ -27,7 +27,7 @@ model:
 
 # Training parameters
 precision: 32
-epochs: 2
+epochs: 50
 lr: 0.01
 weight_decay: 0.0
 warmup_length: 1
