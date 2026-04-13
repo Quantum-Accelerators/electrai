@@ -110,6 +110,16 @@ class RhoData(Dataset):
         self.category = Path(datapath).name.split("_")[0]  # example: mp_filelist.txt
         self.root = Path(datapath).parent
         self.member_list = member_list
+        # Detect zarr vs CHGCAR by checking which extension the first entry has
+        first = member_list[0]
+        if (self.root / "data" / f"{first}.zarr").exists():
+            self.fmt = "zarr"
+        elif (self.root / "data" / f"{first}.CHGCAR").exists():
+            self.fmt = "chgcar"
+        else:
+            raise ValueError(
+                f"No .zarr or .CHGCAR file found for '{first}' in {self.root / 'data'}"
+            )
 
     def __len__(self):
         return len(self.member_list)
@@ -122,6 +132,7 @@ class RhoData(Dataset):
             index=index,
             precision=self.precision,
             augmentation=self.aug,
+            fmt=self.fmt,
         )
         data = data.unsqueeze(0)
         label = label.unsqueeze(0)
