@@ -1,7 +1,7 @@
 """
 Compare per-sample benchmark results across two GPUs (e.g. A100 vs H200).
 
-Reads two JSON files produced by benchmark_per_sample_precision.py and prints
+Reads two JSON files produced by benchmark_precision.py and prints
 a markdown report section with a combined table (memory, time, and ratios).
 
 Usage:
