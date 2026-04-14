@@ -39,7 +39,7 @@ jobs:
       - name: Generate expected values (darwin-arm64)
         run: uv run python scripts/e2e_train.py --update-expected --verbose
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: expected-darwin-arm64
           path: tests/expected_values.json
@@ -58,7 +58,7 @@ jobs:
       - name: Generate expected values (linux)
         run: uv run python scripts/e2e_train.py --update-expected --verbose
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: expected-linux
           path: tests/expected_values.json
@@ -112,7 +112,7 @@ jobs:
           EOF
 
       - name: Upload merged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expected-values
           path: expected_values.json
