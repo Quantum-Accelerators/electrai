@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload GPU expected values
         if: ${{ inputs.update_expected }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expected-linux-gpu
           path: tests/expected_values.json
@@ -97,7 +97,7 @@ jobs:
 
       - name: Upload CPU expected values
         if: ${{ inputs.update_expected }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expected-linux
           path: tests/expected_values.json
