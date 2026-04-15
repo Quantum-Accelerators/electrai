@@ -61,7 +61,10 @@ class HuggingFaceCallback(Callback):
         # Try to find an existing entry for this checkpoint.
         existing_idx: int | None = None
         for i, item in enumerate(self._manifest):
-            if item.get("path") == path_str or item.get("path_in_repo") == resolved_path_in_repo:
+            if (
+                item.get("path") == path_str
+                or item.get("path_in_repo") == resolved_path_in_repo
+            ):
                 existing_idx = i
                 break
 
