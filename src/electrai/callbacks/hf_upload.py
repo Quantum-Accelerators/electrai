@@ -148,10 +148,11 @@ def _upload_single(entry: dict) -> None:
     path = Path(entry["path"])
     try:
         from huggingface_hub import upload_file
+        from huggingface_hub.errors import HfHubHTTPError
     except ImportError:
         logger.warning(
             "huggingface-hub is not installed. "
-            "Run 'pip install huggingface-hub' to enable uploads."
+            "Run 'uv sync --extra hf' to enable uploads."
         )
         return
     try:
@@ -166,6 +167,13 @@ def _upload_single(entry: dict) -> None:
         )
         entry["uploaded"] = True
         logger.info("Uploaded %s to %s", path.name, entry["repo_id"])
+    except HfHubHTTPError:
+        logger.warning(
+            "HF upload failed for %s (check repo_id, auth token, and "
+            "network access). Will retry with hf-push.",
+            path.name,
+            exc_info=True,
+        )
     except Exception:
         logger.warning(
             "HF upload failed for %s (will retry with hf-push)",
