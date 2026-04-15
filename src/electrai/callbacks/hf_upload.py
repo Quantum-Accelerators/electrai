@@ -47,17 +47,47 @@ class HuggingFaceCallback(Callback):
 
     def _queue_checkpoint(
         self, ckpt_file: Path, epoch: int | None, *, path_in_repo: str | None = None
-    ) -> None:
-        entry = {
-            "path": str(ckpt_file),
-            "path_in_repo": path_in_repo or ckpt_file.name,
-            "epoch": epoch,
-            "repo_id": self.repo_id,
-            "uploaded": False,
-        }
-        self._manifest.append(entry)
+    ) -> int:
+        """Add or update a checkpoint entry in the manifest.
+
+        De-duplicates by checkpoint path/path_in_repo so that resuming runs or
+        re-running hf-push does not grow the manifest with duplicate entries.
+
+        Returns the index of the (new or updated) manifest entry.
+        """
+        path_str = str(ckpt_file)
+        resolved_path_in_repo = path_in_repo or ckpt_file.name
+
+        # Try to find an existing entry for this checkpoint.
+        existing_idx: int | None = None
+        for i, item in enumerate(self._manifest):
+            if item.get("path") == path_str or item.get("path_in_repo") == resolved_path_in_repo:
+                existing_idx = i
+                break
+
+        if existing_idx is not None:
+            entry = self._manifest[existing_idx]
+            entry["epoch"] = epoch
+            entry["repo_id"] = self.repo_id
+            # Reset upload status when (re-)queuing.
+            entry["uploaded"] = False
+            entry["path"] = path_str
+            entry["path_in_repo"] = resolved_path_in_repo
+            idx = existing_idx
+        else:
+            entry = {
+                "path": path_str,
+                "path_in_repo": resolved_path_in_repo,
+                "epoch": epoch,
+                "repo_id": self.repo_id,
+                "uploaded": False,
+            }
+            self._manifest.append(entry)
+            idx = len(self._manifest) - 1
+
         self._save_manifest()
         logger.info("Queued checkpoint for HF upload: %s", ckpt_file.name)
+        return idx
 
     def on_validation_end(self, trainer, pl_module) -> None:  # noqa: ARG002
         if trainer.sanity_checking:
@@ -75,11 +105,12 @@ class HuggingFaceCallback(Callback):
         stable_path = self.ckpt_path / stable_name
         trainer.save_checkpoint(stable_path)
 
-        self._queue_checkpoint(stable_path, epoch, path_in_repo=stable_name)
+        idx = self._queue_checkpoint(stable_path, epoch, path_in_repo=stable_name)
 
         if self.upload_immediate:
-            _upload_single(self._manifest[-1])
-            if self._manifest[-1]["uploaded"]:
+            entry = self._manifest[idx]
+            _upload_single(entry)
+            if entry["uploaded"]:
                 stable_path.unlink(missing_ok=True)
             self._save_manifest()
 
