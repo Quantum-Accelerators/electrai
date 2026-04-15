@@ -58,6 +58,14 @@ def train(args):
 
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
+    callbacks = [checkpoint_cb, lr_monitor]
+
+    hf_cfg = getattr(cfg, "hf", None)
+    if hf_cfg and hf_cfg.get("repo_id"):
+        from electrai.callbacks.hf_upload import HuggingFaceCallback
+
+        callbacks.append(HuggingFaceCallback(cfg))
+
     # -----------------------------
     # Trainer
     # -----------------------------
@@ -69,7 +77,7 @@ def train(args):
     trainer = Trainer(
         max_epochs=int(cfg.epochs),
         logger=wandb_logger,
-        callbacks=[checkpoint_cb, lr_monitor],
+        callbacks=callbacks,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         precision=cfg.precision,
         devices="auto",

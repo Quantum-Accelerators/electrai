@@ -48,6 +48,7 @@ docs = [
     "pillow>=12.2.0",
     "cairosvg>=2.7.1"
 ]
+hf = ["huggingface-hub>=0.20.0"]
 zarr_conversion = [
     "fire>=0.5.0",
     "numcodecs>=0.16.3",
