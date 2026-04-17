@@ -11,7 +11,7 @@ Collects:
     - Forward and backward wall-clock time (ms)
 
 Usage:
-    python benchmark_conv3d_memory.py --output results.json
+    python benchmark_conv3d_memory.py [--output results.json]
 """
 
 from __future__ import annotations
@@ -73,8 +73,14 @@ def bench_dtype(dtype_str: str, device: torch.device) -> dict:
         torch.cuda.synchronize()
         fwd_times.append(time.perf_counter() - t0)
         fwd_peaks.append(peak_mb())
+        del out
 
     # ── Backward pass ─────────────────────────────────────────────────────────
+    # Note: reset_peak_memory_stats() zeros the peak counter but does not free
+    # live tensors, so bwd_peak_mb reflects the peak *during* backward, which
+    # includes the fresh forward activations still held by the autograd graph —
+    # not purely the backward-specific allocation. The methodology is identical
+    # across torch versions, so relative comparisons remain valid.
     bwd_peaks, bwd_times = [], []
     for _ in range(BENCH_ITERS):
         x = x_base.detach().requires_grad_(True)
@@ -103,7 +109,11 @@ def bench_dtype(dtype_str: str, device: torch.device) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Conv3d memory benchmark")
-    parser.add_argument("--output", required=True, help="Path to write JSON results")
+    parser.add_argument(
+        "--output",
+        default="results.json",
+        help="Path to write JSON results (default: results.json)",
+    )
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
