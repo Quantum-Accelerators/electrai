@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 
@@ -32,6 +33,24 @@ def ratio(a, b):
     if a is None or b is None:
         return "—"
     return f"{a / b:.2f}x"
+
+
+def status(r):
+    if r is None:
+        return "—"
+    return "❌ OOM" if r["oom"] else "✅"
+
+
+def peak_gb(r):
+    if r is None or r["oom"] or r["peak_mem_mb"] is None:
+        return None
+    return round(r["peak_mem_mb"] / 1024, 2)
+
+
+def epoch_s(r):
+    if r is None or r["oom"]:
+        return None
+    return r["avg_epoch_s"]
 
 
 def main():
@@ -101,21 +120,6 @@ def main():
             r1 = idx1.get(key)
             r2 = idx2.get(key)
 
-            def status(r):
-                if r is None:
-                    return "—"
-                return "❌ OOM" if r["oom"] else "✅"
-
-            def peak_gb(r):
-                if r is None or r["oom"] or r["peak_mem_mb"] is None:
-                    return None
-                return round(r["peak_mem_mb"] / 1024, 2)
-
-            def epoch_s(r):
-                if r is None or r["oom"]:
-                    return None
-                return r["avg_epoch_s"]
-
             p1, p2 = peak_gb(r1), peak_gb(r2)
             e1, e2 = epoch_s(r1), epoch_s(r2)
 
@@ -137,6 +141,8 @@ def main():
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(output)
+    else:
+        sys.stdout.write(output + "\n")
 
 
 if __name__ == "__main__":
