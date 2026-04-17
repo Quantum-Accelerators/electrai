@@ -8,7 +8,7 @@ For each (task_id, precision) pair:
   - Catch OOM and record it
 
 Usage:
-    uv run python scripts/benchmark_per_sample_precision.py \
+    uv run python scripts/benchmark_precision.py \
         --config path/to/config.yaml \
         --zarr_root path/to/zarr_root \
         --results path/to/results.json
@@ -20,6 +20,7 @@ import argparse
 import gc
 import json
 import time
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -98,6 +99,10 @@ def get_grid_shape(task_id: str, zarr_root: str) -> tuple[int, ...]:
 
 def run_experiment(task_id: str, precision: str, cfg, zarr_root: str) -> dict:
     use_bf16 = precision == "bf16-mixed"
+
+    # Initialize so all are in scope for the finally block even on early OOM
+    model = optimizer = loss_fn = dataset = loader = None
+    x = y = pred = loss = None
 
     # ---- build dataloader (single sample, no split needed) ----
     dataset = LargeGridZarrDataset(
@@ -183,7 +188,7 @@ def run_experiment(task_id: str, precision: str, cfg, zarr_root: str) -> dict:
         peak_mem_mb = torch.cuda.max_memory_allocated(DEVICE) / 1024**2
 
     finally:
-        del model, optimizer, loss_fn
+        del model, optimizer, loss_fn, dataset, loader, x, y, pred, loss
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -203,7 +208,7 @@ def run_experiment(task_id: str, precision: str, cfg, zarr_root: str) -> dict:
     }
 
 
-def get_gpu_info() -> str:
+def get_gpu_info() -> dict:
     props = torch.cuda.get_device_properties(DEVICE)
     return {
         "name": props.name,
@@ -227,7 +232,8 @@ def main():
     for tid in task_ids:
         try:
             grid_shapes[tid] = get_grid_shape(tid, args.zarr_root)
-        except Exception as _:
+        except Exception as e:
+            warnings.warn(f"could not read grid shape for {tid}: {e}", stacklevel=2)
             grid_shapes[tid] = None
 
     results = []
