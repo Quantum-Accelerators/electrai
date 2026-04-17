@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from electrai.dataloader import utils
 from electrai.dataloader.collate import collate_fn
+from electrai.dataloader.patchify import patchify
 from electrai.dataloader.split import split_data
 
 if TYPE_CHECKING:
@@ -31,6 +32,10 @@ class RhoRead(LightningDataModule):
         split_file: str | bytes | os.PathLike | None = None,
         augmentation: bool = False,
         random_seed: int = 42,
+        patchify: bool = False,
+        patch_size: int | None = None,
+        patch_threshold: int | None = None,
+        pad_mode: str = "circular",
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -45,10 +50,20 @@ class RhoRead(LightningDataModule):
         self.precision = precision
         self.augmentation = augmentation
         self.random_seed = random_seed
+        self.patchify = patchify
+        self.patch_size = patch_size
+        self.patch_threshold = patch_threshold
+        self.pad_mode = pad_mode
 
     def setup(self, stage=None):
         dataset = RhoData(
-            self.root, precision=self.precision, augmentation=self.augmentation
+            self.root,
+            precision=self.precision,
+            augmentation=self.augmentation,
+            patchify=self.patchify,
+            patch_size=self.patch_size,
+            patch_threshold=self.patch_threshold,
+            pad_mode=self.pad_mode,
         )
         self.subsets = split_data(
             dataset,
@@ -96,10 +111,24 @@ class RhoRead(LightningDataModule):
 
 
 class RhoData(Dataset):
-    def __init__(self, datapath: str, precision: str, augmentation: bool, **kwargs):
+    def __init__(
+        self,
+        datapath: str,
+        precision: str,
+        augmentation: bool,
+        patchify: bool = False,
+        patch_size: int | None = None,
+        patch_threshold: int | None = None,
+        pad_mode: str = "circular",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.aug = augmentation
         self.precision = precision
+        self.patchify = patchify
+        self.patch_size = patch_size
+        self.patch_threshold = patch_threshold
+        self.pad_mode = pad_mode
         if isinstance(datapath, str) and Path(datapath).is_file():
             with Path(datapath).open() as f:
                 lines = f.readlines()
@@ -136,4 +165,26 @@ class RhoData(Dataset):
         )
         data = data.unsqueeze(0)
         label = label.unsqueeze(0)
+
+        should_patchify = (
+            self.patchify
+            and self.patch_size is not None
+            and self.patch_threshold is not None
+            and data.numel() > self.patch_threshold
+        )
+        if should_patchify:
+            data_patches, positions, original_shape = patchify(
+                data, self.patch_size, pad_mode=self.pad_mode
+            )
+            label_patches, _, _ = patchify(
+                label, self.patch_size, pad_mode=self.pad_mode
+            )
+            return {
+                "data": data_patches,
+                "label": label_patches,
+                "index": index,
+                "patch_positions": positions,
+                "original_shape": original_shape,
+            }
+
         return {"data": data, "label": label, "index": index}

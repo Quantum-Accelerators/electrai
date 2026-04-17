@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
 import time
 
@@ -9,6 +10,7 @@ import torch.distributed as dist
 from hydra.utils import instantiate
 from lightning.pytorch import LightningModule
 
+from electrai.dataloader.patchify import unpatchify
 from electrai.model.loss.charge import NormMAE
 
 
@@ -19,43 +21,83 @@ class LightningGenerator(LightningModule):
         self.cfg = cfg
         self.model = instantiate(cfg.model)
         self.loss_fn = NormMAE()
+        # Manual optimization lets us call backward() per patch so each patch's
+        # computation graph is freed immediately rather than keeping all graphs
+        # alive until a single backward at the end (which OOMs on large grids).
+        self.automatic_optimization = False
 
     def forward(self, x):
         return self.model(x)
 
     def training_step(self, batch):
-        loss = self._loss_calculation(batch)
+        opt = self.optimizers()
+        opt.zero_grad()
+
+        x = batch["data"]
+        y = batch["label"]
+
+        if isinstance(x, list):
+            # Patchified or variable-shape: process one patch at a time so each
+            # graph is freed after its backward() before the next forward pass.
+            # Use no_sync() for all but the last patch so DDP all_reduce fires
+            # exactly once per step regardless of how many patches each rank has.
+            n = len(x)
+            total_loss = torch.tensor(0.0, device=self.device)
+            ddp_model = self.trainer.model
+            no_sync = getattr(ddp_model, "no_sync", None)
+            for i, (x_i, y_i) in enumerate(zip(x, y, strict=True)):
+                pred = self(x_i.unsqueeze(0))
+                patch_loss = self.loss_fn(pred, y_i.unsqueeze(0)) / n
+                ctx = (
+                    no_sync()
+                    if (no_sync is not None and i < n - 1)
+                    else contextlib.nullcontext()
+                )
+                with ctx:
+                    self.manual_backward(patch_loss)
+                total_loss = total_loss + patch_loss.detach()
+        else:
+            pred = self(x)
+            total_loss = self.loss_fn(pred, y)
+            self.manual_backward(total_loss)
+            total_loss = total_loss.detach()
+
+        clip_val = getattr(self.cfg, "gradient_clip_value", 1.0)
+        self.clip_gradients(opt, gradient_clip_val=clip_val)
+        opt.step()
+
         self.log(
             "train_loss",
-            loss,
+            total_loss,
             prog_bar=True,
             on_step=True,
             on_epoch=True,
             sync_dist=False,
         )
-        return loss
+        return total_loss
+
+    def on_train_epoch_end(self):
+        self._scheduler.step()
 
     def validation_step(self, batch):
-        loss = self._loss_calculation(batch)
+        loss = self._eval_loss(batch)
         self.log(
             "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
         )
         return loss
 
-    def _loss_calculation(self, batch):
+    def _eval_loss(self, batch):
+        """Loss for validation/test — no backward needed, so graph can be freed normally."""
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):
             losses = []
             for x_i, y_i in zip(x, y, strict=True):
                 pred = self(x_i.unsqueeze(0))
-                loss = self.loss_fn(pred, y_i.unsqueeze(0))
-                losses.append(loss)
-            loss = torch.stack(losses).mean()
-        else:
-            pred = self(x)
-            loss = self.loss_fn(pred, y)
-        return loss
+                losses.append(self.loss_fn(pred, y_i.unsqueeze(0)))
+            return torch.stack(losses).mean()
+        pred = self(x)
+        return self.loss_fn(pred, y)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -74,10 +116,12 @@ class LightningGenerator(LightningModule):
         cossch = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=int(self.cfg.epochs) - self.cfg.warmup_length
         )
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
+        self._scheduler = torch.optim.lr_scheduler.SequentialLR(
             optimizer, [linsch, cossch], milestones=[self.cfg.warmup_length]
         )
-        return [optimizer], [scheduler]
+        # With manual optimization, schedulers must be stepped manually.
+        # Return only the optimizer; _scheduler is stepped in on_train_epoch_end.
+        return optimizer
 
     def on_test_start(self):
         self.log_dir = self.test_cfg.log_dir
@@ -94,8 +138,38 @@ class LightningGenerator(LightningModule):
         end = torch.cuda.Event(enable_timing=True)
 
         start.record()
-        preds = self(x)
-        loss = self.loss_fn(preds, y)
+        if isinstance(x, list):
+            # Patchified: run model on each patch then reassemble
+            patch_preds = [self(x_i.unsqueeze(0)).squeeze(0) for x_i in x]
+
+            if "original_shape" in batch and "patch_positions" in batch:
+                patch_size = x[0].shape[-1]  # patches are cubic (1, P, P, P)
+                preds = unpatchify(
+                    patch_preds,
+                    batch["patch_positions"],
+                    patch_size,
+                    batch["original_shape"],
+                )
+                # Reconstruct label the same way for a fair loss comparison
+                label_patches = list(y)
+                label_full = unpatchify(
+                    label_patches,
+                    batch["patch_positions"],
+                    patch_size,
+                    batch["original_shape"],
+                )
+                loss = self.loss_fn(preds.unsqueeze(0), label_full.unsqueeze(0))
+            else:
+                # No position metadata; fall back to patch-level loss
+                losses = []
+                for x_i, y_i in zip(x, y, strict=True):
+                    pred_i = self(x_i.unsqueeze(0))
+                    losses.append(self.loss_fn(pred_i, y_i.unsqueeze(0)))
+                loss = torch.stack(losses).mean()
+                preds = patch_preds  # list; save_pred will be skipped below
+        else:
+            preds = self(x)
+            loss = self.loss_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
@@ -104,12 +178,12 @@ class LightningGenerator(LightningModule):
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
         out = {
-            "target": y.detach().cpu(),
+            "target": y.detach().cpu() if isinstance(y, torch.Tensor) else None,
             "index": indices,
             "nmae": loss.detach().cpu(),
             "duration": elapsed,
         }
-        if self.save_pred:
+        if self.save_pred and isinstance(preds, torch.Tensor):
             out["pred"] = preds.detach().cpu()
         return out
 

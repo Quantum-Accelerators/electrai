@@ -76,7 +76,8 @@ def train(args):
         num_nodes=num_nodes,
         strategy="ddp",
         log_every_n_steps=1,
-        gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
+        # gradient_clip_val omitted: clipping is applied manually in training_step
+        # (automatic clipping is incompatible with manual optimization).
     )
 
     # -----------------------------
