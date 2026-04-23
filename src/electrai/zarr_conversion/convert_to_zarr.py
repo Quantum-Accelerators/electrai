@@ -103,10 +103,18 @@ def load_chgcar(chgcar_path: Path) -> Chgcar:
 
 
 def convert_chgcar_to_zarr(
-    input_path: Path, zarr_path: Path, write_diff: bool = False
+    input_path: Path,
+    zarr_path: Path,
+    chunks: tuple[int, int, int] = (16, 16, 16),
+    chunks_diff: tuple[int, int, int] | None = None,
 ) -> None:
     """
     Convert a single CHGCAR file (JSON.gz export or native CHGCAR) to Zarr format.
+
+    All CHGCAR content is preserved (total, diff/diff_x/diff_y/diff_z when
+    present, PAW augmentation lines, POSCAR comment, structure). Total and
+    diff arrays are stored as independent zarr arrays so they can be chunked
+    and accessed separately.
 
     Parameters
     ----------
@@ -114,27 +122,21 @@ def convert_chgcar_to_zarr(
         Path to the input .json.gz or .CHGCAR file
     zarr_path : Path
         Path to the output .zarr directory (local filesystem only)
-    write_diff : bool, optional
-        Whether to write diff charge density data. If False, only total charge
-        density will be written. Default: False
+    chunks : tuple[int, int, int], optional
+        Chunk size for the total charge density array. Default: (16, 16, 16)
+    chunks_diff : tuple[int, int, int] | None, optional
+        Chunk size for diff arrays. Defaults to ``chunks`` when not provided.
 
     Notes
     -----
-    The Zarr store will contain:
-    - /charge_density_total : 3D array of total charge density
-    - /charge_density_diff : 3D array of charge density difference (spin polarized, if write_diff=True)
-    - /structure : JSON metadata containing structure information
-    - /metadata : Additional metadata (task_id, version, etc.)
-
-    For S3 support, use write_chgcar_to_zarr() directly from zarr_writer module.
+    See `write_chgcar_to_zarr` for the full zarr layout. For S3 support, call
+    `write_chgcar_to_zarr` directly from the zarr_writer module.
     """
     logger.info(f"Converting {input_path} to {zarr_path}")
 
-    # Load the CHGCAR data
     chgcar = load_chgcar(input_path)
 
-    # Write to zarr using the writer module
-    write_chgcar_to_zarr(chgcar, zarr_path, write_diff=write_diff)
+    write_chgcar_to_zarr(chgcar, zarr_path, chunks=chunks, chunks_diff=chunks_diff)
 
 
 def convert_directory_to_zarr(
@@ -142,7 +144,8 @@ def convert_directory_to_zarr(
     output_dir: Path,
     pattern: str = "*.json.gz",
     max_workers: int | None = None,
-    write_diff: bool = False,
+    chunks: tuple[int, int, int] = (16, 16, 16),
+    chunks_diff: tuple[int, int, int] | None = None,
 ) -> tuple[int, int]:
     """
     Convert all CHGCAR files in a directory to Zarr format.
@@ -157,9 +160,10 @@ def convert_directory_to_zarr(
         Glob pattern to match input files (default: "*.json.gz")
     max_workers : int | None, optional
         Maximum number of parallel workers. If None, uses the number of CPU cores.
-    write_diff : bool, optional
-        Whether to write diff charge density data. If False, only total charge
-        density will be written. Default: False
+    chunks : tuple[int, int, int], optional
+        Chunk size for the total charge density array. Default: (16, 16, 16)
+    chunks_diff : tuple[int, int, int] | None, optional
+        Chunk size for diff arrays. Defaults to ``chunks``.
 
     Returns
     -------
@@ -169,10 +173,8 @@ def convert_directory_to_zarr(
     input_dir = Path(input_dir).expanduser()
     output_dir = Path(output_dir).expanduser()
 
-    # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Find all matching files
     input_files = list(input_dir.glob(pattern))
     logger.info(f"Found {len(input_files)} files to convert in {input_dir}")
 
@@ -182,23 +184,18 @@ def convert_directory_to_zarr(
     success_count = 0
     failed_count = 0
 
-    # Prepare arguments for parallel processing
-    conversion_args = [
-        (input_file, output_dir / f"{_derive_task_id(input_file)}.zarr", write_diff)
-        for input_file in input_files
-    ]
-
-    # Process files in parallel
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
         future_to_file = {
             executor.submit(
-                convert_chgcar_to_zarr, input_file, output_path, write_diff
+                convert_chgcar_to_zarr,
+                input_file,
+                output_dir / f"{_derive_task_id(input_file)}.zarr",
+                chunks,
+                chunks_diff,
             ): input_file
-            for input_file, output_path, write_diff in conversion_args
+            for input_file in input_files
         }
 
-        # Process completed tasks
         for future in as_completed(future_to_file):
             try:
                 future.result()

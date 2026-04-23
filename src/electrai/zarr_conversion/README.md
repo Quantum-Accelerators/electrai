@@ -54,10 +54,34 @@ uv run python convert_to_zarr.py convert_dir ../chgcars ./zarr_output
 
 ## Zarr Structure
 
-Each converted Zarr store contains:
+Each converted Zarr store contains the full CHGCAR content. Total and diff
+densities are stored as independent zarr arrays so they can be chunked and
+loaded separately (training typically reads one or the other, not both).
 
-- `charge_density_total/` - 3D array of total charge density (float32)
-- `charge_density_diff/` - 3D array of charge density difference for spin-polarized calculations (float32)
-- Metadata attributes:
-  - `structure` - JSON string containing pymatgen structure information
-  - `metadata` - JSON string with task_id and version information
+Arrays:
+
+- `charge_density_total/` - 3D float32 total charge density
+- `charge_density_diff/` - 3D float32 magnetization density (spin-polarized only)
+- `charge_density_diff_x/`, `charge_density_diff_y/`, `charge_density_diff_z/` -
+  non-collinear magnetization components (SOC calculations only)
+
+Attributes:
+
+- `structure` - JSON pymatgen Structure
+- `metadata` - JSON with `task_id`, `pymatgen_version`
+- `data_aug` - JSON dict of PAW augmentation occupancy lines, keyed by
+  density component (`total`, `diff`, ...)
+- `poscar_comment` - POSCAR header/comment string (may be null)
+- `is_spin_polarized`, `is_soc` - bool flags
+
+### Chunking
+
+Pass `--chunks` and `--chunks_diff` to control chunk sizes independently for
+total and diff arrays:
+
+```bash
+uv run python convert_to_zarr.py convert input.CHGCAR output.zarr \
+  --chunks "(32,32,32)" --chunks_diff "(16,16,16)"
+```
+
+`chunks_diff` defaults to `chunks` when not provided.
