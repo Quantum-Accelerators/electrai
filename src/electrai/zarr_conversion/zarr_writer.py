@@ -21,12 +21,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Keys we recognize in chgcar_data.data. "total" is handled separately; the
-# rest each get their own zarr array chunked independently of total, since
-# downstream training typically loads either total or a diff component per
-# batch rather than both together.
-_DIFF_KEYS: tuple[str, ...] = ("diff", "diff_x", "diff_y", "diff_z")
-
 
 def _array_name(density_key: str) -> str:
     return f"charge_density_{density_key}"
@@ -128,9 +122,11 @@ def write_chgcar_to_zarr(
         logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
         if write_diff:
-            for diff_key in _DIFF_KEYS:
-                diff_raw = charge_data.get(diff_key)
-                if diff_raw is None:
+            # Iterate every non-total key so we pick up whatever pymatgen
+            # supplies (diff for spin-polarized, diff_x/y/z for SOC, and any
+            # future components) rather than hard-coding a fixed set.
+            for diff_key, diff_raw in charge_data.items():
+                if diff_key == "total" or diff_raw is None:
                     continue
                 diff_density = np.asarray(diff_raw, dtype=np.float32)
                 root.create(
@@ -152,9 +148,11 @@ def write_chgcar_to_zarr(
             _normalize_data_aug(getattr(chgcar_data, "data_aug", None))
         )
         root.attrs["poscar_comment"] = getattr(chgcar_data, "name", None)
-        root.attrs["is_spin_polarized"] = bool(
-            getattr(chgcar_data, "is_spin_polarized", "diff" in charge_data)
-        )
+        # Short-circuit so the fallback only runs when the attr is missing.
+        is_spin_polarized = getattr(chgcar_data, "is_spin_polarized", None)
+        if is_spin_polarized is None:
+            is_spin_polarized = "diff" in charge_data
+        root.attrs["is_spin_polarized"] = bool(is_spin_polarized)
         root.attrs["is_soc"] = bool(getattr(chgcar_data, "is_soc", False))
 
         logger.info(f"Successfully wrote CHGCAR data to {zarr_path_str}")
