@@ -50,13 +50,16 @@ def write_chgcar_to_zarr(
     s3_kwargs: dict[str, Any] | None = None,
     chunks: tuple[int, int, int] = (16, 16, 16),
     chunks_diff: tuple[int, int, int] | None = None,
+    write_diff: bool = True,
 ) -> None:
     """
     Write CHGCAR data to Zarr format (S3 or local filesystem).
 
-    All CHGCAR content is preserved: total charge density, spin-polarized or
-    non-collinear diff components, PAW augmentation occupancies, the POSCAR
-    comment line, and the structure.
+    By default all CHGCAR content is preserved: total charge density,
+    spin-polarized or non-collinear diff components, PAW augmentation
+    occupancies, the POSCAR comment line, and the structure. Set
+    ``write_diff=False`` to skip the diff arrays when only the total density
+    is needed.
 
     Parameters
     ----------
@@ -75,6 +78,10 @@ def write_chgcar_to_zarr(
         Chunk size for diff / diff_x / diff_y / diff_z arrays. Stored under
         independent chunks from total because downstream training typically
         loads only one of total or diff per batch. Defaults to ``chunks``.
+    write_diff : bool, optional
+        Whether to write diff (and diff_x/y/z) charge density arrays when
+        present. Default: True. data_aug attrs are still written regardless
+        since they are small.
 
     Notes
     -----
@@ -120,17 +127,18 @@ def write_chgcar_to_zarr(
         root.create(name=_array_name("total"), data=total_density, chunks=chunks)
         logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
-        for diff_key in _DIFF_KEYS:
-            diff_raw = charge_data.get(diff_key)
-            if diff_raw is None:
-                continue
-            diff_density = np.asarray(diff_raw, dtype=np.float32)
-            root.create(
-                name=_array_name(diff_key), data=diff_density, chunks=diff_chunks
-            )
-            logger.debug(
-                f"Stored {diff_key} charge density with shape {diff_density.shape}"
-            )
+        if write_diff:
+            for diff_key in _DIFF_KEYS:
+                diff_raw = charge_data.get(diff_key)
+                if diff_raw is None:
+                    continue
+                diff_density = np.asarray(diff_raw, dtype=np.float32)
+                root.create(
+                    name=_array_name(diff_key), data=diff_density, chunks=diff_chunks
+                )
+                logger.debug(
+                    f"Stored {diff_key} charge density with shape {diff_density.shape}"
+                )
 
         root.attrs["structure"] = json.dumps(chgcar_data.structure.as_dict())
 

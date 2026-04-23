@@ -107,12 +107,13 @@ def convert_chgcar_to_zarr(
     zarr_path: Path,
     chunks: tuple[int, int, int] = (16, 16, 16),
     chunks_diff: tuple[int, int, int] | None = None,
+    write_diff: bool = True,
 ) -> None:
     """
     Convert a single CHGCAR file (JSON.gz export or native CHGCAR) to Zarr format.
 
-    All CHGCAR content is preserved (total, diff/diff_x/diff_y/diff_z when
-    present, PAW augmentation lines, POSCAR comment, structure). Total and
+    By default all CHGCAR content is preserved (total, diff/diff_x/diff_y/diff_z
+    when present, PAW augmentation lines, POSCAR comment, structure). Total and
     diff arrays are stored as independent zarr arrays so they can be chunked
     and accessed separately.
 
@@ -126,6 +127,9 @@ def convert_chgcar_to_zarr(
         Chunk size for the total charge density array. Default: (16, 16, 16)
     chunks_diff : tuple[int, int, int] | None, optional
         Chunk size for diff arrays. Defaults to ``chunks`` when not provided.
+    write_diff : bool, optional
+        Whether to write diff (and diff_x/y/z) charge density arrays when
+        present. Default: True.
 
     Notes
     -----
@@ -136,7 +140,9 @@ def convert_chgcar_to_zarr(
 
     chgcar = load_chgcar(input_path)
 
-    write_chgcar_to_zarr(chgcar, zarr_path, chunks=chunks, chunks_diff=chunks_diff)
+    write_chgcar_to_zarr(
+        chgcar, zarr_path, chunks=chunks, chunks_diff=chunks_diff, write_diff=write_diff
+    )
 
 
 def convert_directory_to_zarr(
@@ -146,6 +152,7 @@ def convert_directory_to_zarr(
     max_workers: int | None = None,
     chunks: tuple[int, int, int] = (16, 16, 16),
     chunks_diff: tuple[int, int, int] | None = None,
+    write_diff: bool = True,
 ) -> tuple[int, int]:
     """
     Convert all CHGCAR files in a directory to Zarr format.
@@ -164,6 +171,8 @@ def convert_directory_to_zarr(
         Chunk size for the total charge density array. Default: (16, 16, 16)
     chunks_diff : tuple[int, int, int] | None, optional
         Chunk size for diff arrays. Defaults to ``chunks``.
+    write_diff : bool, optional
+        Whether to write diff charge density arrays when present. Default: True.
 
     Returns
     -------
@@ -192,6 +201,7 @@ def convert_directory_to_zarr(
                 output_dir / f"{_derive_task_id(input_file)}.zarr",
                 chunks,
                 chunks_diff,
+                write_diff,
             ): input_file
             for input_file in input_files
         }

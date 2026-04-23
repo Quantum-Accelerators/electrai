@@ -85,3 +85,9 @@ uv run python convert_to_zarr.py convert input.CHGCAR output.zarr \
 ```
 
 `chunks_diff` defaults to `chunks` when not provided.
+
+Pass `--write_diff=False` to skip all diff arrays (total-only output):
+
+```bash
+uv run python convert_to_zarr.py convert input.CHGCAR output.zarr --write_diff=False
+```

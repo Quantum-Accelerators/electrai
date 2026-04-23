@@ -108,3 +108,27 @@ def test_convert_chgcar_to_zarr_writes_spin_polarized_components(
     assert set(aug) == {"total", "diff"}
     assert aug["total"] == data_aug["total"]
     assert aug["diff"] == data_aug["diff"]
+
+
+def test_write_diff_false_skips_diff_arrays(tmp_path: Path) -> None:
+    pymatgen_core = pytest.importorskip("pymatgen.core")
+    pymatgen_outputs = pytest.importorskip("pymatgen.io.vasp.outputs")
+
+    lattice = pymatgen_core.Lattice.cubic(3.0)
+    structure = pymatgen_core.Structure(lattice, ["Li"], [[0.0, 0.0, 0.0]])
+    total_density = np.arange(8, dtype=float).reshape((2, 2, 2))
+    diff_density = -np.arange(8, dtype=float).reshape((2, 2, 2))
+
+    chgcar = pymatgen_outputs.Chgcar(
+        structure, {"total": total_density, "diff": diff_density}
+    )
+    chgcar.task_id = "mp-nodiff"
+
+    output_path = tmp_path / "mp-nodiff.zarr"
+    write_chgcar_to_zarr(chgcar, output_path, write_diff=False)
+
+    root = zarr.open_group(str(output_path), mode="r")
+    assert "charge_density_total" in root
+    assert "charge_density_diff" not in root
+    # The flag only gates array writes; is_spin_polarized still reflects input.
+    assert root.attrs["is_spin_polarized"] is True
