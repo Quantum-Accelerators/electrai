@@ -41,7 +41,7 @@ def train(args):
         from lightning.pytorch.loggers import WandbLogger
 
         wandb_logger = WandbLogger(
-            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg)
+            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg), name=cfg.run_name
         )
     else:
         wandb_logger = None

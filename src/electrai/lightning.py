@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
 import time
 
@@ -17,7 +18,10 @@ class LightningGenerator(LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.cfg = cfg
-        self.model = instantiate(cfg.model)
+        recycle_steps = getattr(cfg, "recycle_steps", 1)
+        out_channels = cfg.model["out_channels"]
+        in_channels = out_channels if recycle_steps <= 1 else 2 * out_channels
+        self.model = instantiate(cfg.model, in_channels=in_channels)
         self.loss_fn = NormMAE()
 
     def forward(self, x):
@@ -46,6 +50,7 @@ class LightningGenerator(LightningModule):
         x = batch["data"]
         y = batch["label"]
         recycle_steps = getattr(self.cfg, "recycle_steps", 1)
+        recycle_detach = getattr(self.cfg, "recycle_detach", True)
 
         if recycle_steps <= 1:
             # No recycling — original single-pass behavior
@@ -67,7 +72,11 @@ class LightningGenerator(LightningModule):
                 for step in range(recycle_steps):
                     inp = torch.cat([x_orig, pred], dim=1)
                     if step < recycle_steps - 1:
-                        with torch.no_grad():
+                        with (
+                            torch.no_grad()
+                            if recycle_detach
+                            else contextlib.nullcontext()
+                        ):
                             pred = self(inp)
                     else:
                         pred = self(inp)
@@ -80,7 +89,9 @@ class LightningGenerator(LightningModule):
             for step in range(recycle_steps):
                 inp = torch.cat([x_orig, pred], dim=1)
                 if step < recycle_steps - 1:
-                    with torch.no_grad():
+                    with (
+                        torch.no_grad() if recycle_detach else contextlib.nullcontext()
+                    ):
                         pred = self(inp)
                 else:
                     pred = self(inp)
