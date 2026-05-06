@@ -1,8 +1,107 @@
+# GPU E2E Training Test
+#
+# Runs deterministic e2e training tests on EC2 GPU instances.
+#
+# Can also be run in `update_expected` mode, which generates expected values for {linux, linux-gpu}.
+# These are the authoritative expected values for Linux since CI runs on EC2.
+# (Note: ubuntu-latest in gen-expected.yml produces slightly different values)
+#
+# To regenerate expected values:
+#   gh workflow run gpu-e2e.yml -f update_expected=true
+#   gh run download <run-id> -n expected-linux
+#   cp expected_values.json tests/
+# (expected-linux contains both linux + linux-gpu values)
+
 name: GPU E2E Training Test
+
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      instance_type:
+        description: 'EC2 instance type'
+        default: 'g6.xlarge'
+        type: string
+      epochs:
+        description: 'Number of training epochs'
+        default: '5'
+        type: string
+      update_expected:
+        description: 'Update expected values (for first run or after changes)'
+        default: false
+        type: boolean
+      debug:
+        description: 'Debug mode (false/true/N minutes)'
+        default: 'false'
+        type: string
+
+permissions:
+  id-token: write  # Required for AWS OIDC
+  contents: read
+
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
+  ec2:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: Open-Athena/ec2-gha/.github/workflows/runner.yml@v2
+    with:
+      ec2_instance_type: ${{ inputs.instance_type || 'g6.xlarge' }}
+      ec2_image_id: ami-0365bff494b18bf93  # Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.7 (Ubuntu 22.04)
+      aws_tags: '[{"Key": "project", "Value": "electrai"}]'
+      debug: ${{ inputs.debug || 'false' }}
+    secrets:
+      GH_SA_TOKEN: ${{ secrets.GH_SA_TOKEN }}
+
+  gpu-test:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.id }}
     steps:
-      - run: echo "Placeholder workflow to preserve workflow name in GitHub Actions UI"
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check GPU
+        run: nvidia-smi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run e2e training test (GPU)
+        env:
+          EPOCHS: ${{ inputs.epochs || '5' }}
+          UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
+        run: |
+          # Run with GPU acceleration
+          uv run python scripts/e2e_train.py \
+            --gpu \
+            --epochs "$EPOCHS" \
+            --verbose \
+            $UPDATE_EXPECTED
+
+      - name: Upload GPU expected values
+        if: ${{ inputs.update_expected }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: expected-linux-gpu
+          path: tests/expected_values.json
+
+      - name: Run e2e training test (CPU baseline)
+        env:
+          EPOCHS: ${{ inputs.epochs || '5' }}
+          UPDATE_EXPECTED: ${{ inputs.update_expected && '--update-expected' || '' }}
+        run: |
+          # Run CPU test to verify determinism
+          uv run python scripts/e2e_train.py --epochs "$EPOCHS" --verbose $UPDATE_EXPECTED
+
+      - name: Upload CPU expected values
+        if: ${{ inputs.update_expected }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: expected-linux
+          path: tests/expected_values.json
+
+      - name: Show GPU memory usage
+        if: always()
+        run: nvidia-smi
