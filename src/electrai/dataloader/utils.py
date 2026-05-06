@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,12 +20,15 @@ def load_numpy_rho(
     index: str,
     precision: str,
     augmentation: bool,
+    fmt: str = "chgcar",
 ):
     """
     Load rho data from root directory
     """
     root = Path(root)
-    if category == "mp":
+    if fmt == "zarr":
+        data, label = load_zarr(root, index)
+    elif category == "mp":
         data, label = load_chgcar(root, index)
     elif category == "qm9":
         data, label = load_npy(root, index)
@@ -32,6 +36,22 @@ def load_numpy_rho(
     label = torch.tensor(label, dtype=dtype_map[precision])
     if augmentation:
         data, label = rand_rotate([data, label])
+    return data, label
+
+
+def load_zarr(root: str | bytes | os.PathLike, index: str):
+    import zarr
+
+    def _read(path):
+        z = zarr.open_group(str(path), mode="r")
+        if "structure" not in z.attrs:
+            raise KeyError(f"'structure' attribute missing from zarr store at {path}")
+        arr = np.array(z["charge_density_total"])
+        volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
+        return arr / volume
+
+    data = _read(Path(root) / "data" / f"{index}.zarr")
+    label = _read(Path(root) / "label" / f"{index}.zarr")
     return data, label
 
 
