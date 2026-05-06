@@ -43,8 +43,10 @@ def load_zarr(root: str | bytes | os.PathLike, index: str):
     import zarr
 
     def _read(path):
-        z = zarr.open(str(path))
-        arr = np.array(z["charge_density_total"], dtype=np.float64)
+        z = zarr.open_group(str(path), mode="r")
+        if "structure" not in z.attrs:
+            raise KeyError(f"'structure' attribute missing from zarr store at {path}")
+        arr = np.array(z["charge_density_total"])
         volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
         return arr / volume
 

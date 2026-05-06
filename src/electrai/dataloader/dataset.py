@@ -109,6 +109,8 @@ class RhoData(Dataset):
 
         self.category = Path(datapath).name.split("_")[0]  # example: mp_filelist.txt
         self.root = Path(datapath).parent
+        if not member_list:
+            raise ValueError(f"Filelist at {datapath} is empty.")
         self.member_list = member_list
         # Detect zarr vs CHGCAR by checking which extension the first entry has
         first = member_list[0]
