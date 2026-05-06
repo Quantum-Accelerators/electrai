@@ -43,11 +43,12 @@ def write_chgcar_to_zarr(
     s3_kwargs : dict[str, Any] | None, optional
         Additional kwargs for S3 filesystem (e.g., anon=True, profile='default').
         Only used if zarr_path is an S3 path. Default: None
-    chunks : tuple[int, int, int], optional
-        Chunk size for zarr arrays. Default: (16, 16, 16)
+    chunks : tuple[int, int, int] | None, optional
+        Chunk size for zarr arrays. If None, uses the full array shape as a
+        single chunk. Default: None
     write_diff : bool, optional
         Whether to write diff charge density data. If False, only total charge
-        density will be written. Default: True
+        density will be written. Default: False
 
     Notes
     -----
