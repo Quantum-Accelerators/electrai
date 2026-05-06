@@ -1,8 +1,8 @@
 # Dataset / loader parameters
 data:
   _target_: electrai.dataloader.dataset.RhoRead
-  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
-  split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_1/split.json
+  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/mp_filelist.txt
+  split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/split_limit_22M.json
   precision: f32
   batch_size: 1
   train_workers: 8
