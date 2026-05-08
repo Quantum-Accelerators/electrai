@@ -62,11 +62,12 @@ from src.utils import predictions as pred_utils
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 CHECKPOINT_PATH = PROJECT_ROOT / "models" / "charge3net_mp.pt"
-# Self-owned dataset preprocessed from chg_datasets/dataset_4 CHGCARs by
-# inference_benchmark/preprocess_chgcars.py. Same materials are used by
-# electrai's ResUNet runs, so the throughput comparison is apples-to-apples.
+# Self-owned dataset preprocessed from chg_datasets/rho_gga zarrs (test
+# partition only) by inference_benchmark/preprocess_density.py. The same
+# mpids are read directly from rho_gga/data by electrai's ResUNet runs,
+# so the throughput comparison is apples-to-apples.
 DATA_DIR = Path(
-    "/scratch/gpfs/ROSENGROUP/bb9080/charge3net-benchmark/data_preprocessed"
+    "/scratch/gpfs/ROSENGROUP/bb9080/charge3net-benchmark/data_preprocessed_rho_gga"
 )
 DATA_ROOT = DATA_DIR / "filelist.txt"
 SPLIT_FILE = DATA_DIR / "split.json"

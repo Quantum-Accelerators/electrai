@@ -34,7 +34,7 @@ cd /scratch/gpfs/ROSENGROUP/${USER}/electrai2
 mkdir -p /scratch/gpfs/ROSENGROUP/${USER}/logs
 
 CKPT=${CKPT:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_checkpoints/04_22_2026/ckpt_1/ckpt_epoch=30_val_loss=0.010749.ckpt}
-FILELIST=${FILELIST:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed/filelist.txt}
+FILELIST=${FILELIST:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed_rho_gga/filelist.txt}
 INPUT_DIR=${INPUT_DIR:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/data}
 OUTPUT=${OUTPUT:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/resunet_results}
 SHAKEDOWN=${SHAKEDOWN:-20}

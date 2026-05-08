@@ -23,7 +23,7 @@ DATASET=${DATASET:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datase
 INPUT=${INPUT:-${DATASET}/label}
 FILELIST=${FILELIST:-${DATASET}/mp_filelist.txt}
 SPLIT=${SPLIT:-${DATASET}/split_limit_22M.json}
-OUTPUT=${OUTPUT:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed}
+OUTPUT=${OUTPUT:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed_rho_gga}
 LIMIT=${LIMIT:-1000}
 WORKERS=${WORKERS:-16}
 
