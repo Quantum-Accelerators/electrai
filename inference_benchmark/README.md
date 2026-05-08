@@ -18,11 +18,12 @@ files can be joined on `filename` for a per-material comparison.
 
 | | ResUNet (electrai) | ChargE3Net |
 |---|---|---|
-| Input | Low-res CHGCAR | Atom positions + cell |
+| Input | Low-res density (zarr) | Atom positions + cell |
 | Output | High-res density grid (single forward) | Density per probe (chunked, 2500 probes/chunk) |
 | Forward call | One `model(data)` | `model.atom_model(...)` once + `model.probe_model(...)` per chunk |
 | Forward timing | `cuda.Event` around `model(x)` | `cuda.Event` around atom + probe (summed) |
-| Loader | `pymatgen.io.vasp.Chgcar` | `np.load(.npy) + pickle.load(_atoms.pkl)` |
+| Loader | `zarr.open` + structure attr | `np.load(.npy) + pickle.load(_atoms.pkl)` |
+| Materials | Sampled from `rho_gga/split_limit_22M.json["test"]` (held out from ckpt_1's training) — same set on both sides | |
 | Warmup | First 3 materials excluded | First 3 materials excluded[^1] |
 
 [^1]: Implemented as "drop entire materials whose any partial fell inside
@@ -42,8 +43,8 @@ where typical was ~30 ms.
 
 ### Out of scope: input-generation cost
 
-The ResUNet input is a **low-resolution CHGCAR** that itself comes from a
-fast/cheap DFT run (the `data/` half of `chg_datasets/dataset_4`). That
+The ResUNet input is a **low-resolution density** that itself comes from
+a fast/cheap DFT run (the `data/` half of `chg_datasets/rho_gga`). That
 upstream DFT cost is not measured here — both benchmarks start from
 files already on disk. ChargE3Net needs only the structure (atoms +
 cell), so its real production cost is roughly what's reported. ResUNet's
@@ -130,15 +131,19 @@ emitting zeros or NaN):
 ### 1. Preprocess data (one-time, ~30 s for 1000 materials)
 
 The ChargE3Net dataloader needs `<mpid>.npy` + `<mpid>_atoms.pkl` files;
-electrai reads CHGCARs directly. The preprocessing converts CHGCARs once:
+electrai reads zarr directly. The preprocessor samples from
+`rho_gga/split_limit_22M.json["test"]` (4303 candidates, default sample
+size 1000) and converts each material's `<mpid>.zarr` into the
+ChargE3Net format:
 
 ```bash
 # On della, from the charge3net fork checkout
-sbatch inference_benchmark/run_preprocess.slurm  # LIMIT=1000 by default
+sbatch inference_benchmark/run_preprocess.slurm  # LIMIT=1000, samples test partition
 ```
 
 Outputs `data_preprocessed/{filelist.txt, probe_counts.csv, split.json,
-mp-*.npy, mp-*_atoms.pkl}`.
+mp-*.npy, mp-*_atoms.pkl}`. The sampled mpids are the *same set* the
+ResUNet benchmark reads from rho_gga (matched by `filelist.txt`).
 
 ### 2. ChargE3Net benchmark
 

@@ -15,9 +15,11 @@
 # schema, so the two CSVs can be joined on filename.
 #
 # Defaults assume:
-#   - charge3net-benchmark/data_preprocessed/filelist.txt holds the matched mpids
-#   - chg_datasets/dataset_4 has data/<mpid>.CHGCAR + label/<mpid>.CHGCAR
-#   - latest electrai checkpoint at chg_checkpoints/04_22_2026/last.ckpt
+#   - charge3net-benchmark/data_preprocessed/filelist.txt holds the
+#     matched mpids (sampled from rho_gga's test partition)
+#   - chg_datasets/rho_gga/data has <mpid>.zarr files
+#   - ckpt_1 is the rho_gga-trained checkpoint, so the test partition is
+#     a true held-out set (ckpt_2 is rho_gga+u-trained — wrong functional)
 #
 # Override any of these with --export=ALL,VAR=value at sbatch time. Use
 # SHAKEDOWN=20 first to verify the run is working before going full size.
@@ -31,9 +33,9 @@ cd /scratch/gpfs/ROSENGROUP/${USER}/electrai2
 
 mkdir -p /scratch/gpfs/ROSENGROUP/${USER}/logs
 
-CKPT=${CKPT:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_checkpoints/04_22_2026/ckpt_2/ckpt_epoch=88_val_loss=0.008648.ckpt}
+CKPT=${CKPT:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_checkpoints/04_22_2026/ckpt_1/ckpt_epoch=30_val_loss=0.010749.ckpt}
 FILELIST=${FILELIST:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed/filelist.txt}
-INPUT_DIR=${INPUT_DIR:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_4/data/data}
+INPUT_DIR=${INPUT_DIR:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/data}
 OUTPUT=${OUTPUT:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/resunet_results}
 SHAKEDOWN=${SHAKEDOWN:-20}
 

@@ -8,8 +8,9 @@
 #SBATCH --time=00:30:00
 #SBATCH --mem=64G
 
-# Convert dataset_4 CHGCARs into ChargE3Net's .npy + _atoms.pkl format.
-# CPU-only, fast queue. Override INPUT/OUTPUT/LIMIT via --export if needed.
+# Sample test-set materials from rho_gga and convert each zarr into
+# ChargE3Net's .npy + _atoms.pkl format. CPU-only, fast queue. Override
+# INPUT/SPLIT/LIMIT via --export if needed.
 
 module load anaconda3/2025.12
 conda activate ${HOME}/.conda/envs/charge3net
@@ -18,18 +19,26 @@ cd /scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark
 
 mkdir -p inference_benchmark/logs
 
-INPUT=${INPUT:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_4/label/label}
+DATASET=${DATASET:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga}
+INPUT=${INPUT:-${DATASET}/label}
+FILELIST=${FILELIST:-${DATASET}/mp_filelist.txt}
+SPLIT=${SPLIT:-${DATASET}/split_limit_22M.json}
 OUTPUT=${OUTPUT:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed}
 LIMIT=${LIMIT:-1000}
 WORKERS=${WORKERS:-16}
 
-echo "Input:   ${INPUT}"
-echo "Output:  ${OUTPUT}"
-echo "Limit:   ${LIMIT}"
-echo "Workers: ${WORKERS}"
+echo "Dataset:  ${DATASET}"
+echo "Input:    ${INPUT}"
+echo "Filelist: ${FILELIST}"
+echo "Split:    ${SPLIT}"
+echo "Output:   ${OUTPUT}"
+echo "Limit:    ${LIMIT} (test partition only)"
+echo "Workers:  ${WORKERS}"
 
-srun python inference_benchmark/preprocess_chgcars.py \
+srun python inference_benchmark/preprocess_density.py \
     --input "${INPUT}" \
+    --filelist "${FILELIST}" \
+    --split-file "${SPLIT}" \
     --output "${OUTPUT}" \
     --limit "${LIMIT}" \
     --workers "${WORKERS}"

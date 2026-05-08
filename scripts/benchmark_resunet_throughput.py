@@ -6,16 +6,10 @@ Designed to be a drop-in match for the charge3net throughput benchmark
 materials, same per-material schema, so the two output CSVs can be joined
 on `filename` for a direct apples-to-apples comparison.
 
-Usage:
-    uv run --no-sync python scripts/benchmark_resunet_throughput.py \\
-        --checkpoint <path/to/last.ckpt> \\
-        --filelist /scratch/.../charge3net-benchmark/data_preprocessed/filelist.txt \\
-        --data-root /scratch/.../chg_datasets/dataset_4 \\
-        --output /scratch/.../charge3net-benchmark/resunet_results
-
-ResUNet's natural production input is the low-res CHGCAR at
-<data-root>/data/<mpid>.CHGCAR — same as electrai's training pipeline. The
-model upsamples to a high-res grid; we time the forward pass per material.
+Reads the low-res input from <input-dir>/<mpid>.zarr (same layout as
+electrai's training data), normalized by total voxel count to match the
+zarr loader the rho_gga checkpoints were trained with. The model
+upsamples to a high-res grid; we time the forward pass per material.
 
 Output: <output>/throughput_by_material.csv with columns matching the
 charge3net benchmark (filename, num_atoms, grid_voxels, forward_ms,
@@ -26,12 +20,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from pymatgen.io.vasp import Chgcar
+import zarr
+from pymatgen.core import Structure
 
 from electrai.model.resunet import ResUNet3D
 
@@ -68,15 +64,25 @@ def load_state_dict_flexibly(
     }
 
 
-def load_chgcar_input(input_dir: Path, mpid: str, dtype: torch.dtype):
-    """Load the low-res input CHGCAR. Matches electrai's load_chgcar
-    normalization. The label CHGCAR isn't read here — inference doesn't
-    need it, and including its read would inflate load_s."""
-    in_chg = Chgcar.from_file(str(input_dir / f"{mpid}.CHGCAR"))
-    data = in_chg.data["total"] / in_chg.structure.lattice.volume
+def load_zarr_input(input_dir: Path, mpid: str, dtype: torch.dtype):
+    """Load the low-res input density from a zarr store. Matches the
+    normalization in electrai.dataloader.mp_zarr_s3_data (charge_data /
+    np.prod(gridsize)) so we feed the model values on the same scale
+    its training data was on. Only the input zarr is read — inference
+    doesn't need the label."""
+    z = zarr.open(store=str(input_dir / f"{mpid}.zarr"), mode="r")
+    arr = z["charge_density_total"]
+    density = np.array(arr, dtype=np.float32)
+    density /= float(np.prod(density.shape))
+
+    struct_attr = z.attrs["structure"]
+    if isinstance(struct_attr, str):
+        struct_attr = json.loads(struct_attr)
+    structure = Structure.from_dict(struct_attr)
+    num_atoms = len(structure)
+
     # ResUNet expects (B, C, X, Y, Z) — bs=1, single channel.
-    data = torch.tensor(data, dtype=dtype).unsqueeze(0).unsqueeze(0)
-    num_atoms = len(in_chg.structure)
+    data = torch.tensor(density, dtype=dtype).unsqueeze(0).unsqueeze(0)
     return data, num_atoms
 
 
@@ -138,7 +144,7 @@ def benchmark(args):
     for i, mpid in enumerate(mpids):
         try:
             wall_start = time.time()
-            data, num_atoms = load_chgcar_input(input_dir, mpid, dtype)
+            data, num_atoms = load_zarr_input(input_dir, mpid, dtype)
             data = data.to(device, non_blocking=True)
             grid_voxels = int(np.prod(data.shape[2:]))
             load_s = time.time() - wall_start
