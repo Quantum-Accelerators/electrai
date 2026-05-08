@@ -21,8 +21,8 @@ files can be joined on `filename` for a per-material comparison.
 | Input | Low-res density (zarr) | Atom positions + cell |
 | Output | High-res density grid (single forward) | Density per probe (chunked, 2500 probes/chunk) |
 | Forward call | One `model(data)` | `model.atom_model(...)` once + `model.probe_model(...)` per chunk |
-| Forward timing | `cuda.Event` around `model(x)` | `cuda.Event` around atom + probe (summed) |
-| Loader | `zarr.open` + structure attr | `np.load(.npy) + pickle.load(_atoms.pkl)` |
+| Forward timing | `cuda.Event` around `model(x)` | **Outer** `cuda.Event` around atom + entire probe loop, single sync at the end (matches ResUNet's wall-clock-equivalent semantics; per-stage events kept as diagnostic only) |
+| Loader cost (per inference) | `zarr.open` → `file_load_s` | `np.load + pickle.load` → `file_load_s`; KdTree graph construction → `graph_build_s` (per-partial) |
 | Materials | Sampled from `rho_gga/split_limit_22M.json["test"]` (held out from ckpt_1's training) — same set on both sides | |
 | Warmup | First 3 materials excluded | First 3 materials excluded[^1] |
 
@@ -31,6 +31,23 @@ files can be joined on `filename` for a per-material comparison.
     < `MAX_GRID_SIZE` (1e7 voxels) each material is one partial, so this
     collapses to "first 3 materials". The partial-aware form matters
     only when a single material spans multiple partials.
+
+### Cost accounting on ChargE3Net
+
+The dataloader's `__getitem__` records a single `load_time` covering both
+the npy/pkl read and the graph construction. We split these into:
+
+- **`file_load_s`** — npy + atoms.pkl read. The dataloader re-reads on
+  every partial (no amortization), so per-material aggregation uses the
+  first partial's value, not a sum.
+- **`graph_build_s`** — KdTree + supercell unrolling for the probe set.
+  This *is* per-partial work (the graph differs per probe slice) and we
+  sum it. Graph build is a real per-inference cost — production
+  inference pays it on every structure, not just the first one.
+
+Per-material `e2e_s` is reconstructed as `file_load_s + graph_build_s +
+forward_ms / 1000`, NOT summed across partials (which would multiply
+`file_load_s` by the partial count).
 
 Both run single-GPU, batch_size=1, fp32. ChargE3Net's distributed scaffold
 remains in place but is a no-op when `world_size == 1` — per-rank

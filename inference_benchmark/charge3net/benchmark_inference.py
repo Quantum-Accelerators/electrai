@@ -58,6 +58,21 @@ from src.charge3net.data.split import split_data
 from src.charge3net.models.e3 import E3DensityModel
 from src.utils import predictions as pred_utils
 
+
+class TimedKdTreeGraphConstructor(KdTreeGraphConstructor):
+    """KdTreeGraphConstructor that records its own wall-clock time on each
+    call, so we can split DensityGraphDataset's load_time into
+    file_load_s (npy + atoms.pkl read) and graph_build_s (this call).
+    Graph build is a per-inference cost, not preprocessing — production
+    inference pays it on every structure."""
+
+    def __call__(self, density, atoms, grid_pos):
+        t0 = time.time()
+        result = super().__call__(density, atoms, grid_pos)
+        result["graph_build_time"] = torch.tensor(time.time() - t0)
+        return result
+
+
 # ─── Configuration ────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -113,66 +128,72 @@ def _to_device(batch, device):
 @torch.no_grad()
 def _timed_forward(model, batch, device):
     """
-    Run the production-style forward pass with cuda.Event timing split between
-    atom model (computed once) and probe model (chunked if needed).
+    Run the production-style forward pass with a single outer cuda.Event
+    pair as the headline forward_ms — that matches ResUNet's wall-clock-
+    equivalent semantics and captures inter-chunk Python overhead, which
+    is real for hundreds of small probe-model calls.
 
-    Returns dict with:
-        atom_ms, probe_ms_total, num_chunks
+    Per-stage events (atom model once, probe model per chunk) stay on the
+    queue as diagnostics; we sync ONCE at the very end and read all
+    elapsed_times after. No per-chunk synchronize.
     """
+    outer_start = torch.cuda.Event(enable_timing=True)
+    outer_end = torch.cuda.Event(enable_timing=True)
     atom_start = torch.cuda.Event(enable_timing=True)
     atom_end = torch.cuda.Event(enable_timing=True)
 
     num_probes = batch["num_probes"].item()
 
+    outer_start.record()
+
     if num_probes <= MAX_PREDICT_BATCH_PROBES:
-        # Single-shot forward — atom + probe in one call.
+        # Single-shot forward — atom + probe in one call. Atom and probe
+        # aren't separable here, so atom_ms = 0 marks the single-shot case.
         atom_start.record()
         out = model(batch)
         atom_end.record()
+        outer_end.record()
         torch.cuda.synchronize(device)
-        # We can't cleanly separate atom vs probe in the single-shot case;
-        # report the total under probe and leave atom=0 to mark the case.
         return {
             "atom_ms": 0.0,
             "probe_ms_total": atom_start.elapsed_time(atom_end),
+            "forward_ms": outer_start.elapsed_time(outer_end),
             "num_chunks": 1,
             "first_chunk_preds": out.detach().float(),
         }
 
     # Chunked path matches trainer._test_step: atom representation once,
     # probe model per sub-batch. Process each sub_batch immediately —
-    # pred_utils.split_batch mutates num_probes/num_probe_edges in place on
-    # each yield, so materializing the generator (e.g. list(...)) breaks the
-    # invariant and produces wrong sizes downstream.
+    # pred_utils.split_batch mutates num_probes/num_probe_edges in place
+    # on each yield, so materializing the generator (e.g. list(...))
+    # breaks the invariant and produces wrong sizes downstream.
     atom_repr = None
-    atom_ms = 0.0
-    probe_ms = 0.0
-    num_chunks = 0
-    first_chunk_preds = None  # kept on the first chunk only for sanity logging
+    probe_events: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+    first_chunk_preds = None
 
     for sub_batch in pred_utils.split_batch(batch, MAX_PREDICT_BATCH_PROBES):
         if atom_repr is None:
             atom_start.record()
             atom_repr = model.atom_model(sub_batch)
             atom_end.record()
-            torch.cuda.synchronize(device)
-            atom_ms = atom_start.elapsed_time(atom_end)
 
         probe_start = torch.cuda.Event(enable_timing=True)
         probe_end = torch.cuda.Event(enable_timing=True)
         probe_start.record()
         out = model.probe_model(sub_batch, atom_repr)
         probe_end.record()
-        torch.cuda.synchronize(device)
-        probe_ms += probe_start.elapsed_time(probe_end)
-        num_chunks += 1
+        probe_events.append((probe_start, probe_end))
         if first_chunk_preds is None:
             first_chunk_preds = out.detach().float()
 
+    outer_end.record()
+    torch.cuda.synchronize(device)
+
     return {
-        "atom_ms": atom_ms,
-        "probe_ms_total": probe_ms,
-        "num_chunks": num_chunks,
+        "atom_ms": atom_start.elapsed_time(atom_end),
+        "probe_ms_total": sum(s.elapsed_time(e) for s, e in probe_events),
+        "forward_ms": outer_start.elapsed_time(outer_end),
+        "num_chunks": len(probe_events),
         "first_chunk_preds": first_chunk_preds,
     }
 
@@ -233,7 +254,7 @@ def run(rank, cfg, env):
     # in DensityGraphDataset, which produces one partial per (file, probe_offset)
     # covering up to MAX_GRID_SIZE probes each.
     dataset = DensityData(str(DATA_ROOT))
-    gc = KdTreeGraphConstructor(cutoff=CUTOFF, num_probes=None, disable_pbc=False)
+    gc = TimedKdTreeGraphConstructor(cutoff=CUTOFF, num_probes=None, disable_pbc=False)
     subsets = split_data(dataset, split_file=str(SPLIT_FILE))
 
     tmp_dir = OUTPUT_DIR / ".tmp"
@@ -295,8 +316,23 @@ def evaluate(model, dataloader, split_name, device, global_rank, total):
             )
             break
 
+        # load_time (set inside DensityGraphDataset.__getitem__) covers
+        # everything from start of __getitem__ to its end — i.e. file read
+        # plus graph construction. graph_build_time isolates the graph
+        # construction so we can report the file-load and graph-build
+        # costs separately. graph_build is a real per-inference cost
+        # (not preprocessing); file_load on multi-partial materials is
+        # also paid once per partial because the dataset re-reads the npy.
         load_time = (
             float(batch["load_time"][0]) if "load_time" in batch else float("nan")
+        )
+        graph_build_s = (
+            float(batch["graph_build_time"][0])
+            if "graph_build_time" in batch
+            else float("nan")
+        )
+        file_load_s = (
+            load_time - graph_build_s if not np.isnan(graph_build_s) else load_time
         )
         filename = (
             batch["filename"][0]
@@ -329,7 +365,11 @@ def evaluate(model, dataloader, split_name, device, global_rank, total):
             )
             continue
 
-        forward_ms = timing["atom_ms"] + timing["probe_ms_total"]
+        # forward_ms is the OUTER cuda.Event span (atom + all probe
+        # chunks + inter-chunk Python overhead) so it matches ResUNet's
+        # wall-clock-equivalent semantics. atom_ms / probe_ms remain as
+        # diagnostic kernel-only times.
+        forward_ms = timing["forward_ms"]
         e2e_chunk_s = (wall_end - wall_start) + load_time
         is_warmup = i < WARMUP_SAMPLES
 
@@ -357,6 +397,8 @@ def evaluate(model, dataloader, split_name, device, global_rank, total):
                 "atom_ms": timing["atom_ms"],
                 "probe_ms": timing["probe_ms_total"],
                 "forward_ms": forward_ms,
+                "file_load_s": file_load_s,
+                "graph_build_s": graph_build_s,
                 "load_s": load_time,
                 "e2e_chunk_s": e2e_chunk_s,
                 "warmup": is_warmup,
@@ -399,6 +441,16 @@ def merge_and_summarize(tmp_dir):
     if warmup_files:
         print(f"Dropping {len(warmup_files)} materials with warmup partials")
     df = df_partials[~df_partials["filename"].isin(warmup_files)].copy()
+    # Per-material aggregation, distinguishing per-partial costs from
+    # one-shot costs:
+    #   * file_load_s — DensityGraphDataset re-reads the npy on each
+    #     partial, but the per-material I/O cost is only one read; take
+    #     "first" so we don't multiply by num_partials.
+    #   * graph_build_s — the graph IS rebuilt for each partial's probe
+    #     slice, so this is real per-partial work and we sum it.
+    #   * forward_ms — outer cuda.Event span per partial; sum.
+    #   * e2e_s — reconstructed from components, NOT sum(e2e_chunk_s)
+    #     (which would double-count file_load on multi-partial materials).
     by_file = df.groupby(["filename", "split"], as_index=False).agg(
         num_atoms=("num_atoms", "first"),
         grid_voxels=("grid_voxels", "first"),
@@ -407,8 +459,13 @@ def merge_and_summarize(tmp_dir):
         atom_ms=("atom_ms", "sum"),
         probe_ms=("probe_ms", "sum"),
         forward_ms=("forward_ms", "sum"),
-        load_s=("load_s", "sum"),
-        e2e_s=("e2e_chunk_s", "sum"),
+        file_load_s=("file_load_s", "first"),
+        graph_build_s=("graph_build_s", "sum"),
+    )
+    by_file["e2e_s"] = (
+        by_file["file_load_s"]
+        + by_file["graph_build_s"]
+        + by_file["forward_ms"] / 1000.0
     )
     by_file["voxels_per_sec_forward"] = by_file["grid_voxels"] / (
         by_file["forward_ms"] / 1000.0
