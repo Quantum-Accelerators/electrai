@@ -23,7 +23,13 @@ files can be joined on `filename` for a per-material comparison.
 | Forward call | One `model(data)` | `model.atom_model(...)` once + `model.probe_model(...)` per chunk |
 | Forward timing | `cuda.Event` around `model(x)` | `cuda.Event` around atom + probe (summed) |
 | Loader | `pymatgen.io.vasp.Chgcar` | `np.load(.npy) + pickle.load(_atoms.pkl)` |
-| Warmup | First 3 materials excluded | First 3 partials excluded |
+| Warmup | First 3 materials excluded | First 3 materials excluded[^1] |
+
+[^1]: Implemented as "drop entire materials whose any partial fell inside
+    the warmup window of the first 3 dataloader iterations". For grids
+    < `MAX_GRID_SIZE` (1e7 voxels) each material is one partial, so this
+    collapses to "first 3 materials". The partial-aware form matters
+    only when a single material spans multiple partials.
 
 Both run single-GPU, batch_size=1, fp32. ChargE3Net's distributed scaffold
 remains in place but is a no-op when `world_size == 1` — per-rank
@@ -174,12 +180,21 @@ distributions, etc.).
 4. **`atom_ms` outliers** — `cudnn.benchmark=False` is now set on both
    sides, which should remove the 6–7 s autotune outliers we saw in the
    smoke test. Worth verifying once the post-fix run lands.
-5. **Should `cudnn.benchmark` differ per side?** Post-fix smoke run
-   showed ResUNet's forward p95 climbed 298 → 518 ms with autotune
-   disabled, while the median moved -6%. Likely autotune was helpful
-   for ResUNet (one whole-grid conv per material, stable shapes within
-   a material) and harmful for ChargE3Net (probe-edge tensors vary in
-   shape per chunk → autotune fires repeatedly). Open question: keep
-   `cudnn.benchmark=True` on the ResUNet side, or do per-shape warmup
-   instead. Need the full run to distinguish a real regression from
-   n=17 p95 noise (one outlier swings p95 heavily at this n).
+5. **`cudnn.benchmark=False` on ResUNet is likely costing real time.**
+   Post-fix smoke showed ResUNet's forward p95 climbed 298 → 518 ms (the
+   median moved -6%). This is probably not n=17 noise — ResUNet conv
+   shapes vary across materials (different unit cells → different grid
+   sizes), so with autotune off, every material pays the slow-default-
+   kernel cost. Two cleaner options before publishing a headline number:
+   - **Pre-warm per shape**: walk the dataset once and run a dummy
+     forward at each unique grid shape with `cudnn.benchmark=True`, then
+     start measurement. ResUNet has a small number of distinct shapes;
+     ChargE3Net's per-chunk variance defeats this anyway, so it's an
+     honest win for ResUNet only.
+   - **Per-side asymmetry**: leave `cudnn.benchmark=True` on ResUNet,
+     off on ChargE3Net, document why. Defensible but easy to get wrong
+     in re-runs.
+
+   Either is preferable to the current "off everywhere" once we go to
+   the full run. The current setting is acceptable to land this PR
+   because the smoke result is explicitly labelled order-of-magnitude.
