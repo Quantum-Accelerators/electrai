@@ -52,27 +52,32 @@ def load_state_dict_flexibly(
                 stripped = stripped[len(prefix) :]
                 break
         cleaned[stripped] = v
+    # Fail hard on any architecture mismatch — silently loading with
+    # missing weights produces nonsense-but-fast forward times, which is
+    # exactly the kind of result a throughput benchmark must not emit.
     missing, unexpected = model.load_state_dict(cleaned, strict=False)
+    if missing:
+        raise RuntimeError(
+            f"Checkpoint missing {len(missing)} keys (first 5: {missing[:5]}). "
+            "Architecture flags (--n-channels/--depth/...) likely don't match "
+            "the checkpoint's training config."
+        )
     return {
-        "missing": list(missing),
         "unexpected": list(unexpected),
         "step": ckpt.get("global_step", ckpt.get("step", "?")),
     }
 
 
-def load_chgcar_pair(input_dir: Path, label_dir: Path, mpid: str, dtype: torch.dtype):
-    """Match electrai.dataloader.utils.load_chgcar normalization. Paths are
-    explicit because dataset_4 has a double-level layout
-    (data/data/<mpid>.CHGCAR, label/label/<mpid>.CHGCAR)."""
+def load_chgcar_input(input_dir: Path, mpid: str, dtype: torch.dtype):
+    """Load the low-res input CHGCAR. Matches electrai's load_chgcar
+    normalization. The label CHGCAR isn't read here — inference doesn't
+    need it, and including its read would inflate load_s."""
     in_chg = Chgcar.from_file(str(input_dir / f"{mpid}.CHGCAR"))
-    lab_chg = Chgcar.from_file(str(label_dir / f"{mpid}.CHGCAR"))
     data = in_chg.data["total"] / in_chg.structure.lattice.volume
-    label = lab_chg.data["total"] / lab_chg.structure.lattice.volume
     # ResUNet expects (B, C, X, Y, Z) — bs=1, single channel.
     data = torch.tensor(data, dtype=dtype).unsqueeze(0).unsqueeze(0)
-    label = torch.tensor(label, dtype=dtype).unsqueeze(0).unsqueeze(0)
-    num_atoms = len(lab_chg.structure)
-    return data, label, num_atoms
+    num_atoms = len(in_chg.structure)
+    return data, num_atoms
 
 
 @torch.no_grad()
@@ -80,6 +85,11 @@ def benchmark(args):
     if not torch.cuda.is_available():
         raise RuntimeError("This benchmark requires a GPU.")
     device = "cuda"
+
+    # Disable cuDNN autotune so first-of-shape kernels don't pay an
+    # autotune cost mid-benchmark. Inputs vary in spatial shape across
+    # materials, so leaving autotune on produces high-variance outliers.
+    torch.backends.cudnn.benchmark = False
 
     model = ResUNet3D(
         in_channels=1,
@@ -93,11 +103,9 @@ def benchmark(args):
     info = load_state_dict_flexibly(model, Path(args.checkpoint), device)
     print(
         f"Loaded checkpoint (step={info['step']}, "
-        f"missing={len(info['missing'])}, unexpected={len(info['unexpected'])})",
+        f"unexpected={len(info['unexpected'])})",
         flush=True,
     )
-    if info["missing"][:3]:
-        print(f"  missing (first 3): {info['missing'][:3]}", flush=True)
     if info["unexpected"][:3]:
         print(f"  unexpected (first 3): {info['unexpected'][:3]}", flush=True)
     model.to(device).eval()
@@ -113,7 +121,6 @@ def benchmark(args):
 
     dtype = PRECISION[args.precision]
     input_dir = Path(args.input_dir)
-    label_dir = Path(args.label_dir)
 
     headers = [
         "filename",
@@ -131,9 +138,7 @@ def benchmark(args):
     for i, mpid in enumerate(mpids):
         try:
             wall_start = time.time()
-            data, _label, num_atoms = load_chgcar_pair(
-                input_dir, label_dir, mpid, dtype
-            )
+            data, num_atoms = load_chgcar_input(input_dir, mpid, dtype)
             data = data.to(device, non_blocking=True)
             grid_voxels = int(np.prod(data.shape[2:]))
             load_s = time.time() - wall_start
@@ -141,11 +146,23 @@ def benchmark(args):
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
             start.record()
-            _ = model(data)
+            preds = model(data)
             end.record()
             torch.cuda.synchronize(device)
             forward_ms = start.elapsed_time(end)
             e2e_s = time.time() - wall_start
+
+            # Sanity print on the very first material — surfaces a silent
+            # weight-loading or normalization bug that wouldn't otherwise
+            # show up in throughput numbers.
+            if i == 0:
+                p = preds.float()
+                print(
+                    f"  first prediction stats: "
+                    f"min={p.min().item():.4g} max={p.max().item():.4g} "
+                    f"mean={p.mean().item():.4g} std={p.std().item():.4g}",
+                    flush=True,
+                )
 
             is_warmup = i < args.warmup_samples
             rows.append(
@@ -204,11 +221,6 @@ def main():
         "--input-dir",
         required=True,
         help="Directory containing low-res input <mpid>.CHGCAR files",
-    )
-    p.add_argument(
-        "--label-dir",
-        required=True,
-        help="Directory containing high-res label <mpid>.CHGCAR files",
     )
     p.add_argument("--output", required=True)
     p.add_argument(

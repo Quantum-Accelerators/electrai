@@ -34,7 +34,6 @@ mkdir -p /scratch/gpfs/ROSENGROUP/${USER}/logs
 CKPT=${CKPT:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_checkpoints/04_22_2026/ckpt_2/ckpt_epoch=88_val_loss=0.008648.ckpt}
 FILELIST=${FILELIST:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/data_preprocessed/filelist.txt}
 INPUT_DIR=${INPUT_DIR:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_4/data/data}
-LABEL_DIR=${LABEL_DIR:-/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_4/label/label}
 OUTPUT=${OUTPUT:-/scratch/gpfs/ROSENGROUP/${USER}/charge3net-benchmark/resunet_results}
 SHAKEDOWN=${SHAKEDOWN:-20}
 
@@ -48,7 +47,6 @@ DEPTH=${DEPTH:-2}
 echo "Checkpoint:    ${CKPT}"
 echo "Filelist:      ${FILELIST}"
 echo "Input dir:     ${INPUT_DIR}"
-echo "Label dir:     ${LABEL_DIR}"
 echo "Output dir:    ${OUTPUT}"
 echo "Shakedown:     ${SHAKEDOWN}"
 echo "Architecture:  n_channels=${N_CHANNELS} blocks=${N_RES_BLOCKS} kernel=${KERNEL_SIZE} depth=${DEPTH}"
@@ -62,7 +60,6 @@ srun uv run --no-sync python -u scripts/benchmark_resunet_throughput.py \
     --checkpoint "${CKPT}" \
     --filelist "${FILELIST}" \
     --input-dir "${INPUT_DIR}" \
-    --label-dir "${LABEL_DIR}" \
     --output "${OUTPUT}" \
     --shakedown-limit "${SHAKEDOWN}" \
     --n-channels "${N_CHANNELS}" \

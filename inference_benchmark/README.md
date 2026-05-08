@@ -29,6 +29,23 @@ Both run single-GPU, batch_size=1, fp32. ChargE3Net's distributed scaffold
 remains in place but is a no-op when `world_size == 1` — per-rank
 throughput is what we report.
 
+`torch.backends.cudnn.benchmark` is set to `False` on both sides so
+first-of-shape kernels don't pay an autotune cost mid-benchmark; without
+this, ChargE3Net's `atom_ms` showed 6–7 s outliers on a few materials
+where typical was ~30 ms.
+
+### Out of scope: input-generation cost
+
+The ResUNet input is a **low-resolution CHGCAR** that itself comes from a
+fast/cheap DFT run (the `data/` half of `chg_datasets/dataset_4`). That
+upstream DFT cost is not measured here — both benchmarks start from
+files already on disk. ChargE3Net needs only the structure (atoms +
+cell), so its real production cost is roughly what's reported. ResUNet's
+real production cost is what's reported **plus** whatever it takes to
+generate the low-res input. Whether that delta matters depends on the
+deployment scenario; for a like-for-like model-vs-model comparison on
+the same end-state grid, the numbers below are the right ones.
+
 ## Same materials, different repos
 
 The two scripts live in different codebases (electrai vs the charge3net
@@ -58,15 +75,36 @@ the actual scripts run from a checkout of the
 `benchmark/inference-throughput`, which has the upstream model and data
 loaders in place.
 
-## Smoke-test result (n=17, same materials, both single-A100)
+### Drift policy
 
-| Metric | ResUNet | ChargE3Net | Ratio |
+The `charge3net/` mirror is a frozen copy of the upstream branch and is
+NOT subject to this repo's lint policy (pyproject.toml exempts the
+directory entirely). Treat it as documentation, not as a buildable
+target. If the upstream branch changes, regenerate the mirror by copying
+the same files from a fresh checkout — never edit them in place here.
+
+```bash
+# To refresh the mirror after upstream changes:
+rsync -av --delete \
+  /path/to/charge3net-checkout/inference_benchmark/ \
+  inference_benchmark/charge3net/
+```
+
+## Smoke-test result — order-of-magnitude only
+
+> ⚠ **Smoke test, n=17, single A100.** Treat these numbers as
+> order-of-magnitude. They were collected before the bugfixes in this
+> PR (label-CHGCAR load on the ResUNet side; ChargE3Net per-material
+> warmup aggregation) and before `cudnn.benchmark=False`. The headline
+> run is the full 1000-material sweep on the post-fix code.
+
+| Metric | ResUNet | ChargE3Net | Ratio (smoke, indicative) |
 |---|---|---|---|
-| forward_ms median | 70 | 47,534 | **679× faster** |
-| forward_ms p95 | 298 | 101,406 | 340× |
-| e2e_s median | 1.43 | 55.3 | **38.7×** |
-| e2e_s p95 | 3.00 | 118.0 | 39.3× |
-| voxels/sec (forward) median | ~14M | ~21k | **~670×** |
+| forward_ms median | 70 | 47,534 | ~680× |
+| forward_ms p95 | 298 | 101,406 | ~340× |
+| e2e_s median | 1.43 | 55.3 | ~39× |
+| e2e_s p95 | 3.00 | 118.0 | ~39× |
+| voxels/sec (forward) median | ~14M | ~21k | ~670× |
 
 The e2e ratio is much smaller than forward-only because both share CHGCAR
 load overhead (~1–3 s/material). In a true production setting starting
@@ -112,12 +150,19 @@ distributions, etc.).
 
 ## Open questions for review
 
-1. **fp16/bf16 for ResUNet** — easy gain; not in the original ask but
-   worth a follow-up cell in any analysis notebook.
+1. **fp16/bf16 sweep for both models** — ChargE3Net's `E3DensityModel`
+   is the bigger model and has more to gain from reduced precision.
+   Doing the sweep on only ResUNet would artificially widen the gap, so
+   either both or neither.
 2. **Going to the full 1000 materials** — ChargE3Net would need ~15 h
    single-A100, or shard across 4 GPUs (`NPROCS=4`) for ~4 h. ResUNet
    finishes 1000 in ~20 min. Decide if the smoke-test shape is enough or
-   we want the headline run.
-3. **`atom_ms` outliers in ChargE3Net** — most materials show ~30 ms for
-   the atom representation, but a few show 6–7 s. Likely cuDNN autotune
-   on a first-of-its-shape chunk, not a correctness issue.
+   we want the headline run (after the post-fix re-run).
+3. **ChargE3Net hyperparameters** — the script bakes in
+   `cutoff=4.0, num_interactions=3, num_neighbors=20, mul=500, lmax=4,
+   basis="gaussian", num_basis=20` from `train_mp_e3_final.yaml`. Worth
+   confirming with Hananeh that those match the published `charge3net_mp.pt`
+   checkpoint before publishing the headline number.
+4. **`atom_ms` outliers** — `cudnn.benchmark=False` is now set on both
+   sides, which should remove the 6–7 s autotune outliers we saw in the
+   smoke test. Worth verifying once the post-fix run lands.

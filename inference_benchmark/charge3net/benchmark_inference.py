@@ -126,7 +126,7 @@ def _timed_forward(model, batch, device):
     if num_probes <= MAX_PREDICT_BATCH_PROBES:
         # Single-shot forward — atom + probe in one call.
         atom_start.record()
-        _ = model(batch)
+        out = model(batch)
         atom_end.record()
         torch.cuda.synchronize(device)
         # We can't cleanly separate atom vs probe in the single-shot case;
@@ -135,6 +135,7 @@ def _timed_forward(model, batch, device):
             "atom_ms": 0.0,
             "probe_ms_total": atom_start.elapsed_time(atom_end),
             "num_chunks": 1,
+            "first_chunk_preds": out.detach().float(),
         }
 
     # Chunked path matches trainer._test_step: atom representation once,
@@ -146,6 +147,7 @@ def _timed_forward(model, batch, device):
     atom_ms = 0.0
     probe_ms = 0.0
     num_chunks = 0
+    first_chunk_preds = None  # kept on the first chunk only for sanity logging
 
     for sub_batch in pred_utils.split_batch(batch, MAX_PREDICT_BATCH_PROBES):
         if atom_repr is None:
@@ -158,13 +160,20 @@ def _timed_forward(model, batch, device):
         probe_start = torch.cuda.Event(enable_timing=True)
         probe_end = torch.cuda.Event(enable_timing=True)
         probe_start.record()
-        _ = model.probe_model(sub_batch, atom_repr)
+        out = model.probe_model(sub_batch, atom_repr)
         probe_end.record()
         torch.cuda.synchronize(device)
         probe_ms += probe_start.elapsed_time(probe_end)
         num_chunks += 1
+        if first_chunk_preds is None:
+            first_chunk_preds = out.detach().float()
 
-    return {"atom_ms": atom_ms, "probe_ms_total": probe_ms, "num_chunks": num_chunks}
+    return {
+        "atom_ms": atom_ms,
+        "probe_ms_total": probe_ms,
+        "num_chunks": num_chunks,
+        "first_chunk_preds": first_chunk_preds,
+    }
 
 
 def run(rank, cfg, env):
@@ -189,6 +198,11 @@ def run(rank, cfg, env):
         )
     torch.cuda.set_device(rank)
     device = f"cuda:{rank}"
+
+    # Disable cuDNN autotune so first-of-shape kernels don't pay an
+    # autotune cost mid-benchmark — atom representations and probe-edge
+    # tensors vary in shape per material.
+    torch.backends.cudnn.benchmark = False
 
     # Model — note: NOT wrapped in DDP. Each rank runs an independent forward
     # on its shard of the data; we measure single-GPU throughput per rank.
@@ -318,6 +332,17 @@ def evaluate(model, dataloader, split_name, device, global_rank, total):
         e2e_chunk_s = (wall_end - wall_start) + load_time
         is_warmup = i < WARMUP_SAMPLES
 
+        # Sanity print on the very first material — surfaces a silent
+        # weight-loading or normalization bug that wouldn't otherwise show
+        # up in throughput numbers (all-zero / NaN preds, etc.).
+        if i == 0 and global_rank == 0 and timing.get("first_chunk_preds") is not None:
+            p = timing["first_chunk_preds"]
+            print(
+                f"  first prediction stats (chunk 0): "
+                f"min={p.min().item():.4g} max={p.max().item():.4g} "
+                f"mean={p.mean().item():.4g} std={p.std().item():.4g}"
+            )
+
         results.append(
             {
                 "filename": filename,
@@ -360,8 +385,19 @@ def merge_and_summarize(tmp_dir):
     df_partials = pd.concat(dfs, ignore_index=True)
     df_partials.to_csv(OUTPUT_DIR / "throughput_partials.csv", index=False)
 
-    # Aggregate to one row per material.
-    df = df_partials[~df_partials["warmup"]].copy()
+    # Aggregate to one row per material. We must drop ENTIRE materials whose
+    # any partial fell inside the warmup window — otherwise materials whose
+    # first partial is warmup but whose later partials aren't would have
+    # their per-material forward_ms summed without that warmup partial,
+    # biasing the per-material total low. (For the typical case where each
+    # material is one partial this collapses to "drop the first N materials
+    # per rank", which matches the intended semantic of warmup.)
+    warmup_files = set(
+        df_partials.loc[df_partials["warmup"], "filename"].unique().tolist()
+    )
+    if warmup_files:
+        print(f"Dropping {len(warmup_files)} materials with warmup partials")
+    df = df_partials[~df_partials["filename"].isin(warmup_files)].copy()
     by_file = df.groupby(["filename", "split"], as_index=False).agg(
         num_atoms=("num_atoms", "first"),
         grid_voxels=("grid_voxels", "first"),
