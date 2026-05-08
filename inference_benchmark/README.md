@@ -58,17 +58,29 @@ first-of-shape kernels don't pay an autotune cost mid-benchmark; without
 this, ChargE3Net's `atom_ms` showed 6–7 s outliers on a few materials
 where typical was ~30 ms.
 
-### Out of scope: input-generation cost
+### Production cost framing — what each side's number includes
 
-The ResUNet input is a **low-resolution density** that itself comes from
-a fast/cheap DFT run (the `data/` half of `chg_datasets/rho_gga`). That
-upstream DFT cost is not measured here — both benchmarks start from
-files already on disk. ChargE3Net needs only the structure (atoms +
-cell), so its real production cost is roughly what's reported. ResUNet's
-real production cost is what's reported **plus** whatever it takes to
-generate the low-res input. Whether that delta matters depends on the
-deployment scenario; for a like-for-like model-vs-model comparison on
-the same end-state grid, the numbers below are the right ones.
+Both benchmarks start from files already on disk; neither timing
+includes the upstream DFT cost. After that, the two sides differ in
+what their reported `e2e_s` actually represents:
+
+- **ChargE3Net `e2e_s` ≈ true per-inference production cost.** Of the
+  per-material e2e, ~85% is forward, ~14% is graph construction
+  (`graph_build_s` — building the KdTree + supercell + probe edges),
+  and <1% is file I/O. Graph construction is **not** preprocessing —
+  it has to happen on every input structure. So ChargE3Net's e2e is
+  honest as a production number even if you hand it a Structure
+  object directly from a Python API.
+- **ResUNet `e2e_s` = forward + small file read, MINUS the low-res
+  DFT.** ResUNet's input is the `data/` half of rho_gga: a coarse
+  density that comes from a cheap pre-pass. We don't measure that
+  pre-pass here. Real production cost is what's reported **plus** the
+  low-res DFT.
+
+For a like-for-like model-vs-model comparison on the same end-state
+grid, the numbers below are the right ones. They should not be quoted
+as production parity without naming both sides' implicit assumptions
+(ResUNet excludes low-res DFT; ChargE3Net's graph build is real).
 
 ## Same materials, different repos
 
@@ -116,32 +128,35 @@ rsync -av --delete \
 
 ## Smoke-test result — order-of-magnitude only
 
-> ⚠ **Smoke test, n=17 same materials, single A100.** Treat as
-> order-of-magnitude. The headline run is the full 1000-material sweep
-> on this same post-fix code.
-
-Post-fix numbers (this PR's code):
+> ⚠ **Smoke test, n=17 same materials (sampled from rho_gga test
+> partition), single A100, post-fix code.** Treat as order-of-magnitude.
+> The headline run is the full 1000-material sweep.
 
 | Metric | ResUNet | ChargE3Net | Ratio |
 |---|---|---|---|
-| forward_ms median | 66 | 47,632 | ~720× |
-| forward_ms p95 | 518 | 104,235 | ~200× |
-| e2e_s median | 0.83 | 55.5 | **~67×** |
-| e2e_s p95 | 1.81 | 120.9 | ~67× |
-| voxels/sec (forward) median | ~15M | ~21k | ~720× |
+| forward_ms median | 67.7 | 41,416 | ~610× |
+| forward_ms p95 | 230 | 76,815 | ~330× |
+| e2e_s median | 0.084 | 47.8 | **~570×** |
+| e2e_s p95 | 0.273 | 89.7 | ~330× |
+| voxels/sec (forward) median | ~14M | ~25k | ~570× |
 
-The e2e ratio (~67×) is smaller than forward-only because both share
-CHGCAR load overhead. In a true production setting starting from a
-structure rather than a CHGCAR-on-disk, the e2e gap would widen toward
-the forward-only ratio (load cost matters more for the fast model).
+ChargE3Net's per-material e2e breaks down roughly as **~85% forward,
+~14% graph construction, <1% file I/O**. Graph construction is a real
+per-inference cost — it gets paid every time the model is called on a
+new structure, not just on the first.
 
 **First-prediction sanity stats** (verifies neither model is silently
 emitting zeros or NaN):
 
 | Model | min | max | mean | std |
 |---|---|---|---|---|
-| ResUNet | 0.108 | 14.87 | 0.737 | 1.267 |
-| ChargE3Net | 0.040 | 2.34 | 0.311 | 0.431 |
+| ResUNet | 9.76e-6 | 1.46e-3 | 4.30e-5 | 8.81e-5 |
+| ChargE3Net | 0.0145 | 7.84 | 0.493 | 1.263 |
+
+ResUNet outputs are small in magnitude because of the `density /
+np.prod(gridsize)` normalization — total electrons per voxel for a
+typical cell is ~10⁻⁵. ChargE3Net predicts raw density values directly
+(electrons/Å³ scale).
 
 ## Reproducing
 
