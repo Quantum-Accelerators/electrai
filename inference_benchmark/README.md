@@ -92,24 +92,32 @@ rsync -av --delete \
 
 ## Smoke-test result — order-of-magnitude only
 
-> ⚠ **Smoke test, n=17, single A100.** Treat these numbers as
-> order-of-magnitude. They were collected before the bugfixes in this
-> PR (label-CHGCAR load on the ResUNet side; ChargE3Net per-material
-> warmup aggregation) and before `cudnn.benchmark=False`. The headline
-> run is the full 1000-material sweep on the post-fix code.
+> ⚠ **Smoke test, n=17 same materials, single A100.** Treat as
+> order-of-magnitude. The headline run is the full 1000-material sweep
+> on this same post-fix code.
 
-| Metric | ResUNet | ChargE3Net | Ratio (smoke, indicative) |
+Post-fix numbers (this PR's code):
+
+| Metric | ResUNet | ChargE3Net | Ratio |
 |---|---|---|---|
-| forward_ms median | 70 | 47,534 | ~680× |
-| forward_ms p95 | 298 | 101,406 | ~340× |
-| e2e_s median | 1.43 | 55.3 | ~39× |
-| e2e_s p95 | 3.00 | 118.0 | ~39× |
-| voxels/sec (forward) median | ~14M | ~21k | ~670× |
+| forward_ms median | 66 | 47,632 | ~720× |
+| forward_ms p95 | 518 | 104,235 | ~200× |
+| e2e_s median | 0.83 | 55.5 | **~67×** |
+| e2e_s p95 | 1.81 | 120.9 | ~67× |
+| voxels/sec (forward) median | ~15M | ~21k | ~720× |
 
-The e2e ratio is much smaller than forward-only because both share CHGCAR
-load overhead (~1–3 s/material). In a true production setting starting
-from a structure rather than a CHGCAR-on-disk, the e2e gap would widen
-toward the forward-only ratio (load cost matters more for the fast model).
+The e2e ratio (~67×) is smaller than forward-only because both share
+CHGCAR load overhead. In a true production setting starting from a
+structure rather than a CHGCAR-on-disk, the e2e gap would widen toward
+the forward-only ratio (load cost matters more for the fast model).
+
+**First-prediction sanity stats** (verifies neither model is silently
+emitting zeros or NaN):
+
+| Model | min | max | mean | std |
+|---|---|---|---|---|
+| ResUNet | 0.108 | 14.87 | 0.737 | 1.267 |
+| ChargE3Net | 0.040 | 2.34 | 0.311 | 0.431 |
 
 ## Reproducing
 
@@ -166,3 +174,12 @@ distributions, etc.).
 4. **`atom_ms` outliers** — `cudnn.benchmark=False` is now set on both
    sides, which should remove the 6–7 s autotune outliers we saw in the
    smoke test. Worth verifying once the post-fix run lands.
+5. **Should `cudnn.benchmark` differ per side?** Post-fix smoke run
+   showed ResUNet's forward p95 climbed 298 → 518 ms with autotune
+   disabled, while the median moved -6%. Likely autotune was helpful
+   for ResUNet (one whole-grid conv per material, stable shapes within
+   a material) and harmful for ChargE3Net (probe-edge tensors vary in
+   shape per chunk → autotune fires repeatedly). Open question: keep
+   `cudnn.benchmark=True` on the ResUNet side, or do per-shape warmup
+   instead. Need the full run to distinguish a real regression from
+   n=17 p95 noise (one outlier swings p95 heavily at this n).
