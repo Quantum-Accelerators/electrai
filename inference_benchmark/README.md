@@ -97,11 +97,18 @@ electrai (this repo)
 ├── job_resunet_throughput.slurm                # ResUNet slurm wrapper
 └── inference_benchmark/
     ├── README.md                               # this file
+    ├── configs/                                # frozen training-config snapshots
+    │   ├── SOURCES.md                          #   for the two checkpoints we benchmark
+    │   ├── resunet/ckpt_1_training.yaml        #   — verifies inference knobs
+    │   └── charge3net/{train_mp_e3_final,      #     match training
+    │                   e3_density,
+    │                   mp_data,
+    │                   kdtree}.yaml
     └── charge3net/                             # reference copy of the
         ├── benchmark_inference.py              #   charge3net side; lives
         ├── launch_benchmark.py                 #   on the
         ├── run_benchmark.slurm                 #   benchmark/inference-throughput
-        ├── preprocess_chgcars.py               #   branch of the charge3net
+        ├── preprocess_density.py               #   branch of the charge3net
         └── run_preprocess.slurm                #   fork
 ```
 
@@ -209,11 +216,12 @@ distributions, etc.).
    single-A100, or shard across 4 GPUs (`NPROCS=4`) for ~4 h. ResUNet
    finishes 1000 in ~20 min. Decide if the smoke-test shape is enough or
    we want the headline run (after the post-fix re-run).
-3. **ChargE3Net hyperparameters** — the script bakes in
+3. ~~**ChargE3Net hyperparameters confirmation**~~ — resolved: the
+   training-config snapshots in `configs/charge3net/` confirm the
    `cutoff=4.0, num_interactions=3, num_neighbors=20, mul=500, lmax=4,
-   basis="gaussian", num_basis=20` from `train_mp_e3_final.yaml`. Worth
-   confirming with Hananeh that those match the published `charge3net_mp.pt`
-   checkpoint before publishing the headline number.
+   basis="gaussian", num_basis=20, max_predict_batch_probes=2500`
+   constants baked into the benchmark match the published checkpoint's
+   training config.
 4. **`atom_ms` outliers** — `cudnn.benchmark=False` is now set on both
    sides, which should remove the 6–7 s autotune outliers we saw in the
    smoke test. Worth verifying once the post-fix run lands.

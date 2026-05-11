@@ -188,6 +188,11 @@ skip-magic-trailing-comma = true
     # subject to electrai's lint policy.
     "ALL",
 ]
+"inference_benchmark/configs/**" = [
+    # Frozen YAML snapshots of training configs that produced the
+    # benchmark checkpoints. Documentation, not code.
+    "ALL",
+]
 "src/resenet_density/**" = [
     "E722",    # bare except
     "E741",    # ambiguous variable name
