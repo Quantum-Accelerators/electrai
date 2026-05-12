@@ -11,8 +11,13 @@ headline number is **median time per material on the full grid** — that's
 the question someone deploying either model is asking.
 
 Both benchmarks share a CSV schema (`filename, num_atoms, grid_voxels,
-forward_ms, load_s, e2e_s, voxels_per_sec_*, warmup`) so the two output
-files can be joined on `filename` for a per-material comparison.
+forward_ms, load_s, e2e_s, peak_memory_mb, voxels_per_sec_*, warmup`)
+so the two output files can be joined on `filename` for a per-material
+comparison. `peak_memory_mb` is the marginal GPU peak for processing
+one material (counter is reset before each material on the ResUNet
+side and before each partial on the ChargE3Net side, then aggregated
+as `max` per material) — useful for catching memory-driven scaling
+asymmetries the throughput numbers alone miss.
 
 ## Methodology
 
@@ -109,7 +114,13 @@ electrai (this repo)
         ├── launch_benchmark.py                 #   on the
         ├── run_benchmark.slurm                 #   benchmark/inference-throughput
         ├── preprocess_density.py               #   branch of the charge3net
-        └── run_preprocess.slurm                #   fork
+        ├── run_preprocess.slurm                #   fork
+        └── upstream/                           # frozen copies of the four
+            ├── README.md                       #   upstream files the
+            ├── dataset.py                      #   ChargE3Net benchmark
+            ├── graph_construction.py           #   depends on, so a
+            ├── predictions.py                  #   reviewer can verify
+            └── e3.py                           #   its environment claims
 ```
 
 The `charge3net/` subdirectory is included **as a reference for review** —

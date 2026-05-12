@@ -355,10 +355,16 @@ def evaluate(model, dataloader, split_name, device, global_rank, total):
         partial_flag = bool(batch["partial"].item())
 
         try:
+            # Reset peak counter at the start of each partial so the
+            # recorded value is the marginal peak for processing this
+            # one partial (model weights already resident).
+            torch.cuda.reset_peak_memory_stats(device)
+
             wall_start = time.time()
             batch = _to_device(batch, device)
             timing = _timed_forward(model, batch, device)
             wall_end = time.time()
+            peak_memory_mb = torch.cuda.max_memory_allocated(device) / (1024**2)
         except Exception as e:
             print(
                 f"  [Rank {global_rank}] Error on {filename} (offset={probe_offset}): {e}"
@@ -401,6 +407,7 @@ def evaluate(model, dataloader, split_name, device, global_rank, total):
                 "graph_build_s": graph_build_s,
                 "load_s": load_time,
                 "e2e_chunk_s": e2e_chunk_s,
+                "peak_memory_mb": peak_memory_mb,
                 "warmup": is_warmup,
             }
         )
@@ -461,6 +468,9 @@ def merge_and_summarize(tmp_dir):
         forward_ms=("forward_ms", "sum"),
         file_load_s=("file_load_s", "first"),
         graph_build_s=("graph_build_s", "sum"),
+        # Peak GPU memory is "max across partials" — the peak we'd need
+        # to provision to process the worst partial of this material.
+        peak_memory_mb=("peak_memory_mb", "max"),
     )
     by_file["e2e_s"] = (
         by_file["file_load_s"]
@@ -484,6 +494,8 @@ def merge_and_summarize(tmp_dir):
             forward_ms_p95=("forward_ms", lambda s: s.quantile(0.95)),
             e2e_s_median=("e2e_s", "median"),
             e2e_s_p95=("e2e_s", lambda s: s.quantile(0.95)),
+            peak_memory_mb_median=("peak_memory_mb", "median"),
+            peak_memory_mb_max=("peak_memory_mb", "max"),
             voxels_per_sec_forward_median=("voxels_per_sec_forward", "median"),
             voxels_per_sec_e2e_median=("voxels_per_sec_e2e", "median"),
         )

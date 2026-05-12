@@ -13,7 +13,8 @@ upsamples to a high-res grid; we time the forward pass per material.
 
 Output: <output>/throughput_by_material.csv with columns matching the
 charge3net benchmark (filename, num_atoms, grid_voxels, forward_ms,
-load_s, e2e_s, voxels_per_sec_forward, voxels_per_sec_e2e, warmup).
+load_s, e2e_s, peak_memory_mb, voxels_per_sec_forward,
+voxels_per_sec_e2e, warmup).
 """
 
 from __future__ import annotations
@@ -135,6 +136,7 @@ def benchmark(args):
         "forward_ms",
         "load_s",
         "e2e_s",
+        "peak_memory_mb",
         "voxels_per_sec_forward",
         "voxels_per_sec_e2e",
         "warmup",
@@ -143,6 +145,11 @@ def benchmark(args):
 
     for i, mpid in enumerate(mpids):
         try:
+            # Reset peak counter at the start of each material so the
+            # recorded value is the marginal peak for processing this
+            # one material (model weights are already resident).
+            torch.cuda.reset_peak_memory_stats(device)
+
             wall_start = time.time()
             data, num_atoms = load_zarr_input(input_dir, mpid, dtype)
             data = data.to(device, non_blocking=True)
@@ -157,6 +164,7 @@ def benchmark(args):
             torch.cuda.synchronize(device)
             forward_ms = start.elapsed_time(end)
             e2e_s = time.time() - wall_start
+            peak_memory_mb = torch.cuda.max_memory_allocated(device) / (1024**2)
 
             # Sanity print on the very first material — surfaces a silent
             # weight-loading or normalization bug that wouldn't otherwise
@@ -179,6 +187,7 @@ def benchmark(args):
                     "forward_ms": forward_ms,
                     "load_s": load_s,
                     "e2e_s": e2e_s,
+                    "peak_memory_mb": peak_memory_mb,
                     "voxels_per_sec_forward": grid_voxels / (forward_ms / 1000.0),
                     "voxels_per_sec_e2e": grid_voxels / e2e_s,
                     "warmup": is_warmup,
@@ -187,7 +196,8 @@ def benchmark(args):
             if (i + 1) % 25 == 0 or i == 0:
                 print(
                     f"  [{i + 1}/{len(mpids)}] {mpid} "
-                    f"voxels={grid_voxels} fwd={forward_ms:.1f}ms e2e={e2e_s:.2f}s"
+                    f"voxels={grid_voxels} fwd={forward_ms:.1f}ms e2e={e2e_s:.2f}s "
+                    f"peak={peak_memory_mb:.0f}MB"
                     f"{' (warmup)' if is_warmup else ''}",
                     flush=True,
                 )
@@ -205,6 +215,7 @@ def benchmark(args):
     if valid:
         fwd = sorted(r["forward_ms"] for r in valid)
         e2e = sorted(r["e2e_s"] for r in valid)
+        mem = sorted(r["peak_memory_mb"] for r in valid)
 
         def p50(xs):
             return xs[len(xs) // 2]
@@ -215,8 +226,9 @@ def benchmark(args):
         print("\n" + "=" * 70)
         print(f"THROUGHPUT SUMMARY (n={len(valid)}, warmup excluded)")
         print("=" * 70)
-        print(f"  forward_ms  median={p50(fwd):.1f}  p95={p95(fwd):.1f}")
-        print(f"  e2e_s       median={p50(e2e):.3f}  p95={p95(e2e):.3f}")
+        print(f"  forward_ms      median={p50(fwd):.1f}  p95={p95(fwd):.1f}")
+        print(f"  e2e_s           median={p50(e2e):.3f}  p95={p95(e2e):.3f}")
+        print(f"  peak_memory_mb  median={p50(mem):.0f}  max={max(mem):.0f}")
 
 
 def main():
