@@ -144,37 +144,82 @@ rsync -av --delete \
   inference_benchmark/charge3net/
 ```
 
-## Smoke-test result — order-of-magnitude only
+## Headline result — full rho_gga test sample, n=994 same materials
 
-> ⚠ **Smoke test, n=17 same materials (sampled from rho_gga test
-> partition), single A100, post-fix code.** Treat as order-of-magnitude.
-> The headline run is the full 1000-material sweep.
+Both runs on a single A100, fp32, batch_size=1. Same 1000 mpids
+sampled (seed=42) from `rho_gga/split_limit_22M.json["test"]`; 994
+land in both per-material CSVs after warmup is excluded on each side.
 
-| Metric | ResUNet | ChargE3Net | Ratio |
+| Metric | ResUNet (n=997) | ChargE3Net (n=994) | **Ratio** |
 |---|---|---|---|
-| forward_ms median | 67.7 | 41,416 | ~610× |
-| forward_ms p95 | 230 | 76,815 | ~330× |
-| e2e_s median | 0.084 | 47.8 | **~570×** |
-| e2e_s p95 | 0.273 | 89.7 | ~330× |
-| voxels/sec (forward) median | ~14M | ~25k | ~570× |
+| forward_ms median | 85 | 47,352 | **557×** |
+| forward_ms p95 | 285 | 186,381 | 655× |
+| e2e_s median | 0.110 | 55.4 | **503×** |
+| e2e_s p95 | 0.331 | 218.9 | 661× |
+| voxels/sec (forward) median | ~13M | ~26k | ~500× |
 
-ChargE3Net's per-material e2e breaks down roughly as **~85% forward,
-~14% graph construction, <1% file I/O**. Graph construction is a real
-per-inference cost — it gets paid every time the model is called on a
-new structure, not just on the first.
+Wall time on a single A100: **ResUNet 2:46 for 1000 materials**;
+**ChargE3Net ~17 h for 749 materials** (the per-material join below
+uses 994 materials combined from a salvaged partial run plus this
+remaining-materials run).
 
-**First-prediction sanity stats** (verifies neither model is silently
-emitting zeros or NaN):
+### Per-material ratio distribution (ChargE3Net / ResUNet)
+
+The aggregate medians don't capture how much the ratio varies by
+material. Joined on `filename` (994 materials in both):
+
+| Metric | p5 | **median** | p95 | min | max |
+|---|---|---|---|---|---|
+| forward_ratio | 298 | **572** | 877 | 49 | 1,288 |
+| e2e_ratio | 268 | **514** | 818 | 52 | 1,255 |
+
+**0/994 materials where ChargE3Net is faster than ResUNet on forward.**
+The minimum 49× gap is the closest race, not a flip.
+
+The worst-case ChargE3Net forward in the sample (mp-1936073, 44 atoms,
+11.2M voxels) is **537 seconds**, vs. 0.71 s for ResUNet on the same
+material — a 761× single-material gap. ChargE3Net's forward grows
+multiplicatively with cell size *and* grid size because each probe's
+graph has more atom edges to evaluate.
+
+### Cost decomposition on ChargE3Net (timing)
+
+Per-material e2e breaks down roughly as **~85% forward, ~14% graph
+construction, <1% file I/O**. Graph construction is a real
+per-inference cost — every new structure pays it.
+
+### Memory (secondary)
+
+ResUNet: ~1.5 GB median, 11.8 GB worst-case. ChargE3Net: ~7.3 GB
+median, 18.5 GB worst-case (~46% of an A100-40GB). The memory ratio
+shrinks for big grids: 35/994 materials (3.5%, all small cells with
+sparse but large grids) actually use less GPU memory on ChargE3Net
+than on ResUNet, because ChargE3Net's memory is bounded by probe-chunk
+size while ResUNet's scales with whole-grid 3D-conv activations. See
+`joined_per_material.csv` for the full distribution.
+
+### Data products (on della, group-readable)
+
+`/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/inference_benchmark/`
+
+| File | Rows | Contents |
+|---|---|---|
+| `joined_per_material.csv` | 994 | Per-material join. Both sides' `forward_ms / e2e_s / peak_memory_mb` plus computed `forward_ratio / e2e_ratio / peak_mem_ratio`. The right starting point for plots. |
+| `resunet_per_material.csv` | 1000 | ResUNet headline CSV (3 warmup rows tagged in column). |
+| `charge3net_per_material.csv` | 994 | ChargE3Net headline CSV. |
+| `charge3net_partials_rank0.csv` | 251 | One row per (material, probe_offset) partial chunk from a partial-run salvage. Used to derive ChargE3Net's atom_ms / probe_ms / graph_build_s diagnostics. |
+| `charge3net_partials_remaining.csv` | ~750 | Same schema, from the single-A100 remaining-materials run. |
+
+### First-prediction sanity stats
 
 | Model | min | max | mean | std |
 |---|---|---|---|---|
 | ResUNet | 9.76e-6 | 1.46e-3 | 4.30e-5 | 8.81e-5 |
 | ChargE3Net | 0.0145 | 7.84 | 0.493 | 1.263 |
 
-ResUNet outputs are small in magnitude because of the `density /
-np.prod(gridsize)` normalization — total electrons per voxel for a
-typical cell is ~10⁻⁵. ChargE3Net predicts raw density values directly
-(electrons/Å³ scale).
+ResUNet outputs are small because of the `density / np.prod(gridsize)`
+normalization (total electrons per voxel ~10⁻⁵). ChargE3Net predicts
+raw density values (electrons/Å³ scale).
 
 ## Reproducing
 
@@ -223,10 +268,9 @@ distributions, etc.).
    is the bigger model and has more to gain from reduced precision.
    Doing the sweep on only ResUNet would artificially widen the gap, so
    either both or neither.
-2. **Going to the full 1000 materials** — ChargE3Net would need ~15 h
-   single-A100, or shard across 4 GPUs (`NPROCS=4`) for ~4 h. ResUNet
-   finishes 1000 in ~20 min. Decide if the smoke-test shape is enough or
-   we want the headline run (after the post-fix re-run).
+2. ~~**Going to the full 1000 materials**~~ — done. Per-material join at
+   n=994 is in `joined_per_material.csv` on della. ResUNet completed in
+   2:46; ChargE3Net in ~17 h on a single A100 across the sample.
 3. ~~**ChargE3Net hyperparameters confirmation**~~ — resolved: the
    training-config snapshots in `configs/charge3net/` confirm the
    `cutoff=4.0, num_interactions=3, num_neighbors=20, mul=500, lmax=4,
@@ -236,21 +280,11 @@ distributions, etc.).
 4. **`atom_ms` outliers** — `cudnn.benchmark=False` is now set on both
    sides, which should remove the 6–7 s autotune outliers we saw in the
    smoke test. Worth verifying once the post-fix run lands.
-5. **`cudnn.benchmark=False` on ResUNet is likely costing real time.**
-   Post-fix smoke showed ResUNet's forward p95 climbed 298 → 518 ms (the
-   median moved -6%). This is probably not n=17 noise — ResUNet conv
-   shapes vary across materials (different unit cells → different grid
-   sizes), so with autotune off, every material pays the slow-default-
-   kernel cost. Two cleaner options before publishing a headline number:
-   - **Pre-warm per shape**: walk the dataset once and run a dummy
-     forward at each unique grid shape with `cudnn.benchmark=True`, then
-     start measurement. ResUNet has a small number of distinct shapes;
-     ChargE3Net's per-chunk variance defeats this anyway, so it's an
-     honest win for ResUNet only.
-   - **Per-side asymmetry**: leave `cudnn.benchmark=True` on ResUNet,
-     off on ChargE3Net, document why. Defensible but easy to get wrong
-     in re-runs.
-
-   Either is preferable to the current "off everywhere" once we go to
-   the full run. The current setting is acceptable to land this PR
-   because the smoke result is explicitly labelled order-of-magnitude.
+5. **`cudnn.benchmark=False` on ResUNet — open whether to flip back.**
+   Smoke had flagged ResUNet's forward p95 climbing 298 → 518 ms with
+   autotune disabled. The full run shows median 85 ms, p95 285 ms —
+   still over the autotune-on smoke baseline, but on a different data
+   sample so not directly comparable. Worth a controlled A/B (one full
+   run with `cudnn.benchmark=True` on ResUNet only) before quoting the
+   forward number externally. Even at 285 ms p95, the ratio vs
+   ChargE3Net stays in the same order of magnitude.
