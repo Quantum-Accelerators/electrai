@@ -35,7 +35,7 @@ class AddDatasetID(Dataset):
         return len(self.base)
 
     def __getitem__(self, idx):
-        out = self.base[idx]
+        out = dict(self.base[idx])
         out[self.key] = self.functional_id
         return out
 
@@ -104,6 +104,9 @@ class RhoRead(LightningDataModule):
         test_parts: list[Dataset] = []
 
         for spec in self.specs:
+            if stage == "test" and spec.split_file is None:
+                continue
+
             ds = RhoData(
                 spec.root, precision=self.precision, augmentation=self.augmentation
             )

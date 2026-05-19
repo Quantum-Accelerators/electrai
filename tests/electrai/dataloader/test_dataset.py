@@ -339,7 +339,9 @@ class TestRhoReadSetup:
         splits["test"] = splits["train"]
         mock_split.return_value = splits
 
-        reader = RhoRead(datasets=[{"root": "/a/filelist.txt"}])
+        reader = RhoRead(
+            datasets=[{"root": "/a/filelist.txt", "split_file": "/split.json"}]
+        )
         reader.setup("test")
 
         assert reader.test_set is not None

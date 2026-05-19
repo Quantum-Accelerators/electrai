@@ -95,8 +95,17 @@ class LightningGenerator(LightningModule):
         end = torch.cuda.Event(enable_timing=True)
 
         start.record()
-        preds = self(x)
-        loss = self.loss_fn(preds, y)
+        if isinstance(x, list):
+            preds_list, losses = [], []
+            for x_i, y_i in zip(x, y, strict=True):
+                p = self(x_i.unsqueeze(0))
+                preds_list.append(p)
+                losses.append(self.loss_fn(p, y_i.unsqueeze(0)))
+            preds = torch.cat(preds_list)
+            loss = torch.stack(losses).mean()
+        else:
+            preds = self(x)
+            loss = self.loss_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
