@@ -4,7 +4,7 @@ data:
   datasets:
     - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_2/mp_filelist.txt
       split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_2/split.json
-      val_frac: 0.005
+      val_frac: 0.005  # ignored when split_file is provided
   precision: f32
   batch_size: 1
   train_workers: 8

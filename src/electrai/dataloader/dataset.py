@@ -79,10 +79,6 @@ class RhoRead(LightningDataModule):
         ]
         filled: list[DatasetSpec] = []
         for i, s in enumerate(specs):
-            if s.root is None:
-                raise ValueError(
-                    f"`root` is required for dataset {i + 1}. Received: {s.root!r}"
-                )
             dataset_id = s.dataset_id if s.dataset_id is not None else i
             filled.append(
                 DatasetSpec(
@@ -120,10 +116,12 @@ class RhoRead(LightningDataModule):
 
             dataset_id = int(spec.dataset_id)
 
-            train_parts.append(AddDatasetID(splits["train"], dataset_id))
-            val_parts.append(AddDatasetID(splits["validation"], dataset_id))
-            if "test" in splits and splits["test"] is not None:
-                test_parts.append(AddDatasetID(splits["test"], dataset_id))
+            if stage == "fit":
+                train_parts.append(AddDatasetID(splits["train"], dataset_id))
+                val_parts.append(AddDatasetID(splits["validation"], dataset_id))
+            elif stage == "test":
+                if "test" in splits and splits["test"] is not None:
+                    test_parts.append(AddDatasetID(splits["test"], dataset_id))
 
         if stage == "fit":
             self.train_set = (

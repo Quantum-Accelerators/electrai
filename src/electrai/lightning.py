@@ -43,6 +43,7 @@ class LightningGenerator(LightningModule):
         return loss
 
     def _loss_calculation(self, batch):
+        # batch["Dataset_ID"] is available for future multi-head model extensions
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):
