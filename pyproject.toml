@@ -180,6 +180,19 @@ skip-magic-trailing-comma = true
     "ARG",  # flake8-unused-arguments (Lightning callbacks)
     "T201", # print used (notebooks)
 ]
+"scripts/benchmark_*.py" = [
+    "T201", # print used (CLI script logging)
+]
+"inference_benchmark/charge3net/**" = [
+    # Reference copies of files that live in the charge3net fork; not
+    # subject to electrai's lint policy.
+    "ALL",
+]
+"inference_benchmark/configs/**" = [
+    # Frozen YAML snapshots of training configs that produced the
+    # benchmark checkpoints. Documentation, not code.
+    "ALL",
+]
 "src/resenet_density/**" = [
     "E722",    # bare except
     "E741",    # ambiguous variable name
