@@ -97,14 +97,19 @@ def write_chgcar_to_zarr(
 
         # Store total charge density
         total_density = np.array(charge_data["total"], dtype=np.float32)
-        root.create(name="charge_density_total", data=total_density, chunks=chunks)
+        resolved_chunks = chunks if chunks else total_density.shape
+        root.create(
+            name="charge_density_total", data=total_density, chunks=resolved_chunks
+        )
         logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
         # Store diff charge density (if present and write_diff is True)
         diff_density_raw = charge_data.get("diff")
         if write_diff and diff_density_raw is not None:
             diff_density = np.array(diff_density_raw, dtype=np.float32)
-            root.create(name="charge_density_diff", data=diff_density, chunks=chunks)
+            root.create(
+                name="charge_density_diff", data=diff_density, chunks=resolved_chunks
+            )
             logger.debug(f"Stored diff charge density with shape {diff_density.shape}")
 
         # Store structure information as JSON
