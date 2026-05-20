@@ -7,5 +7,10 @@ def collate_fn(batch):
     try:
         return default_collate(batch)
     except RuntimeError:
-        x, y, index = zip(*batch, strict=True)
-        return list(x), list(y), list(index)
+        result = {}
+        for k in batch[0]:
+            try:
+                result[k] = default_collate([d[k] for d in batch])
+            except RuntimeError:
+                result[k] = [d[k] for d in batch]
+        return result

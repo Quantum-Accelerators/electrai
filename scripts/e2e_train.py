@@ -186,12 +186,11 @@ def run_training(
             raise ValueError("no samples remain after filtering")
 
     datamodule = RhoRead(
-        root=str(filelist),
+        datasets=[{"root": str(filelist), "val_frac": 0.4}],
         precision="f32",
         batch_size=cfg.nbatch,
         train_workers=0,
         val_workers=0,
-        val_frac=0.4,
         augmentation=False,
         random_seed=seed,
     )

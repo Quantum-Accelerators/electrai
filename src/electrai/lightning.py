@@ -43,6 +43,7 @@ class LightningGenerator(LightningModule):
         return loss
 
     def _loss_calculation(self, batch):
+        # batch["Dataset_ID"] is available for future multi-head model extensions
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):
@@ -94,8 +95,17 @@ class LightningGenerator(LightningModule):
         end = torch.cuda.Event(enable_timing=True)
 
         start.record()
-        preds = self(x)
-        loss = self.loss_fn(preds, y)
+        if isinstance(x, list):
+            preds_list, losses = [], []
+            for x_i, y_i in zip(x, y, strict=True):
+                p = self(x_i.unsqueeze(0))
+                preds_list.append(p)
+                losses.append(self.loss_fn(p, y_i.unsqueeze(0)))
+            preds = torch.cat(preds_list)
+            loss = torch.stack(losses).mean()
+        else:
+            preds = self(x)
+            loss = self.loss_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
@@ -103,8 +113,13 @@ class LightningGenerator(LightningModule):
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
+        y_cpu = (
+            torch.cat([t.unsqueeze(0) for t in y]).detach().cpu()
+            if isinstance(y, list)
+            else y.detach().cpu()
+        )
         out = {
-            "target": y.detach().cpu(),
+            "target": y_cpu,
             "index": indices,
             "nmae": loss.detach().cpu(),
             "duration": elapsed,
