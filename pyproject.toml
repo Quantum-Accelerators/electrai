@@ -40,15 +40,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.4.2", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
+dev = ["pytest>=9.0.3", "pytest-cov>=3.0.0", "ruff>=0.0.285"]
 docs = [
     "mkdocs-material>=9.4.0",
     "mkdocstrings[python]>=0.22.0",
     "mkdocs-gen-files>=0.5.0",
     "mkdocs-literate-nav>=0.6.0",
-    "pillow>=10.0.0",
+    "pillow>=12.2.0",
     "cairosvg>=2.7.1"
 ]
+hf = ["huggingface-hub>=0.20.0"]
 zarr_conversion = [
     "fire>=0.5.0",
     "numcodecs>=0.16.3",
@@ -165,8 +166,46 @@ skip-magic-trailing-comma = true
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**" = ["ANN", "ARG", "D", "E402", "PTH", "S101"]
-"src/resenet_density/**" = ["E722", "E741", "F403", "F405", "F841", "E741", "PD901", "PLW2901", "PTH123", "SIM115", "T201"]
+"tests/**" = [
+    "ANN",     # flake8-annotations (no type annotations required)
+    "ARG",     # flake8-unused-arguments (test fixtures, callbacks)
+    "D",       # pydocstyle (no docstrings required)
+    "E402",    # module-level import not at top (sys.path manipulation)
+    "PLW1510", # subprocess.run without explicit `check`
+    "PTH",     # flake8-use-pathlib (not required in tests)
+    "RUF028",  # fmt: on/off between decorators and def
+    "S101",    # assert used
+    "T201",    # print used
+]
+"examples/**" = [
+    "ARG",  # flake8-unused-arguments (Lightning callbacks)
+    "T201", # print used (notebooks)
+]
+"scripts/benchmark_*.py" = [
+    "T201", # print used (CLI script logging)
+]
+"inference_benchmark/charge3net/**" = [
+    # Reference copies of files that live in the charge3net fork; not
+    # subject to electrai's lint policy.
+    "ALL",
+]
+"inference_benchmark/configs/**" = [
+    # Frozen YAML snapshots of training configs that produced the
+    # benchmark checkpoints. Documentation, not code.
+    "ALL",
+]
+"src/resenet_density/**" = [
+    "E722",    # bare except
+    "E741",    # ambiguous variable name
+    "F403",    # star imports
+    "F405",    # may be undefined from star import
+    "F841",    # unused variable
+    "PD901",   # pandas df variable name
+    "PLW2901", # redefined loop variable
+    "PTH123",  # open() vs Path.open()
+    "SIM115",  # open without context manager
+    "T201",    # print used
+]
 
 [tool.docformatter]
 pre-summary-newline = true
@@ -181,7 +220,7 @@ disable_error_code = "annotation-unchecked"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.2",
+    "pytest>=9.0.3",
     "pytest-cov>=3.0.0",
     "ruff>=0.0.285",
 ]

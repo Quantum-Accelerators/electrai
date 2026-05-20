@@ -3,17 +3,15 @@ data:
   _target_: electrai.dataloader.dataset.RhoRead
   root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/mp_filelist.txt
   split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/split_limit_22M.json
+  val_frac: 0.1
   precision: f32
   batch_size: 1
   train_workers: 8
   val_workers: 2
   pin_memory: false
-  val_frac: 0.005
   drop_last: false
   augmentation: false
   random_seed: 42
-  # downsample_label: 0
-  # downsample_data: 0
 
 # Model
 model:
@@ -24,32 +22,12 @@ model:
   n_residual_blocks: 1
   kernel_size: 5
   depth: 2
-  use_checkpoint: False
 
 # Training parameters
 precision: 32
-epochs: 50
-lr: 0.01
+epochs: 100
+lr: 0.001
 weight_decay: 0.0
 warmup_length: 1
 beta1: 0.9
 beta2: 0.99
-
-# Weights and biases
-wandb_mode: online
-entity: PrinceOA
-wb_pname: mp-experiment
-
-# checkpoints
-ckpt_path: ./checkpoints
-
-# HuggingFace Hub (optional — install with `uv sync --extra hf`)
-# hf:
-#   repo_id: your-username/your-repo  # must already exist on HF
-#   upload_every_n_epochs: 5
-#   upload_immediate: false  # set true on nodes with internet access
-
-# test the model
-# save_pred: true
-# log_dir: ./logs
-# out_dir: ./predictions

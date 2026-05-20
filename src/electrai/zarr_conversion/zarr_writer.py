@@ -26,7 +26,7 @@ def write_chgcar_to_zarr(
     chgcar_data: Chgcar,
     zarr_path: str | Path,
     s3_kwargs: dict[str, Any] | None = None,
-    chunks: tuple[int, int, int] = (16, 16, 16),
+    chunks: tuple[int, int, int] | None = None,
     write_diff: bool = False,
 ) -> None:
     """
@@ -43,11 +43,12 @@ def write_chgcar_to_zarr(
     s3_kwargs : dict[str, Any] | None, optional
         Additional kwargs for S3 filesystem (e.g., anon=True, profile='default').
         Only used if zarr_path is an S3 path. Default: None
-    chunks : tuple[int, int, int], optional
-        Chunk size for zarr arrays. Default: (16, 16, 16)
+    chunks : tuple[int, int, int] | None, optional
+        Chunk size for zarr arrays. If None, uses the full array shape as a
+        single chunk. Default: None
     write_diff : bool, optional
         Whether to write diff charge density data. If False, only total charge
-        density will be written. Default: True
+        density will be written. Default: False
 
     Notes
     -----
@@ -97,9 +98,10 @@ def write_chgcar_to_zarr(
 
         # Store total charge density
         total_density = np.array(charge_data["total"], dtype=np.float32)
-        resolved_chunks = chunks if chunks else total_density.shape
         root.create(
-            name="charge_density_total", data=total_density, chunks=resolved_chunks
+            name="charge_density_total",
+            data=total_density,
+            chunks=chunks or total_density.shape,
         )
         logger.debug(f"Stored total charge density with shape {total_density.shape}")
 
@@ -108,7 +110,9 @@ def write_chgcar_to_zarr(
         if write_diff and diff_density_raw is not None:
             diff_density = np.array(diff_density_raw, dtype=np.float32)
             root.create(
-                name="charge_density_diff", data=diff_density, chunks=resolved_chunks
+                name="charge_density_diff",
+                data=diff_density,
+                chunks=chunks or diff_density.shape,
             )
             logger.debug(f"Stored diff charge density with shape {diff_density.shape}")
 

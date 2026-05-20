@@ -1,3 +1,6 @@
+# Data (S3 mirror)
+data/s3/
+
 # Docs
 .cache/
 examples/QM9
