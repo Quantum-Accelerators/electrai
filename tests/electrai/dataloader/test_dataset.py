@@ -234,7 +234,7 @@ class TestCollateFn:
         ]
         result = collate_fn(batch)
         assert result["index"] == ["x", "y"]
-        assert result["Dataset_ID"] == [3, 5]
+        assert result["Dataset_ID"].tolist() == [3, 5]
 
 
 # --- TestDatasetSpec ---
