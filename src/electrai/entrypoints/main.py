@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 
 import torch
 
@@ -23,6 +24,7 @@ def main() -> None:
     RuntimeError
         if no command was input
     """
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(description="Electrai Entry Point")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -32,14 +34,28 @@ def main() -> None:
     test_parser = subparsers.add_parser("test", help="Evaluate the model")
     test_parser.add_argument("--config", type=str, required=True)
 
+    hf_push_parser = subparsers.add_parser(
+        "hf-push", help="Upload pending checkpoints to HuggingFace Hub"
+    )
+    hf_push_parser.add_argument(
+        "--ckpt-path", type=str, required=True, help="Path to checkpoint directory"
+    )
+    hf_push_parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete local checkpoint files after successful upload (includes best-model checkpoints)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "train":
         train(args)
     elif args.command == "test":
         test(args)
-    else:
-        raise ValueError(f"Unknown command: {args.command}")
+    elif args.command == "hf-push":
+        from electrai.callbacks.hf_upload import hf_push
+
+        hf_push(args.ckpt_path, clean=args.clean)
 
 
 if __name__ == "__main__":

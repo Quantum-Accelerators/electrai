@@ -43,6 +43,7 @@ class LightningGenerator(LightningModule):
         return loss
 
     def _loss_calculation(self, batch):
+        # batch["Dataset_ID"] is available for future multi-head model extensions
         x = batch["data"]
         y = batch["label"]
         if isinstance(x, list):
@@ -94,8 +95,17 @@ class LightningGenerator(LightningModule):
         end = torch.cuda.Event(enable_timing=True)
 
         start.record()
-        preds = self(x)
-        loss = self.loss_fn(preds, y)
+        if isinstance(x, list):
+            preds_list, losses = [], []
+            for x_i, y_i in zip(x, y, strict=True):
+                p = self(x_i.unsqueeze(0))
+                preds_list.append(p)
+                losses.append(self.loss_fn(p, y_i.unsqueeze(0)))
+            preds = torch.cat(preds_list)
+            loss = torch.stack(losses).mean()
+        else:
+            preds = self(x)
+            loss = self.loss_fn(preds, y)
         end.record()
 
         torch.cuda.synchronize()
@@ -105,15 +115,20 @@ class LightningGenerator(LightningModule):
 
         # Per-sample statistics over spatial dims (keep batch dim)
         spatial_dims = tuple(range(1, preds.ndim))  # all dims except batch
+        y_cpu = (
+            torch.cat([t.unsqueeze(0) for t in y]).detach().cpu()
+            if isinstance(y, list)
+            else y.detach().cpu()
+        )
         out = {
-            "target": y.detach().cpu(),
+            "target": y_cpu,
             "index": indices,
             "nmae": loss.detach().cpu(),
             "max_pred": preds.amax(dim=spatial_dims).detach().cpu(),
-            "max_target": y.amax(dim=spatial_dims).detach().cpu(),
+            "max_target": y_cpu.amax(dim=spatial_dims),
             "mean_pred": preds.mean(dim=spatial_dims).detach().cpu(),
-            "mean_target": y.mean(dim=spatial_dims).detach().cpu(),
-            "num_electrons": y.sum(dim=spatial_dims).detach().cpu(),
+            "mean_target": y_cpu.mean(dim=spatial_dims),
+            "num_electrons": y_cpu.sum(dim=spatial_dims),
             "batch_duration_ms": elapsed,
         }
         if self.save_pred:

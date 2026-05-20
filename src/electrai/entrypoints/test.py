@@ -102,11 +102,17 @@ def test(args):
     tmp_dir = log_dir / "tmp"
     for directory in [log_dir, tmp_dir]:
         directory.mkdir(exist_ok=True, parents=True)
+    local_world_size = int(
+        os.environ.get("LOCAL_WORLD_SIZE", torch.cuda.device_count())
+    )
+    world_size = int(os.environ.get("WORLD_SIZE", local_world_size))
+    num_nodes = max(1, world_size // local_world_size)
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=None,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices="auto",
+        num_nodes=num_nodes,
         precision=getattr(cfg, "model_precision", getattr(cfg, "precision", 32)),
     )
 

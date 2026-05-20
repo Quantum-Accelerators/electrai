@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync
@@ -39,7 +39,7 @@ jobs:
       - name: Generate expected values (darwin-arm64)
         run: uv run python scripts/e2e_train.py --update-expected --verbose
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: expected-darwin-arm64
           path: tests/expected_values.json
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync
@@ -58,7 +58,7 @@ jobs:
       - name: Generate expected values (linux)
         run: uv run python scripts/e2e_train.py --update-expected --verbose
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: expected-linux
           path: tests/expected_values.json
@@ -70,13 +70,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download darwin-arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: expected-darwin-arm64
           path: tmp/darwin-arm64
 
       - name: Download linux artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: expected-linux
           path: tmp/linux
@@ -112,7 +112,7 @@ jobs:
           EOF
 
       - name: Upload merged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expected-values
           path: expected_values.json

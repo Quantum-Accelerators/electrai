@@ -1,19 +1,18 @@
 # Dataset / loader parameters
 data:
   _target_: electrai.dataloader.dataset.RhoRead
-  root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_2/mp_filelist.txt
-  split_file: null #/scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/dataset_1/split.json
+  datasets:
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_2/mp_filelist.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/dataset_2/split.json
+      val_frac: 0.005  # ignored when split_file is provided
   precision: f32
   batch_size: 1
   train_workers: 8
   val_workers: 2
   pin_memory: false
-  val_frac: 0.005
   drop_last: false
   augmentation: false
   random_seed: 42
-  # downsample_label: 0
-  # downsample_data: 0
 
 # Model
 model:
@@ -42,6 +41,12 @@ wb_pname: mp-experiment
 
 # checkpoints
 ckpt_path: ./checkpoints
+
+# HuggingFace Hub (optional — install with `uv sync --extra hf`)
+# hf:
+#   repo_id: your-username/your-repo  # must already exist on HF
+#   upload_every_n_epochs: 5
+#   upload_immediate: false  # set true on nodes with internet access
 
 # test the model
 # save_pred: true
