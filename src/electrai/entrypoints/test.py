@@ -20,9 +20,10 @@ def _resolve_checkpoint(cfg) -> Path:
 
     Resolution order:
     1. cfg.ckpt_file — explicit path to a specific .ckpt file
-    2. cfg.ckpt_path / "last.ckpt"
-    3. cfg.ckpt_path / "best.ckpt"
-    4. Latest ckpt_*.ckpt in cfg.ckpt_path (highest epoch by lexicographic sort)
+    2. cfg.ckpt_path itself, if it points to a .ckpt file
+    3. cfg.ckpt_path / "last.ckpt"
+    4. cfg.ckpt_path / "best.ckpt"
+    5. Latest ckpt_*.ckpt in cfg.ckpt_path (highest epoch by lexicographic sort)
     """
     ckpt_file = getattr(cfg, "ckpt_file", None)
     if ckpt_file is not None:
@@ -105,8 +106,8 @@ def test(args):
         logger=wandb_logger,
         callbacks=None,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=1,
-        precision=cfg.model_precision,
+        devices="auto",
+        precision=getattr(cfg, "model_precision", getattr(cfg, "precision", 32)),
     )
 
     lit_model.test_cfg = SimpleNamespace(
@@ -142,30 +143,37 @@ def test(args):
         run_analysis = analyze_cfg is None or getattr(analyze_cfg, "enabled", True)
 
         if run_analysis:
-            from electrai.scripts.analyze.analyze_saturation import analyze_metrics
-
-            saturation_dir = log_dir / "saturation"
-            saturation_dir.mkdir(exist_ok=True, parents=True)
             try:
-                analyze_metrics(metrics_csv, saturation_dir)
-            except (KeyError, ValueError) as e:
-                logger.warning("Saturation analysis skipped: %s", e)
+                from electrai.scripts.analyze.analyze_saturation import analyze_metrics
+
+                saturation_dir = log_dir / "saturation"
+                saturation_dir.mkdir(exist_ok=True, parents=True)
+                try:
+                    analyze_metrics(metrics_csv, saturation_dir)
+                except (KeyError, ValueError) as e:
+                    logger.warning("Saturation analysis skipped: %s", e)
+            except ImportError as e:
+                logger.warning("Saturation analysis module unavailable: %s", e)
 
             # Tail analysis requires metadata CSV
             metadata_path = (
                 getattr(analyze_cfg, "metadata", None) if analyze_cfg else None
             )
             if metadata_path is not None:
-                from electrai.scripts.analyze.analyze_tail import main as tail_main
+                try:
+                    from electrai.scripts.analyze.analyze_tail import main as tail_main
 
-                tail_dir = log_dir / "tail"
-                tail_main(
-                    [
-                        "--metrics",
-                        str(metrics_csv),
-                        "--metadata",
-                        str(metadata_path),
-                        "--output-dir",
-                        str(tail_dir),
-                    ]
-                )
+                    tail_dir = log_dir / "tail"
+                    tail_dir.mkdir(exist_ok=True, parents=True)
+                    tail_main(
+                        [
+                            "--metrics",
+                            str(metrics_csv),
+                            "--metadata",
+                            str(metadata_path),
+                            "--output-dir",
+                            str(tail_dir),
+                        ]
+                    )
+                except ImportError as e:
+                    logger.warning("Tail analysis module unavailable: %s", e)

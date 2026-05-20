@@ -109,13 +109,12 @@ class LightningGenerator(LightningModule):
             "target": y.detach().cpu(),
             "index": indices,
             "nmae": loss.detach().cpu(),
-            "loss": loss.detach().cpu(),
             "max_pred": preds.amax(dim=spatial_dims).detach().cpu(),
             "max_target": y.amax(dim=spatial_dims).detach().cpu(),
             "mean_pred": preds.mean(dim=spatial_dims).detach().cpu(),
             "mean_target": y.mean(dim=spatial_dims).detach().cpu(),
             "num_electrons": y.sum(dim=spatial_dims).detach().cpu(),
-            "duration_ms": elapsed,
+            "batch_duration_ms": elapsed,
         }
         if self.save_pred:
             out["pred"] = preds.detach().cpu()
@@ -136,7 +135,6 @@ class LightningGenerator(LightningModule):
         # Ensure scalar tensors are iterable (batch_size=1 produces 0-d tensors)
         per_sample_keys = (
             "nmae",
-            "loss",
             "max_pred",
             "max_target",
             "mean_pred",
@@ -149,7 +147,7 @@ class LightningGenerator(LightningModule):
                 outputs[key] = val.unsqueeze(0)
 
         n_samples = len(indices)
-        duration_per_sample = outputs["duration_ms"] / n_samples
+        avg_duration_ms = outputs["batch_duration_ms"] / n_samples
 
         tmp_csv = (
             self.tmp_dir / f"metrics_rank_{self.global_rank}_batch_{batch_idx}.csv"
@@ -158,10 +156,10 @@ class LightningGenerator(LightningModule):
             for i, idx in enumerate(indices):
                 f.write(
                     f"rank_{self.global_rank},{idx},"
-                    f"{outputs['nmae'][i].item()},{outputs['loss'][i].item()},"
+                    f"{outputs['nmae'][i].item()},"
                     f"{outputs['max_pred'][i].item()},{outputs['max_target'][i].item()},"
                     f"{outputs['mean_pred'][i].item()},{outputs['mean_target'][i].item()},"
-                    f"{outputs['num_electrons'][i].item()},{duration_per_sample}\n"
+                    f"{outputs['num_electrons'][i].item()},{avg_duration_ms}\n"
                 )
 
     def on_test_epoch_end(self):
@@ -198,8 +196,8 @@ class LightningGenerator(LightningModule):
 
             with final_csv.open("w") as f_out:
                 f_out.write(
-                    "rank,index,nmae,loss,max_pred,max_target,"
-                    "mean_pred,mean_target,num_electrons,duration_ms\n"
+                    "rank,index,nmae,max_pred,max_target,"
+                    "mean_pred,mean_target,num_electrons,avg_duration_ms\n"
                 )
                 for tmp_csv in all_tmp_csvs:
                     with tmp_csv.open() as f_in:

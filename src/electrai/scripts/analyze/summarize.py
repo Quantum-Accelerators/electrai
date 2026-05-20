@@ -12,15 +12,13 @@ import argparse
 import logging
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-mpl.use("Agg")
 logger = logging.getLogger(__name__)
 
-_PERCENTILES = [50, 75, 90, 95, 99]
+_PERCENTILES = [75, 90, 95, 99]
 _NMAE_THRESHOLDS = [0.01, 0.03, 0.05]
 
 
@@ -61,30 +59,9 @@ NMAE (Normalized Mean Absolute Error)
 {threshold_lines}"""
     ]
 
-    # --- Loss statistics (if loss column exists and differs from NMAE) ---
-    if "loss" in df.columns:
-        loss = df["loss"]
-        loss_differs = not np.allclose(loss.to_numpy(), nmae.to_numpy(), atol=1e-6)
-        if loss_differs:
-            loss_pct = "\n".join(
-                f"  P{p}:    {np.percentile(loss, p):.6f}" for p in _PERCENTILES
-            )
-            sections.append(f"""\
-Training Loss (differs from NMAE)
-{"-" * 40}
-  Mean:   {loss.mean():.6f}
-  Median: {loss.median():.6f}
-  Std:    {loss.std():.6f}
-  Min:    {loss.min():.6f}
-  Max:    {loss.max():.6f}
-
-{loss_pct}""")
-        else:
-            sections.append("Training Loss: identical to NMAE (loss_fn = normmae)")
-
     # --- Duration statistics ---
-    if "duration_ms" in df.columns:
-        dur = df["duration_ms"]
+    if "avg_duration_ms" in df.columns:
+        dur = df["avg_duration_ms"]
         sections.append(f"""\
 Inference Timing
 {"-" * 40}
@@ -115,23 +92,18 @@ Peak Density (max_pred / max_target)
 
 
 def plot_distribution(metrics_path: str | Path, output_dir: str | Path) -> None:
-    """Generate NMAE distribution plots (histogram + CDF).
+    """Generate NMAE distribution plots (histogram + CDF)."""
+    import matplotlib as mpl
 
-    If the loss column differs from NMAE, adds a separate loss panel.
-    """
+    mpl.use("Agg")
+
     df = pd.read_csv(metrics_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     nmae = df["nmae"].to_numpy()
 
-    has_loss = "loss" in df.columns
-    loss_differs = has_loss and not np.allclose(df["loss"].to_numpy(), nmae, atol=1e-6)
-
-    n_panels = 3 if loss_differs else 2
-    fig, axes = plt.subplots(1, n_panels, figsize=(6 * n_panels, 5))
-    if n_panels == 1:
-        axes = [axes]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
     # --- Panel 1: NMAE histogram ---
     ax = axes[0]
@@ -160,26 +132,6 @@ def plot_distribution(metrics_path: str | Path, output_dir: str | Path) -> None:
     ax.set_ylabel("Cumulative Fraction")
     ax.set_title("Empirical CDF")
 
-    # --- Panel 3 (optional): Loss distribution ---
-    if loss_differs:
-        ax = axes[2]
-        loss = df["loss"].to_numpy()
-        ax.hist(loss, bins=50, color="coral", edgecolor="white", alpha=0.8)
-        ax.axvline(
-            loss.mean(), color="red", ls="--", lw=1.5, label=f"Mean: {loss.mean():.4f}"
-        )
-        ax.axvline(
-            np.median(loss),
-            color="orange",
-            ls="--",
-            lw=1.5,
-            label=f"Median: {np.median(loss):.4f}",
-        )
-        ax.set_xlabel("Loss")
-        ax.set_ylabel("Count")
-        ax.set_title("Training Loss Distribution")
-        ax.legend(fontsize=9)
-
     fig.tight_layout()
     fig.savefig(output_dir / "nmae_distribution.png", dpi=150)
     plt.close(fig)
@@ -204,8 +156,6 @@ def log_to_wandb(metrics_path: str | Path, output_dir: str | Path) -> None:
 
     # Log per-sample NMAE as a table for interactive exploration
     table_cols = ["index", "nmae"]
-    if "loss" in df.columns:
-        table_cols.append("loss")
     if "max_pred" in df.columns:
         table_cols.extend(["max_pred", "max_target"])
     table = wandb.Table(dataframe=df[table_cols])
