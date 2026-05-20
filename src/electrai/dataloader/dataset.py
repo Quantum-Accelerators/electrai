@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -105,24 +106,35 @@ class RhoRead(LightningDataModule):
 
         for spec in self.specs:
             if stage == "test" and spec.split_file is None:
+                warnings.warn(
+                    f"Dataset with root '{spec.root}' has no split_file and will be "
+                    "skipped for the test stage (test indices require a split_file).",
+                    UserWarning,
+                    stacklevel=2,
+                )
                 continue
 
             ds = RhoData(
                 spec.root, precision=self.precision, augmentation=self.augmentation
             )
-            splits = split_data(
-                ds,
-                val_frac=float(spec.val_frac),
-                split_file=spec.split_file,
-                random_seed=self.random_seed,
-            )
-
             dataset_id = int(spec.dataset_id)
 
             if stage == "fit":
+                splits = split_data(
+                    ds,
+                    val_frac=float(spec.val_frac),
+                    split_file=spec.split_file,
+                    random_seed=self.random_seed,
+                )
                 train_parts.append(AddDatasetID(splits["train"], dataset_id))
                 val_parts.append(AddDatasetID(splits["validation"], dataset_id))
             elif stage == "test":
+                splits = split_data(
+                    ds,
+                    val_frac=float(spec.val_frac),
+                    split_file=spec.split_file,
+                    random_seed=self.random_seed,
+                )
                 if "test" in splits and splits["test"] is not None:
                     test_parts.append(AddDatasetID(splits["test"], dataset_id))
 

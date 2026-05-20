@@ -113,8 +113,13 @@ class LightningGenerator(LightningModule):
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
+        y_cpu = (
+            torch.cat([t.unsqueeze(0) for t in y]).detach().cpu()
+            if isinstance(y, list)
+            else y.detach().cpu()
+        )
         out = {
-            "target": y.detach().cpu(),
+            "target": y_cpu,
             "index": indices,
             "nmae": loss.detach().cpu(),
             "duration": elapsed,
