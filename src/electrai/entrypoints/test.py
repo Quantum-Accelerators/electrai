@@ -143,37 +143,31 @@ def test(args):
         run_analysis = analyze_cfg is None or getattr(analyze_cfg, "enabled", True)
 
         if run_analysis:
-            try:
-                from electrai.scripts.analyze.analyze_saturation import analyze_metrics
+            from electrai.scripts.analyze.analyze_saturation import analyze_metrics
 
-                saturation_dir = log_dir / "saturation"
-                saturation_dir.mkdir(exist_ok=True, parents=True)
-                try:
-                    analyze_metrics(metrics_csv, saturation_dir)
-                except (KeyError, ValueError) as e:
-                    logger.warning("Saturation analysis skipped: %s", e)
-            except ImportError as e:
-                logger.warning("Saturation analysis module unavailable: %s", e)
+            saturation_dir = log_dir / "saturation"
+            saturation_dir.mkdir(exist_ok=True, parents=True)
+            try:
+                analyze_metrics(metrics_csv, saturation_dir)
+            except (KeyError, ValueError) as e:
+                logger.warning("Saturation analysis skipped: %s", e)
 
             # Tail analysis requires metadata CSV
             metadata_path = (
                 getattr(analyze_cfg, "metadata", None) if analyze_cfg else None
             )
             if metadata_path is not None:
-                try:
-                    from electrai.scripts.analyze.analyze_tail import main as tail_main
+                from electrai.scripts.analyze.analyze_tail import main as tail_main
 
-                    tail_dir = log_dir / "tail"
-                    tail_dir.mkdir(exist_ok=True, parents=True)
-                    tail_main(
-                        [
-                            "--metrics",
-                            str(metrics_csv),
-                            "--metadata",
-                            str(metadata_path),
-                            "--output-dir",
-                            str(tail_dir),
-                        ]
-                    )
-                except ImportError as e:
-                    logger.warning("Tail analysis module unavailable: %s", e)
+                tail_dir = log_dir / "tail"
+                tail_dir.mkdir(exist_ok=True, parents=True)
+                tail_main(
+                    [
+                        "--metrics",
+                        str(metrics_csv),
+                        "--metadata",
+                        str(metadata_path),
+                        "--output-dir",
+                        str(tail_dir),
+                    ]
+                )
