@@ -190,7 +190,7 @@ def process_task(
     new_grid *= structure.lattice.volume
     cd.data["total"] = new_grid
 
-    write_chgcar_to_zarr(cd, out_zarr, write_diff=False, chunks=False)
+    write_chgcar_to_zarr(cd, out_zarr, write_diff=False, chunks=None)
 
     n_vox = chg_label.size
     den = np.sum(chg_label)
