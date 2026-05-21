@@ -45,7 +45,7 @@ class LightningGenerator(LightningModule):
     def _loss_calculation(self, batch):
         x = batch["data"]
         y = batch["label"]
-        fid = batch["functional_id"]
+        fid = batch["Dataset_ID"]
         if isinstance(x, list):
             losses = []
             for x_i, y_i in zip(x, y, strict=True):

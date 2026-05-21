@@ -9,11 +9,11 @@ data:
     - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/mp_filelist.txt
       split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga/split.json
       val_frac: 0.1
-      functional_id: 1
+      dataset_id: 1
     - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga+u/mp_filelist.txt
       split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/rho_gga+u/split.json
       val_frac: 0.1
-      functional_id: 2
+      dataset_id: 2
   precision: f32
   batch_size: 1
   train_workers: 8
