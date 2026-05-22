@@ -1,0 +1,9 @@
+paths:
+  input_file: /scratch/gpfs/ROSENGROUP/ho0950/electrai/data/MP/chgcars/label/mp-1775579.CHGCAR # or /scratch/gpfs/ROSENGROUP/ho0950/electrai/data/MP/jsongz/label/mp-1775579.CHGCAR.json.gz
+  output_dir: ./data
+  stats_dir: ./stats
+  radial_dir: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/atomic_radial_profiles
+  zval_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/zval.json
+
+pads:
+  extra_shells: 1
