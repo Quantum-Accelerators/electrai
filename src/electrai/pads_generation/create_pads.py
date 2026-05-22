@@ -170,7 +170,7 @@ def process_task(
     voxel_volume = structure.lattice.volume / np.prod(grid_size)
 
     for site in structure:
-        specie = str(site.specie)
+        specie = site.species_string
         radial_r, radial_density = radial_cache[specie]
 
         atom_contribution = reconstruct_from_radial_function(
