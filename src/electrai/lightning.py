@@ -113,6 +113,8 @@ class LightningGenerator(LightningModule):
 
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
+        # Per-sample statistics over spatial dims (keep batch dim)
+        spatial_dims = tuple(range(1, preds.ndim))  # all dims except batch
         y_cpu = (
             torch.cat([t.unsqueeze(0) for t in y]).detach().cpu()
             if isinstance(y, list)
@@ -122,7 +124,12 @@ class LightningGenerator(LightningModule):
             "target": y_cpu,
             "index": indices,
             "nmae": loss.detach().cpu(),
-            "duration": elapsed,
+            "max_pred": preds.amax(dim=spatial_dims).detach().cpu(),
+            "max_target": y_cpu.amax(dim=spatial_dims),
+            "mean_pred": preds.mean(dim=spatial_dims).detach().cpu(),
+            "mean_target": y_cpu.mean(dim=spatial_dims),
+            "num_electrons": y_cpu.sum(dim=spatial_dims),
+            "batch_duration_ms": elapsed,
         }
         if self.save_pred:
             out["pred"] = preds.detach().cpu()
@@ -130,7 +137,6 @@ class LightningGenerator(LightningModule):
 
     def on_test_batch_end(self, outputs, _batch, batch_idx):
         indices = outputs["index"]
-        nmae = outputs["nmae"]
 
         if self.save_pred:
             preds = outputs["pred"]
@@ -141,14 +147,36 @@ class LightningGenerator(LightningModule):
                     preds[i].squeeze(0).cpu().numpy(),
                 )
 
-        if isinstance(nmae, torch.Tensor) and nmae.ndim == 0:
-            nmae = nmae.unsqueeze(0)
+        # Ensure scalar tensors are iterable (batch_size=1 produces 0-d tensors)
+        per_sample_keys = (
+            "max_pred",
+            "max_target",
+            "mean_pred",
+            "mean_target",
+            "num_electrons",
+        )
+        for key in per_sample_keys:
+            val = outputs[key]
+            if isinstance(val, torch.Tensor) and val.ndim == 0:
+                outputs[key] = val.unsqueeze(0)
+
+        n_samples = len(indices)
+        avg_duration_ms = outputs["batch_duration_ms"] / n_samples
+        # nmae is the batch-averaged scalar; broadcast it to every sample row
+        nmae_val = outputs["nmae"].item()
+
         tmp_csv = (
             self.tmp_dir / f"metrics_rank_{self.global_rank}_batch_{batch_idx}.csv"
         )
         with tmp_csv.open("w") as f:
-            for idx, n in zip(indices, nmae, strict=True):
-                f.write(f"rank_{self.global_rank},{idx},{n.item()}\n")
+            for i, idx in enumerate(indices):
+                f.write(
+                    f"rank_{self.global_rank},{idx},"
+                    f"{nmae_val},"
+                    f"{outputs['max_pred'][i].item()},{outputs['max_target'][i].item()},"
+                    f"{outputs['mean_pred'][i].item()},{outputs['mean_target'][i].item()},"
+                    f"{outputs['num_electrons'][i].item()},{avg_duration_ms}\n"
+                )
 
     def on_test_epoch_end(self):
         is_dist = dist.is_available() and dist.is_initialized()
@@ -183,7 +211,10 @@ class LightningGenerator(LightningModule):
                 )
 
             with final_csv.open("w") as f_out:
-                f_out.write("rank,index,nmae\n")
+                f_out.write(
+                    "rank,index,nmae,max_pred,max_target,"
+                    "mean_pred,mean_target,num_electrons,avg_duration_ms\n"
+                )
                 for tmp_csv in all_tmp_csvs:
                     with tmp_csv.open() as f_in:
                         for line in f_in:
