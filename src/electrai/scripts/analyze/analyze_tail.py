@@ -19,13 +19,11 @@ import json
 import logging
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-mpl.use("Agg")
 logger = logging.getLogger(__name__)
 
 # NMAE stored as fraction in metrics.csv (e.g. 0.023 = 2.3%)
@@ -600,6 +598,10 @@ def _plot_shape_vs_size_heatmap(df: pd.DataFrame, out_dir: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+
     parser = argparse.ArgumentParser(
         description="Analyze NMAE tail and correlate with structural metadata."
     )

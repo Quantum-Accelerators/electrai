@@ -149,7 +149,6 @@ class LightningGenerator(LightningModule):
 
         # Ensure scalar tensors are iterable (batch_size=1 produces 0-d tensors)
         per_sample_keys = (
-            "nmae",
             "max_pred",
             "max_target",
             "mean_pred",
@@ -163,6 +162,8 @@ class LightningGenerator(LightningModule):
 
         n_samples = len(indices)
         avg_duration_ms = outputs["batch_duration_ms"] / n_samples
+        # nmae is the batch-averaged scalar; broadcast it to every sample row
+        nmae_val = outputs["nmae"].item()
 
         tmp_csv = (
             self.tmp_dir / f"metrics_rank_{self.global_rank}_batch_{batch_idx}.csv"
@@ -171,7 +172,7 @@ class LightningGenerator(LightningModule):
             for i, idx in enumerate(indices):
                 f.write(
                     f"rank_{self.global_rank},{idx},"
-                    f"{outputs['nmae'][i].item()},"
+                    f"{nmae_val},"
                     f"{outputs['max_pred'][i].item()},{outputs['max_target'][i].item()},"
                     f"{outputs['mean_pred'][i].item()},{outputs['mean_target'][i].item()},"
                     f"{outputs['num_electrons'][i].item()},{avg_duration_ms}\n"

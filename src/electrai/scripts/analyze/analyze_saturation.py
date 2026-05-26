@@ -32,12 +32,10 @@ import argparse
 import logging
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-mpl.use("Agg")
 logger = logging.getLogger(__name__)
 
 
@@ -286,6 +284,10 @@ def _write_summary(df: pd.DataFrame, out_dir: Path) -> None:
 
 def analyze_metrics(metrics_path: Path, out_dir: Path) -> None:
     """Run all metrics-based saturation analyses."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+
     df = _load_metrics(metrics_path)
     logger.info("Loaded %d structures from %s", len(df), metrics_path)
 
@@ -493,6 +495,10 @@ def _plot_combined_saturation_curve(all_data: list[dict], out_dir: Path) -> None
 
 def analyze_voxels(viz_dir: Path, out_dir: Path) -> None:
     """Run voxel-level saturation analysis from saved predictions."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+
     pred_dir = viz_dir / "predictions"
     pred_files = sorted(pred_dir.glob("rank_*_*.npy"))
     if not pred_files:
