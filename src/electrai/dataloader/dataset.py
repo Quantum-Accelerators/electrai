@@ -191,7 +191,7 @@ class RhoData(Dataset):
         if isinstance(datapath, str) and Path(datapath).is_file():
             with Path(datapath).open() as f:
                 lines = f.readlines()
-            member_list = [line.replace("\n", "") for line in lines]
+            member_list = [line.strip() for line in lines if line.strip()]
         else:
             raise ValueError("No filename found.")
 
