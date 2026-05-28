@@ -1,12 +1,8 @@
 # Smoke test for config_gga_gga+u_f32 on Modal: subset filelists + few epochs.
 # Validates data wiring, DDP/checkpoint path, and wandb logging before the full run.
 #
-# Create the subset filelists on the Volume first (after the Globus transfer), e.g.:
-#   modal shell modal/train.py
-#   head -200 /data/mp/chg_datasets/functionals/gga/mp_filelist.txt \
-#     > /data/mp/chg_datasets/functionals/gga/mp_filelist_smoke.txt
-#   head -200 /data/mp/chg_datasets/functionals/gga+u/mp_filelist.txt \
-#     > /data/mp/chg_datasets/functionals/gga+u/mp_filelist_smoke.txt
+# Create the subset filelists on the Volume first (after the Globus transfer):
+#   modal run modal/prep_volume.py        # also (re)links data/label, commits the Volume
 #
 # Paths are already in Volume (/data) form, so train.py's della->Volume remap is a no-op.
 
