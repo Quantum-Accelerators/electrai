@@ -11,14 +11,14 @@ volume = modal.Volume.from_name("electrai-data", create_if_missing=True)
 @app.function(
     image=modal.Image.debian_slim(python_version="3.12").pip_install("boto3"),
     volumes={"/data": volume},
-    secrets=[modal.Secret.from_name("aws-credentials")],
-    timeout=7200,
+    secrets=[modal.Secret.from_name("oa-electrai-read")],
+    timeout=86400,  # 24h: full MP zarr set is ~1.25 TB / ~680K objects
     retries=0,
 )
 def sync_s3(
-    bucket: str = "openathena",
-    prefix: str = "electrai/mp/chg_datasets/dataset_4",
-    dest: str = "/data/mp/chg_datasets/dataset_4",
+    bucket: str = "oa-electrai",
+    prefix: str = "mp/chg_datasets",
+    dest: str = "/data/mp/chg_datasets",
 ):
     """Sync dataset from S3 to Modal Volume."""
     import logging
@@ -73,9 +73,9 @@ def sync_s3(
 
 @app.local_entrypoint()
 def main(
-    bucket: str = "openathena",
-    prefix: str = "electrai/mp/chg_datasets/dataset_4",
-    dest: str = "/data/mp/chg_datasets/dataset_4",
+    bucket: str = "oa-electrai",
+    prefix: str = "mp/chg_datasets",
+    dest: str = "/data/mp/chg_datasets",
 ):
     import logging
 
