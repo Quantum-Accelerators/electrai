@@ -110,8 +110,14 @@ def main(
     prefix: str = "mp/chg_datasets",
     dest: str = "/data/mp/chg_datasets",
 ):
+    """Fire-and-forget: spawn sync_s3 and return so the remote run survives any
+    local CLI disconnect. Pair with `modal run --detach`; monitor via the Modal
+    web UI or `modal app logs <app-id>`.
+    """
     import logging
 
     logging.basicConfig(level=logging.INFO)
-    sync_s3.remote(bucket=bucket, prefix=prefix, dest=dest)
-    logging.getLogger(__name__).info("Volume populated.")
+    fc = sync_s3.spawn(bucket=bucket, prefix=prefix, dest=dest)
+    log = logging.getLogger(__name__)
+    log.info("Spawned sync_s3 FunctionCall id=%s", fc.object_id)
+    log.info("Monitor at https://modal.com/apps (look for electrai-populate)")
