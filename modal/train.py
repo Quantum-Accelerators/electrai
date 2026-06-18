@@ -198,5 +198,9 @@ def main(config: str, gpu: str = DEFAULT_GPU):
     config_json = json.dumps(cfg, indent=2)
     log.info("Config:\n%s", config_json)
 
-    train.with_options(gpu=gpu).remote(config_json=config_json, gpu_type=gpu)
-    log.info("Done.")
+    # Fire-and-forget so multi-day training survives any local CLI disconnect.
+    # Pair with `modal run --detach`; monitor via `modal app logs <app-id>` or
+    # the Modal web UI. See [[modal-long-running-detach-spawn]].
+    fc = train.with_options(gpu=gpu).spawn(config_json=config_json, gpu_type=gpu)
+    log.info("Spawned train FunctionCall id=%s on %s", fc.object_id, gpu)
+    log.info("Monitor at https://modal.com/apps (look for electrai-train)")
