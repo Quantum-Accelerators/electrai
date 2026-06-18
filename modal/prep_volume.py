@@ -79,14 +79,21 @@ def prep(smoke_n: int = 200):
         smoke.write_text("\n".join(ids[:smoke_n]) + "\n")
         log.info("wrote %s (%d ids)", smoke, min(smoke_n, len(ids)))
 
-        # 3. sanity check: first id resolves to a real .zarr under data/
+        # 3. sanity check: first id resolves to a `.zarr.zip` (packed) or
+        # `.zarr/` (unpacked) store under data/.
         first = ids[0]
-        store = fdir / "data" / f"{first}.zarr"
-        if not store.exists():
+        store_dir = fdir / "data" / f"{first}.zarr"
+        store_zip = fdir / "data" / f"{first}.zarr.zip"
+        if not (store_zip.exists() or store_dir.exists()):
             raise FileNotFoundError(
-                f"{store} not found — data/ symlink or transfer is incomplete."
+                f"Neither {store_zip} nor {store_dir} found — "
+                "data/ symlink or transfer is incomplete."
             )
-        log.info("OK: %s resolves (%d total ids)", store, len(ids))
+        log.info(
+            "OK: %s resolves (%d total ids)",
+            store_zip if store_zip.exists() else store_dir,
+            len(ids),
+        )
 
     # 4. persist
     data_volume.commit()

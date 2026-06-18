@@ -200,15 +200,19 @@ class RhoData(Dataset):
         if not member_list:
             raise ValueError(f"Filelist at {datapath} is empty.")
         self.member_list = member_list
-        # Detect zarr vs CHGCAR by checking which extension the first entry has
+        # Detect zarr vs CHGCAR; zarr may be unpacked (`<id>.zarr/`) or packed
+        # (`<id>.zarr.zip`) — load_zarr handles both.
         first = member_list[0]
-        if (self.root / "data" / f"{first}.zarr").exists():
+        data_dir = self.root / "data"
+        if (data_dir / f"{first}.zarr.zip").exists() or (
+            data_dir / f"{first}.zarr"
+        ).exists():
             self.fmt = "zarr"
-        elif (self.root / "data" / f"{first}.CHGCAR").exists():
+        elif (data_dir / f"{first}.CHGCAR").exists():
             self.fmt = "chgcar"
         else:
             raise ValueError(
-                f"No .zarr or .CHGCAR file found for '{first}' in {self.root / 'data'}"
+                f"No .zarr(.zip) or .CHGCAR file found for '{first}' in {data_dir}"
             )
 
     def __len__(self):

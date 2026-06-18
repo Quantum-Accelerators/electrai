@@ -40,18 +40,39 @@ def load_numpy_rho(
 
 
 def load_zarr(root: str | bytes | os.PathLike, index: str):
+    """Read a zarr store as either a directory tree (`<id>.zarr/`) or a single
+    packed zip (`<id>.zarr.zip`). Volumes capped by inode count (e.g. Modal)
+    benefit greatly from the packed form — one inode per store instead of ~8.
+    """
     import zarr
 
-    def _read(path):
-        z = zarr.open_group(str(path), mode="r")
-        if "structure" not in z.attrs:
-            raise KeyError(f"'structure' attribute missing from zarr store at {path}")
-        arr = np.array(z["charge_density_total"])
-        volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
-        return arr / volume
+    def _read(zarr_dir: Path, zarr_zip: Path):
+        store = None
+        if zarr_zip.exists():
+            store = zarr.storage.ZipStore(str(zarr_zip), mode="r")
+            z = zarr.open_group(store, mode="r")
+        elif zarr_dir.exists():
+            z = zarr.open_group(str(zarr_dir), mode="r")
+        else:
+            raise FileNotFoundError(f"No zarr store at {zarr_zip} or {zarr_dir}")
+        try:
+            if "structure" not in z.attrs:
+                raise KeyError(
+                    f"'structure' attribute missing from zarr store at "
+                    f"{zarr_zip if zarr_zip.exists() else zarr_dir}"
+                )
+            arr = np.array(z["charge_density_total"])
+            volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
+            return arr / volume
+        finally:
+            if store is not None:
+                store.close()
 
-    data = _read(Path(root) / "data" / f"{index}.zarr")
-    label = _read(Path(root) / "label" / f"{index}.zarr")
+    root = Path(root)
+    data = _read(root / "data" / f"{index}.zarr", root / "data" / f"{index}.zarr.zip")
+    label = _read(
+        root / "label" / f"{index}.zarr", root / "label" / f"{index}.zarr.zip"
+    )
     return data, label
 
 
