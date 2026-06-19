@@ -6,7 +6,8 @@ set -euo pipefail
 
 S3_BUCKET="${S3_BUCKET:-oa-electrai}"
 S3_PREFIX="${S3_PREFIX:-mp/chg_datasets}"
-NFS_ROOT="${NFS_ROOT:-/lambda/nfs/betsy-rhoarnet-hero}"
+NFS_ROOT="${NFS_ROOT:-$(ls -d /lambda/nfs/* 2>/dev/null | head -1)}"
+[ -z "$NFS_ROOT" ] && { echo "ERROR: no /lambda/nfs/* mount found; pass NFS_ROOT=... explicitly"; exit 1; }
 DATA_ROOT="${DATA_ROOT:-$NFS_ROOT/data}"
 DEST="$DATA_ROOT/$S3_PREFIX"
 

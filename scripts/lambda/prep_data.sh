@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-NFS_ROOT="${NFS_ROOT:-/lambda/nfs/betsy-rhoarnet-hero}"
+NFS_ROOT="${NFS_ROOT:-$(ls -d /lambda/nfs/* 2>/dev/null | head -1)}"
+[ -z "$NFS_ROOT" ] && { echo "ERROR: no /lambda/nfs/* mount found; pass NFS_ROOT=... explicitly"; exit 1; }
 DATA_ROOT="${DATA_ROOT:-$NFS_ROOT/data}"
 BASE="$DATA_ROOT/mp/chg_datasets"
 SMOKE_N="${SMOKE_N:-200}"

@@ -10,7 +10,8 @@ set -euo pipefail
 
 MODE="${1:-smoke}"   # smoke | full
 REPO_DIR="${REPO_DIR:-$HOME/electrai}"
-NFS_ROOT="${NFS_ROOT:-/lambda/nfs/betsy-rhoarnet-hero}"
+NFS_ROOT="${NFS_ROOT:-$(ls -d /lambda/nfs/* 2>/dev/null | head -1)}"
+[ -z "$NFS_ROOT" ] && { echo "ERROR: no /lambda/nfs/* mount found; pass NFS_ROOT=... explicitly"; exit 1; }
 DATA_ROOT="${DATA_ROOT:-$NFS_ROOT/data}"
 CKPT_ROOT="${CKPT_ROOT:-$NFS_ROOT/checkpoints}"
 S3_CKPT_BUCKET="${S3_CKPT_BUCKET:-oa-electrai}"
