@@ -10,12 +10,14 @@ set -euo pipefail
 
 MODE="${1:-smoke}"   # smoke | full
 REPO_DIR="${REPO_DIR:-$HOME/electrai}"
-DATA_ROOT="${DATA_ROOT:-$HOME/data}"
-CKPT_ROOT="${CKPT_ROOT:-$HOME/checkpoints}"
+NFS_ROOT="${NFS_ROOT:-/lambda/nfs/betsy-rhoarnet-hero}"
+DATA_ROOT="${DATA_ROOT:-$NFS_ROOT/data}"
+CKPT_ROOT="${CKPT_ROOT:-$NFS_ROOT/checkpoints}"
 S3_CKPT_BUCKET="${S3_CKPT_BUCKET:-oa-electrai}"
 S3_CKPT_PREFIX="${S3_CKPT_PREFIX:-checkpoints/lambda}"
 CKPT_BACKUP_S="${CKPT_BACKUP_S:-600}"   # 10 min
 TMUX_SESSION="${TMUX_SESSION:-electrai-train}"
+UV_BIN="${UV_BIN:-$HOME/.local/bin/uv}"
 
 case "$MODE" in
   smoke) SRC_CFG="src/electrai/configs/MP/config_gga_gga+u_f32_smoke.yaml" ;;
@@ -40,10 +42,15 @@ fi
 
 mkdir -p "$CKPT_ROOT"
 
-# Rewrite the config so the dataset paths and ckpt_path point at local NVMe.
+# Rewrite the config so dataset paths and ckpt_path point at our local roots.
+# Two source path conventions exist in committed configs:
+#   - della: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/...
+#   - modal: /data/...  (smoke config uses this since it was authored for Modal)
+# Both get rewritten to live under $DATA_ROOT.
 RUNTIME_CFG="$CKPT_ROOT/runtime-config.yaml"
 sed \
   -e 's|/scratch/gpfs/ROSENGROUP/common/globus_share_OA|'"$DATA_ROOT"'|g' \
+  -e 's|^\([[:space:]]*\(root\|split_file\):[[:space:]]*\)/data/|\1'"$DATA_ROOT"'/|g' \
   -e 's|^ckpt_path: .*|ckpt_path: '"$CKPT_ROOT"'/${MODE}_${RUN}|' \
   "$SRC_CFG" \
   | python3 -c "
@@ -74,10 +81,12 @@ export PYTHONPATH
 
 # Window 1: training. Re-exec on crash so a transient failure doesn't end
 # the session; Lightning auto-resumes from last.ckpt on the next start.
-TRAIN_CMD="cd '$REPO_DIR' && export WANDB_API_KEY='$WANDB_API_KEY' && \
+# - set -o pipefail captures uv's exit code through the `| tee`
+# - uv is invoked by absolute path so we don't depend on a sourced PATH
+TRAIN_CMD="set -o pipefail; cd '$REPO_DIR' && export WANDB_API_KEY='$WANDB_API_KEY' && \
   while true; do \
     echo \"\$(date -Iseconds) starting training\" | tee -a $CKPT_ROOT/train.log; \
-    uv run python -m electrai.entrypoints.main train --config '$RUNTIME_CFG' 2>&1 | tee -a $CKPT_ROOT/train.log; \
+    '$UV_BIN' run python -m electrai.entrypoints.main train --config '$RUNTIME_CFG' 2>&1 | tee -a $CKPT_ROOT/train.log; \
     rc=\$?; \
     echo \"\$(date -Iseconds) training exited rc=\$rc\" | tee -a $CKPT_ROOT/train.log; \
     [ \$rc -eq 0 ] && break; \

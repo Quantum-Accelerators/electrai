@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-DATA_ROOT="${DATA_ROOT:-$HOME/data}"
+NFS_ROOT="${NFS_ROOT:-/lambda/nfs/betsy-rhoarnet-hero}"
+DATA_ROOT="${DATA_ROOT:-$NFS_ROOT/data}"
 BASE="$DATA_ROOT/mp/chg_datasets"
 SMOKE_N="${SMOKE_N:-200}"
 

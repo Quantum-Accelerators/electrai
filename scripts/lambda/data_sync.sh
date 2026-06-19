@@ -6,7 +6,8 @@ set -euo pipefail
 
 S3_BUCKET="${S3_BUCKET:-oa-electrai}"
 S3_PREFIX="${S3_PREFIX:-mp/chg_datasets}"
-DATA_ROOT="${DATA_ROOT:-$HOME/data}"
+NFS_ROOT="${NFS_ROOT:-/lambda/nfs/betsy-rhoarnet-hero}"
+DATA_ROOT="${DATA_ROOT:-$NFS_ROOT/data}"
 DEST="$DATA_ROOT/$S3_PREFIX"
 
 mkdir -p "$DEST"
