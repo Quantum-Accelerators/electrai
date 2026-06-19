@@ -25,9 +25,12 @@ esac
 
 cd "$REPO_DIR"
 
-# Pull WANDB_API_KEY out of ~/.bashrc if a non-interactive caller bypassed it.
+# Pull WANDB_API_KEY out of ~/.bashrc. Ubuntu's default ~/.bashrc starts with
+# `case $- in *i*) ;; *) return;; esac` which early-returns for non-interactive
+# shells, so plain `source ~/.bashrc` doesn't help. Grep the export line
+# directly and eval it.
 if [ -z "${WANDB_API_KEY:-}" ] && [ -f "$HOME/.bashrc" ]; then
-  set +u; source "$HOME/.bashrc"; set -u
+  eval "$(grep -E '^[[:space:]]*export WANDB_API_KEY=' "$HOME/.bashrc" | tail -1)"
 fi
 if [ -z "${WANDB_API_KEY:-}" ]; then
   echo "ERROR: WANDB_API_KEY env var not set."
