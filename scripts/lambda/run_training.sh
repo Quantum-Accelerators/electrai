@@ -25,8 +25,13 @@ esac
 
 cd "$REPO_DIR"
 
+# Pull WANDB_API_KEY out of ~/.bashrc if a non-interactive caller bypassed it.
+if [ -z "${WANDB_API_KEY:-}" ] && [ -f "$HOME/.bashrc" ]; then
+  set +u; source "$HOME/.bashrc"; set -u
+fi
 if [ -z "${WANDB_API_KEY:-}" ]; then
   echo "ERROR: WANDB_API_KEY env var not set."
+  echo "  Add to ~/.bashrc:  export WANDB_API_KEY='...'  then re-run."
   exit 1
 fi
 
