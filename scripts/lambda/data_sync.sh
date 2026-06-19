@@ -35,8 +35,10 @@ total_sz=$(du -sh "$DEST" 2>/dev/null | awk '{print $1}')
 echo "  --------------------------------------"
 printf "  %-15s %8s files  %8s\n" "TOTAL" "$total" "$total_sz"
 
-# Sanity: expect ~226K files (225,960 zarr.zip + 139 standalone + 4 metadata)
-if [ "$total" -lt 220000 ]; then
+# Sanity: S3 holds the unpacked zarr layout (~678K files: ~226K stores ×
+# ~3 inner files + standalone files). The .zarr.zip packed form is
+# Modal-Volume-specific; not present on S3.
+if [ "$total" -lt 670000 ]; then
   echo "WARN: file count looks low; sync may not be complete."
   exit 1
 fi

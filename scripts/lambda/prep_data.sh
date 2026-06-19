@@ -48,17 +48,24 @@ for func in gga 'gga+u'; do
 done
 
 echo
-echo "=== sanity check (first id of each filelist resolves to a .zarr.zip) ==="
+echo "=== sanity check (first id of each filelist resolves) ==="
+# Loader auto-detects either packed (.zarr.zip) or unpacked (.zarr/ dir).
+# S3 holds unpacked; Modal Volume held packed; Lambda gets whichever S3 has.
 for func in gga 'gga+u'; do
   fdir="$BASE/functionals/$func"
   first=$(head -n 1 "$fdir/mp_filelist.txt")
   zip="$fdir/data/$first.zarr.zip"
-  if [ ! -f "$zip" ]; then
-    echo "  ERROR: $zip not resolvable -- symlink or transfer incomplete"
+  store="$fdir/data/$first.zarr"
+  if [ -f "$zip" ]; then
+    fmt="packed (.zarr.zip)"; resolved="$zip"
+  elif [ -d "$store" ]; then
+    fmt="unpacked (.zarr/)"; resolved="$store"
+  else
+    echo "  ERROR: neither $zip nor $store resolves -- transfer incomplete"
     exit 1
   fi
   n=$(wc -l < "$fdir/mp_filelist.txt")
-  echo "  OK ($func): $zip resolves ($n total ids)"
+  echo "  OK ($func, $fmt): $resolved ($n total ids)"
 done
 
 echo
