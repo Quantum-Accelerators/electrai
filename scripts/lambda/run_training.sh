@@ -49,10 +49,15 @@ mkdir -p "$CKPT_ROOT"
 #   - modal: /data/...  (smoke config uses this since it was authored for Modal)
 # Both get rewritten to live under $DATA_ROOT.
 RUNTIME_CFG="$CKPT_ROOT/runtime-config.yaml"
+WANDB_SED=()
+if [ -n "${WANDB_MODE_OVERRIDE:-}" ]; then
+  WANDB_SED=(-e 's|^wandb_mode: .*|wandb_mode: '"$WANDB_MODE_OVERRIDE"'|')
+fi
 sed \
   -e 's|/scratch/gpfs/ROSENGROUP/common/globus_share_OA|'"$DATA_ROOT"'|g' \
   -e 's|/data/mp/chg_datasets/|'"$DATA_ROOT"'/mp/chg_datasets/|g' \
   -e 's|^ckpt_path: .*|ckpt_path: '"$CKPT_ROOT"'/${MODE}_${RUN}|' \
+  "${WANDB_SED[@]}" \
   "$SRC_CFG" \
   | python3 -c "
 import sys, re
