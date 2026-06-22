@@ -41,15 +41,19 @@ echo "$(date -Iseconds) monitor_loop start: HOSTS='$HOSTS' RUN='$RUN' interval=$
 while true; do
   ts="$(date -Iseconds)"
   maint="no"; [ -f "$MAINT_FLAG" ] && maint="yes"
+  slack="configured"
+  if [ -z "${SLACK_WEBHOOK_URL:-}" ] || printf '%s' "${SLACK_WEBHOOK_URL:-}" | grep -qi replace; then
+    slack="NOT configured (journal-only escalation)"
+  fi
 
   ctx="CONTEXT (injected $ts):
 - Nodes to check (HOSTS): $HOSTS
 - Run name (RUN): $RUN
 - Journal path (tail it for prior state): $JOURNAL
 - Maintenance mode: $maint   (if yes: observe + journal only, do NOT remediate)
-- Snapshot command for this tick:
-    HOSTS=\"$HOSTS\" bash scripts/lambda/monitor_status_all.sh \"$RUN\"
-- Slack webhook is in env as \$SLACK_WEBHOOK_URL (do not print it).
+- Snapshot command for this tick (HOSTS and RUN are already exported in your env):
+    bash scripts/lambda/monitor_status_all.sh \"$RUN\"
+- Slack escalation channel: $slack  (webhook, if any, is in env as \$SLACK_WEBHOOK_URL — never print it)
 "
   prompt="${ctx}
 $(cat "$PROMPT_FILE")"
