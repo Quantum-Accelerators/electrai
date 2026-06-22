@@ -43,12 +43,19 @@ Do this, in order:
    - When in doubt, do NOT act on the cluster — escalate. A false restart on a
      live run is worse than a false page.
 
-SLACK ESCALATION (only when the runbook says to):
-   curl -fsS -X POST -H 'Content-type: application/json' \
-     --data '{"text":"<message>"}' "$SLACK_WEBHOOK_URL"
-   The webhook is in the environment as $SLACK_WEBHOOK_URL — use the variable;
-   NEVER print, echo, or interpolate its value into your visible output. Keep the
-   message to one line: host(s), which of (a/b/c) failed, what you tried, current
+ESCALATION (only when the runbook says to):
+   If a REAL webhook is configured, push to Slack:
+     if [ -n "${SLACK_WEBHOOK_URL:-}" ] && ! printf '%s' "$SLACK_WEBHOOK_URL" | grep -qi replace; then
+       curl -fsS -X POST -H 'Content-type: application/json' \
+         --data '{"text":"<message>"}' "$SLACK_WEBHOOK_URL"
+     fi
+   If NO real webhook is set (empty, or contains "REPLACE"), do NOT curl — the
+   operator is reading the journal directly. Make the escalation impossible to
+   miss: begin your reply with the banner line
+     *** ESCALATION (no Slack configured — operator is reading the journal) ***
+   Either way your full reply is journaled, so the diagnosis is never lost.
+   NEVER print, echo, or interpolate the webhook value into your output.
+   Message (one line): host(s), which of (a/b/c) failed, what you tried, current
    epoch / it/s / val_loss if known, and the specific ask of the human.
 
 NEVER do autonomously (escalate instead):
