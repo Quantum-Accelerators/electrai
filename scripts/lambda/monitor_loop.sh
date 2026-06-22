@@ -30,7 +30,7 @@ HEARTBEAT="${MONITOR_HEARTBEAT:-$HOME/.local/state/electrai-monitor/heartbeat}"
 MAINT_FLAG="${MONITOR_MAINT_FLAG:-$HOME/.config/electrai-monitor/MAINTENANCE}"
 PROMPT_FILE="${MONITOR_PROMPT:-$HERE/monitor_agent_prompt.md}"
 SETTINGS="${MONITOR_SETTINGS:-$HERE/monitor_settings.json}"
-MODEL="${MONITOR_MODEL:-claude-sonnet-4-6}"
+MODEL="${MONITOR_MODEL:-claude-opus-4-8}"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 
 mkdir -p "$(dirname "$JOURNAL")" "$(dirname "$HEARTBEAT")"

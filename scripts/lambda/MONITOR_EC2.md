@@ -157,9 +157,9 @@ journalctl -u electrai-monitor -f          # or: tail -f ~/.local/state/electrai
 
 ## Cost
 ~$24/mo instance + ~$3/mo EBS + negligible egress. Claude runs on your Max
-subscription token, so no per-token API bill — but a continuous loop consumes
-Max usage; tune `MONITOR_INTERVAL` (default 15 min) and `MONITOR_MODEL` (default
-Sonnet) if you bump limits. Trivial next to the ~$11.96/hr (4×) / ~$47.84/hr
+subscription token, so no per-token API bill — but a continuous loop on Opus
+consumes Max usage; tune `MONITOR_INTERVAL` (default 15 min) and `MONITOR_MODEL` (default
+Opus) if you bump Max limits. Trivial next to the ~$11.96/hr (4×) / ~$47.84/hr
 (16×) training spend.
 
 ## Multi-node cutover checklist
