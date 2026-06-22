@@ -1,0 +1,10 @@
+[Unit]
+Description=ElectrAI monitor watchdog (checks the monitor is alive; pings Slack)
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/ubuntu/.config/electrai-monitor/monitor.env
+ExecStart=/usr/bin/env bash /home/ubuntu/electrai/scripts/lambda/monitor_watchdog.sh

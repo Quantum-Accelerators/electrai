@@ -1,0 +1,27 @@
+{
+  "_comment": "Permission allowlist for the resident monitor (loaded via `claude --settings`). In headless `-p` mode, allowlisted Bash prefixes auto-approve and everything else fails closed (no interactive prompt is possible). Containment of remote ssh command CONTENT is by the operator prompt's hard rules + the dedicated revocable SSH key + read-only AWS, NOT by these patterns. Add lambda3-a / lambda3-b ssh entries at multi-node cutover.",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(tail:*)",
+      "Bash(date:*)",
+      "Bash(bash scripts/lambda/monitor_status_all.sh:*)",
+      "Bash(bash scripts/lambda/monitor_status.sh:*)",
+      "Bash(aws s3 ls:*)",
+      "Bash(ssh lambda:*)",
+      "Bash(ssh lambda2:*)",
+      "Bash(ssh lambda3-a:*)",
+      "Bash(ssh lambda3-b:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(aws s3 rm:*)",
+      "Bash(aws s3 cp:*)",
+      "Bash(aws s3 sync:*)",
+      "Bash(aws ec2:*)"
+    ]
+  }
+}
