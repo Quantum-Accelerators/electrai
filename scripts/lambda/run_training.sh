@@ -23,7 +23,8 @@ UV_BIN="${UV_BIN:-$HOME/.local/bin/uv}"
 case "$MODE" in
   smoke) SRC_CFG="src/electrai/configs/MP/config_gga_gga+u_f32_smoke.yaml" ;;
   full)  SRC_CFG="src/electrai/configs/MP/config_gga_gga+u_f32.yaml" ;;
-  *) echo "MODE must be 'smoke' or 'full'"; exit 1 ;;
+  w64)   SRC_CFG="src/electrai/configs/MP/config_gga_gga+u_w64.yaml" ;;
+  *) echo "MODE must be 'smoke', 'full', or 'w64'"; exit 1 ;;
 esac
 
 cd "$REPO_DIR"
@@ -75,6 +76,11 @@ print(text)
 echo "=== runtime config datasets/ckpt ==="
 grep -E '^\s*(root|split_file|ckpt_path):' "$RUNTIME_CFG"
 
+# Pull entity/project from the config so the wandb URL printed below is correct
+# for whichever mode/config was selected.
+WB_ENTITY="$(grep -E '^entity:' "$RUNTIME_CFG" | awk '{print $2}')"
+WB_PROJECT="$(grep -E '^wb_pname:' "$RUNTIME_CFG" | awk '{print $2}')"
+
 # Kill any existing session of the same name
 if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
   echo "killing existing tmux session $TMUX_SESSION"
@@ -116,6 +122,6 @@ Training launched as tmux session: $TMUX_SESSION
   attach:        tmux attach -t $TMUX_SESSION
   train log:     tail -f $CKPT_ROOT/train.log
   backup log:    tail -f $CKPT_ROOT/backup.log
-  wandb:         https://wandb.ai/PrinceOA/mp-large-scale
+  wandb:         https://wandb.ai/$WB_ENTITY/$WB_PROJECT
   S3 ckpt sink:  s3://$S3_CKPT_BUCKET/$S3_CKPT_PREFIX/
 EOF
