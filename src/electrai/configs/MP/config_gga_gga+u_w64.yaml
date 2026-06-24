@@ -1,19 +1,23 @@
 # Width-64 variant of the mp-large-scale run (config_gga_gga+u_f32.yaml).
-# Same full GGA + GGA+U data (113K) and hyperparameters, with three deltas:
+# Same GGA + GGA+U hyperparameters, with four deltas:
 #   - model.n_channels: 32 -> 64  (width 64)
 #   - precision: 32 -> 16-mixed   (W64 OOMs at fp32 on variable-grid MP data)
 #   - warmup_length: 1 -> 4
+#   - grid-size cap: uses *_capped filelists/splits (structures with grids
+#     >5,832,000 voxels ~180^3 dropped, ~1.5%). Without the cap, the largest
+#     structures (up to ~540^3) make a single DDP step exceed the 30-min NCCL
+#     watchdog and crash-loop. Regenerate with scripts/lambda/cap_filelists.py.
 # Tracked in W&B project `mp-gga-ggau-width`.
 
 # Dataset / loader parameters
 data:
   _target_: electrai.dataloader.dataset.RhoRead
   datasets:
-    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/mp_filelist.txt
-      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/split.json
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/split_capped.json
       dataset_id: 1
-    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/mp_filelist.txt
-      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/split.json
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/split_capped.json
       dataset_id: 2
   precision: f32
   batch_size: 1
