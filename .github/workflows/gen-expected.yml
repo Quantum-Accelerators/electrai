@@ -28,7 +28,7 @@ jobs:
   gen-macos-arm64:
     runs-on: macos-latest  # Apple Silicon (arm64) as of late 2024
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -47,7 +47,7 @@ jobs:
   gen-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -67,7 +67,7 @@ jobs:
     needs: [gen-macos-arm64, gen-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download darwin-arm64 artifact
         uses: actions/download-artifact@v8
