@@ -37,7 +37,7 @@ jobs:
         # crashes with "ENOENT: no such file or directory, symlink" in
         # restoreConfigFromBase because CLAUDE.md is a symlink to AGENTS.md.
         # Revert to @v1 once the fix in #1186 is released.
-        uses: anthropics/claude-code-action@v1.0.88
+        uses: anthropics/claude-code-action@v1.0.161
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
