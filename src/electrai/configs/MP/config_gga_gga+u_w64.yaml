@@ -1,7 +1,8 @@
 # Width-64 variant of the mp-large-scale run (config_gga_gga+u_f32.yaml).
 # Same GGA + GGA+U hyperparameters, with four deltas:
 #   - model.n_channels: 32 -> 64  (width 64)
-#   - precision: 32 -> 16-mixed   (W64 OOMs at fp32 on variable-grid MP data)
+#   - precision: 32 -> bf16-mixed (fp32 OOMs at W64; fp16 overflowed to NaN at
+#     epoch 3 on 2026-07-13, so use bf16 for its fp32-range exponent)
 #   - warmup_length: 1 -> 4
 #   - grid-size cap: uses *_capped filelists/splits (structures with grids
 #     >5,832,000 voxels ~180^3 dropped, ~1.5%). Without the cap, the largest
@@ -39,7 +40,7 @@ model:
   depth: 2
 
 # Training parameters
-precision: 16-mixed
+precision: bf16-mixed
 epochs: 100
 lr: 0.001
 weight_decay: 0.0
