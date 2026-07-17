@@ -194,6 +194,9 @@ skip-magic-trailing-comma = true
 "scripts/benchmark_*.py" = [
     "T201", # print used (CLI script logging)
 ]
+"scripts/coreweave/*.py" = [
+    "T201", # print used (CLI script logging)
+]
 "inference_benchmark/charge3net/**" = [
     # Reference copies of files that live in the charge3net fork; not
     # subject to electrai's lint policy.

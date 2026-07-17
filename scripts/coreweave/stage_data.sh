@@ -30,17 +30,20 @@ if [[ -f "$MARKER" && "${STAGE_FORCE:-0}" != "1" ]]; then
     exit 0
 fi
 
-S5DIR=$(mktemp -d)
-case "$(uname -m)" in
-    x86_64) S5ARCH=Linux-64bit ;;
-    aarch64) S5ARCH=Linux-arm64 ;;
-    *)
-        echo "stage_data: unsupported arch: $(uname -m)" >&2
-        exit 1
-        ;;
-esac
+if command -v s5cmd >/dev/null 2>&1; then
+    S5=$(command -v s5cmd)
+else
+    S5DIR=$(mktemp -d)
+    case "$(uname -m)" in
+        x86_64) S5ARCH=Linux-64bit ;;
+        aarch64) S5ARCH=Linux-arm64 ;;
+        *)
+            echo "stage_data: unsupported arch: $(uname -m)" >&2
+            exit 1
+            ;;
+    esac
 
-python3 - "$S5ARCH" "$S5DIR" <<'PYEOF'
+    python3 - "$S5ARCH" "$S5DIR" <<'PYEOF'
 import io
 import sys
 import tarfile
@@ -49,8 +52,9 @@ import urllib.request
 url = f"https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_{sys.argv[1]}.tar.gz"
 tarfile.open(fileobj=io.BytesIO(urllib.request.urlopen(url).read()), mode="r:gz").extractall(sys.argv[2])
 PYEOF
-S5="$S5DIR/s5cmd"
-chmod +x "$S5"
+    S5="$S5DIR/s5cmd"
+    chmod +x "$S5"
+fi
 
 mkdir -p "$DEST"
 echo "stage_data: syncing s3://$STAGE_BUCKET/$STAGE_PREFIX -> $DEST"
