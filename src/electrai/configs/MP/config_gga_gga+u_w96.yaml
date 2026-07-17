@@ -6,22 +6,27 @@
 # (ckpt_epoch=16_val_loss=0.008398), W&B mp-gga-ggau-width run zz3oecp7.
 #
 # Memory: W96 activations ~1.5x W64 (~115 GB), which OOMs an 80 GB A100/H100.
-# This run targets a GB200 (B200, 192 GB/GPU), so it fits WITHOUT activation
+# This run targets a GB200 (185 GiB visible/GPU), so it fits WITHOUT activation
 # checkpointing -> `use_checkpoint` stays off, matching W64 exactly. If ever run
 # on 80 GB GPUs, set model.use_checkpoint: True (costs ~30% compute).
-# Reuses the same *_capped filelists/splits as W64 (in s3://oa-electrai/...);
+# Reuses the same *_capped filelists/splits as W64 (validated 111,257 ids);
 # do NOT re-cap, or the W64 comparison breaks.
+#
+# Paths target the CoreWeave marin-us-east-08a cluster: the dataset is staged
+# from the rhoarnet-us-east-08a CAIOS bucket to node-local NVMe by
+# scripts/coreweave/stage_data.sh, which also creates the functionals/<f>/
+# {data,label} symlinks RhoRead needs. Run stage_data.sh before training.
 # Tracked in W&B project `mp-gga-ggau-width`.
 
 # Dataset / loader parameters
 data:
   _target_: electrai.dataloader.dataset.RhoRead
   datasets:
-    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
-      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/split_capped.json
+    - root: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
+      split_file: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga/split_capped.json
       dataset_id: 1
-    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
-      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/split_capped.json
+    - root: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
+      split_file: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga+u/split_capped.json
       dataset_id: 2
   precision: f32
   batch_size: 1
@@ -57,7 +62,8 @@ entity: PrinceOA
 wb_pname: mp-gga-ggau-width
 run_name: gga_gga+u_w96
 
-# checkpoints (overridden by scripts/lambda/run_training.sh to $CKPT_ROOT/<mode>_<run>)
-ckpt_path: ./checkpoints/gga_gga+u_w96
+# checkpoints: node-local NVMe (survives same-node pod restarts); synced to and
+# restored from the CAIOS bucket by the CoreWeave run wrapper
+ckpt_path: /mnt/local/iris-cache/electrai/checkpoints/gga_gga+u_w96
 
 # set HF as well
