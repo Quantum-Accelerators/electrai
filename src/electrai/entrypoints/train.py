@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ import yaml
 from hydra.utils import instantiate
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.strategies import DDPStrategy
 
 from electrai.lightning import LightningGenerator
 
@@ -53,12 +55,23 @@ def train(args):
         save_top_k=2,
         mode="min",
         filename="ckpt_{epoch:02d}_{val_loss:.6f}",
+    )
+
+    # Frequent resume checkpoint. An epoch here is tens of thousands of steps
+    # and can crash mid-way (e.g. a large sample tripping the NCCL watchdog), so
+    # save `last.ckpt` on a wall-clock interval; a restart then resumes instead
+    # of redoing the epoch from scratch. `val_loss` only exists at epoch end, so
+    # this is a separate monitor-less callback (save_top_k=0 -> last.ckpt only).
+    last_ckpt_cb = ModelCheckpoint(
+        dirpath=ckpt_path,
+        train_time_interval=timedelta(minutes=20),
+        save_top_k=0,
         save_last=True,
     )
 
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
-    callbacks = [checkpoint_cb, lr_monitor]
+    callbacks = [checkpoint_cb, last_ckpt_cb, lr_monitor]
 
     hf_cfg = getattr(cfg, "hf", None)
     if hf_cfg and hf_cfg.get("repo_id"):
@@ -82,7 +95,11 @@ def train(args):
         precision=cfg.precision,
         devices="auto",
         num_nodes=num_nodes,
-        strategy="ddp",
+        # Raise the NCCL collective timeout from the 30-min default: a single
+        # large sample's forward/backward can stall the all-reduce on the other
+        # ranks past 30 min and abort the whole group. The grid-size cap keeps
+        # steps short; this is a safety net for the occasional slow one.
+        strategy=DDPStrategy(timeout=timedelta(hours=2)),
         log_every_n_steps=1,
         gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
     )

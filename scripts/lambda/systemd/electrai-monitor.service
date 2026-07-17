@@ -1,0 +1,19 @@
+[Unit]
+Description=ElectrAI Lambda training monitor (resident Claude agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+# claude (native installer / npm global), uv, and aws can land in any of these:
+Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/home/ubuntu/electrai
+EnvironmentFile=-/home/ubuntu/.config/electrai-monitor/monitor.env
+ExecStart=/usr/bin/env bash /home/ubuntu/electrai/scripts/lambda/monitor_loop.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

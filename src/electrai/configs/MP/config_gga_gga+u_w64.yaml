@@ -1,0 +1,60 @@
+# Width-64 variant of the mp-large-scale run (config_gga_gga+u_f32.yaml).
+# Same GGA + GGA+U hyperparameters, with four deltas:
+#   - model.n_channels: 32 -> 64  (width 64)
+#   - precision: 32 -> bf16-mixed (fp32 OOMs at W64; fp16 overflowed to NaN at
+#     epoch 3 on 2026-07-13, so use bf16 for its fp32-range exponent)
+#   - warmup_length: 1 -> 4
+#   - grid-size cap: uses *_capped filelists/splits (structures with grids
+#     >5,832,000 voxels ~180^3 dropped, ~1.5%). Without the cap, the largest
+#     structures (up to ~540^3) make a single DDP step exceed the 30-min NCCL
+#     watchdog and crash-loop. Regenerate with scripts/lambda/cap_filelists.py.
+# Tracked in W&B project `mp-gga-ggau-width`.
+
+# Dataset / loader parameters
+data:
+  _target_: electrai.dataloader.dataset.RhoRead
+  datasets:
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/split_capped.json
+      dataset_id: 1
+    - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
+      split_file: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u/split_capped.json
+      dataset_id: 2
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+
+# Model
+model:
+  _target_: electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 64
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+
+# Training parameters
+precision: bf16-mixed
+epochs: 100
+lr: 0.001
+weight_decay: 0.0
+warmup_length: 4
+beta1: 0.9
+beta2: 0.99
+
+# Weights and biases
+wandb_mode: online
+entity: PrinceOA
+wb_pname: mp-gga-ggau-width
+run_name: gga_gga+u_w64
+
+# checkpoints (overridden by scripts/lambda/run_training.sh to $CKPT_ROOT/<mode>_<run>)
+ckpt_path: ./checkpoints/gga_gga+u_w64
+
+# set HF as well
