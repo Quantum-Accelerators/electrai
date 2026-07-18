@@ -1,7 +1,7 @@
 #!/bin/bash
 # Training wrapper for Iris jobs on the CoreWeave GB200 cluster.
 #
-# Sequence: install s5cmd -> stage dataset (idempotent) -> restore last.ckpt
+# Sequence: install rclone -> stage dataset (idempotent) -> restore last.ckpt
 # from CAIOS if the node has none -> start a background checkpoint sync loop
 # -> torchrun. Lightning resumes from $CKPT_DIR/last.ckpt automatically when
 # present, so preempted jobs continue from at most CKPT_SYNC_S + the 20-min
@@ -28,28 +28,39 @@ CKPT_DIR=${CKPT_DIR:-/mnt/local/iris-cache/electrai/checkpoints/gga_gga+u_w96}
 CKPT_S3=${CKPT_S3:-s3://rhoarnet-us-east-08a/checkpoints/gga_gga+u_w96}
 CKPT_SYNC_S=${CKPT_SYNC_S:-600}
 STAGE_ENDPOINT=${STAGE_ENDPOINT:-http://cwlota.com}
+CKPT_REMOTE="cw:${CKPT_S3#s3://}"
 
-# s5cmd once, shared with stage_data.sh via PATH
-S5ROOT=$(mktemp -d)
-case "$(uname -m)" in
-    x86_64) S5ARCH=Linux-64bit ;;
-    aarch64) S5ARCH=Linux-arm64 ;;
-    *)
-        echo "run_training: unsupported arch: $(uname -m)" >&2
-        exit 1
-        ;;
-esac
-python3 - "$S5ARCH" "$S5ROOT" <<'PYEOF'
+if ! command -v rclone >/dev/null 2>&1; then
+    RCDIR=$(mktemp -d)
+    case "$(uname -m)" in
+        x86_64) RCARCH=amd64 ;;
+        aarch64) RCARCH=arm64 ;;
+        *)
+            echo "run_training: unsupported arch: $(uname -m)" >&2
+            exit 1
+            ;;
+    esac
+    python3 - "$RCARCH" "$RCDIR" <<'PYEOF'
 import io
 import sys
-import tarfile
 import urllib.request
+import zipfile
 
-url = f"https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_{sys.argv[1]}.tar.gz"
-tarfile.open(fileobj=io.BytesIO(urllib.request.urlopen(url).read()), mode="r:gz").extractall(sys.argv[2])
+url = f"https://downloads.rclone.org/rclone-current-linux-{sys.argv[1]}.zip"
+zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(url).read())).extractall(sys.argv[2])
 PYEOF
-chmod +x "$S5ROOT/s5cmd"
-export PATH="$S5ROOT:$PATH"
+    RCBIN=$(echo "$RCDIR"/rclone-*-linux-"$RCARCH")
+    chmod +x "$RCBIN/rclone"
+    export PATH="$RCBIN:$PATH"
+fi
+
+# CAIOS remote, configured via env: virtual-host addressing is mandatory
+export RCLONE_CONFIG_CW_TYPE=s3
+export RCLONE_CONFIG_CW_PROVIDER=Other
+export RCLONE_CONFIG_CW_ENV_AUTH=true
+export RCLONE_CONFIG_CW_ENDPOINT="$STAGE_ENDPOINT"
+export RCLONE_CONFIG_CW_REGION=default
+export RCLONE_CONFIG_CW_FORCE_PATH_STYLE=false
 
 bash scripts/coreweave/stage_data.sh
 
@@ -57,7 +68,7 @@ bash scripts/coreweave/stage_data.sh
 # local copy is never older than the bucket's).
 mkdir -p "$CKPT_DIR"
 if [[ ! -f "$CKPT_DIR/last.ckpt" ]]; then
-    if s5cmd --endpoint-url "$STAGE_ENDPOINT" cp "$CKPT_S3/last.ckpt" "$CKPT_DIR/last.ckpt"; then
+    if rclone copyto "$CKPT_REMOTE/last.ckpt" "$CKPT_DIR/last.ckpt" 2>/dev/null; then
         echo "run_training: restored last.ckpt from $CKPT_S3"
     else
         echo "run_training: no remote last.ckpt, fresh start"
@@ -65,7 +76,7 @@ if [[ ! -f "$CKPT_DIR/last.ckpt" ]]; then
 fi
 
 ckpt_sync() {
-    s5cmd --endpoint-url "$STAGE_ENDPOINT" sync "$CKPT_DIR/" "$CKPT_S3/" || true
+    rclone copy "$CKPT_DIR" "$CKPT_REMOTE" --transfers 4 || true
 }
 (while true; do
     sleep "$CKPT_SYNC_S"

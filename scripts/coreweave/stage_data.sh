@@ -7,6 +7,9 @@
 # pod restarts) skip the download entirely. The dataset is immutable, so the
 # marker is trusted unless STAGE_FORCE=1.
 #
+# Uses rclone: CAIOS requires virtual-host addressing for list operations,
+# which s5cmd cannot emit (it is path-style only against custom endpoints).
+#
 # Env (all optional):
 #   STAGE_BUCKET    source bucket                  [rhoarnet-us-east-08a]
 #   STAGE_PREFIX    bucket prefix to mirror        [mp/chg_datasets]
@@ -30,37 +33,45 @@ if [[ -f "$MARKER" && "${STAGE_FORCE:-0}" != "1" ]]; then
     exit 0
 fi
 
-if command -v s5cmd >/dev/null 2>&1; then
-    S5=$(command -v s5cmd)
-else
-    S5DIR=$(mktemp -d)
+if ! command -v rclone >/dev/null 2>&1; then
+    RCDIR=$(mktemp -d)
     case "$(uname -m)" in
-        x86_64) S5ARCH=Linux-64bit ;;
-        aarch64) S5ARCH=Linux-arm64 ;;
+        x86_64) RCARCH=amd64 ;;
+        aarch64) RCARCH=arm64 ;;
         *)
             echo "stage_data: unsupported arch: $(uname -m)" >&2
             exit 1
             ;;
     esac
-
-    python3 - "$S5ARCH" "$S5DIR" <<'PYEOF'
+    python3 - "$RCARCH" "$RCDIR" <<'PYEOF'
 import io
 import sys
-import tarfile
 import urllib.request
+import zipfile
 
-url = f"https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_{sys.argv[1]}.tar.gz"
-tarfile.open(fileobj=io.BytesIO(urllib.request.urlopen(url).read()), mode="r:gz").extractall(sys.argv[2])
+url = f"https://downloads.rclone.org/rclone-current-linux-{sys.argv[1]}.zip"
+zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(url).read())).extractall(sys.argv[2])
 PYEOF
-    S5="$S5DIR/s5cmd"
-    chmod +x "$S5"
+    RCBIN=$(echo "$RCDIR"/rclone-*-linux-"$RCARCH")
+    chmod +x "$RCBIN/rclone"
+    export PATH="$RCBIN:$PATH"
 fi
+
+# CAIOS remote, configured via env: virtual-host addressing is mandatory
+export RCLONE_CONFIG_CW_TYPE=s3
+export RCLONE_CONFIG_CW_PROVIDER=Other
+export RCLONE_CONFIG_CW_ENV_AUTH=true
+export RCLONE_CONFIG_CW_ENDPOINT="$STAGE_ENDPOINT"
+export RCLONE_CONFIG_CW_REGION=default
+export RCLONE_CONFIG_CW_FORCE_PATH_STYLE=false
 
 mkdir -p "$DEST"
 echo "stage_data: syncing s3://$STAGE_BUCKET/$STAGE_PREFIX -> $DEST"
 start=$(date +%s)
-"$S5" --endpoint-url "$STAGE_ENDPOINT" --numworkers 512 --stat \
-    sync "s3://$STAGE_BUCKET/$STAGE_PREFIX/*" "$DEST/"
+rclone copy "cw:$STAGE_BUCKET/$STAGE_PREFIX" "$DEST" \
+    --transfers 96 --checkers 128 --size-only --fast-list \
+    --stats 60s --stats-one-line --log-level NOTICE
+
 # RhoRead resolves data/ and label/ as siblings of the filelist, so the
 # functionals dirs need the same symlink shim prep_data.sh created on Lambda.
 ln -sfn ../../rho_gga/data "$DEST/functionals/gga/data"
