@@ -56,8 +56,11 @@ warmup_length: 4
 beta1: 0.9
 beta2: 0.99
 
-# Weights and biases
-wandb_mode: online
+# Weights and biases — OFFLINE + sidecar sync: online wandb.init crashes with
+# the viewer flags=null TypeError (same wandb bug as lambda2; confirmed on
+# GB200 2026-07-18) and the rank-0 death silently deadlocks DDP.
+# run_training.sh re-syncs the offline run dirs every CKPT_SYNC_S seconds.
+wandb_mode: offline
 entity: PrinceOA
 wb_pname: mp-gga-ggau-width
 run_name: gga_gga+u_w96

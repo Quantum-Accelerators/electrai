@@ -78,9 +78,18 @@ fi
 ckpt_sync() {
     rclone copy "$CKPT_DIR" "$CKPT_REMOTE" --transfers 4 || true
 }
+# wandb runs offline (online init hits the viewer flags=null TypeError and a
+# rank-0 crash deadlocks DDP); `wandb sync` uses a different API path and works
+wandb_sync() {
+    for d in "$REPO_ROOT"/wandb/offline-run-*; do
+        [ -d "$d" ] && uv run --no-sync wandb sync "$d" >/dev/null 2>&1
+    done
+    return 0
+}
 (while true; do
     sleep "$CKPT_SYNC_S"
     ckpt_sync
+    wandb_sync
 done) &
 SYNC_PID=$!
 
@@ -100,5 +109,6 @@ set -e
 
 kill "$SYNC_PID" 2>/dev/null || true
 ckpt_sync
-echo "run_training: exited rc=$RC (final checkpoint sync done)"
+wandb_sync
+echo "run_training: exited rc=$RC (final checkpoint + wandb sync done)"
 exit "$RC"
