@@ -10,10 +10,15 @@
 # Uses rclone: CAIOS requires virtual-host addressing for list operations,
 # which s5cmd cannot emit (it is path-style only against custom endpoints).
 #
+# STAGE_ROOT lives under /uv/cache because that is the ONLY host-persistent
+# mount Iris task pods get (hostPath /mnt/local/iris-cache/uv-cache). Writing
+# anywhere else lands on the container overlay and counts against the pod's
+# ephemeral-storage limit, which kills the pod mid-stage (exit 137).
+#
 # Env (all optional):
 #   STAGE_BUCKET    source bucket                  [rhoarnet-us-east-08a]
 #   STAGE_PREFIX    bucket prefix to mirror        [mp/chg_datasets]
-#   STAGE_ROOT      local destination root         [/mnt/local/iris-cache/electrai]
+#   STAGE_ROOT      local destination root         [/uv/cache/electrai]
 #   STAGE_ENDPOINT  S3 endpoint                    [http://cwlota.com]
 #   STAGE_FORCE     1 = re-sync even if marker present
 #
@@ -23,7 +28,7 @@ set -euo pipefail
 
 STAGE_BUCKET=${STAGE_BUCKET:-rhoarnet-us-east-08a}
 STAGE_PREFIX=${STAGE_PREFIX:-mp/chg_datasets}
-STAGE_ROOT=${STAGE_ROOT:-/mnt/local/iris-cache/electrai}
+STAGE_ROOT=${STAGE_ROOT:-/uv/cache/electrai}
 STAGE_ENDPOINT=${STAGE_ENDPOINT:-http://cwlota.com}
 DEST="$STAGE_ROOT/$STAGE_PREFIX"
 MARKER="$DEST/.staged.ok"

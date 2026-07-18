@@ -24,7 +24,7 @@ cd "$REPO_ROOT"
 
 CONFIG=${CONFIG:-src/electrai/configs/MP/config_gga_gga+u_w96.yaml}
 NPROC=${NPROC:-4}
-CKPT_DIR=${CKPT_DIR:-/mnt/local/iris-cache/electrai/checkpoints/gga_gga+u_w96}
+CKPT_DIR=${CKPT_DIR:-/uv/cache/electrai/checkpoints/gga_gga+u_w96}
 CKPT_S3=${CKPT_S3:-s3://rhoarnet-us-east-08a/checkpoints/gga_gga+u_w96}
 CKPT_SYNC_S=${CKPT_SYNC_S:-600}
 STAGE_ENDPOINT=${STAGE_ENDPOINT:-http://cwlota.com}

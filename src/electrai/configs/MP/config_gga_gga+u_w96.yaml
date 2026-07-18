@@ -22,11 +22,11 @@
 data:
   _target_: electrai.dataloader.dataset.RhoRead
   datasets:
-    - root: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
-      split_file: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga/split_capped.json
+    - root: /uv/cache/electrai/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
+      split_file: /uv/cache/electrai/mp/chg_datasets/functionals/gga/split_capped.json
       dataset_id: 1
-    - root: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
-      split_file: /mnt/local/iris-cache/electrai/mp/chg_datasets/functionals/gga+u/split_capped.json
+    - root: /uv/cache/electrai/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
+      split_file: /uv/cache/electrai/mp/chg_datasets/functionals/gga+u/split_capped.json
       dataset_id: 2
   precision: f32
   batch_size: 1
@@ -64,6 +64,6 @@ run_name: gga_gga+u_w96
 
 # checkpoints: node-local NVMe (survives same-node pod restarts); synced to and
 # restored from the CAIOS bucket by the CoreWeave run wrapper
-ckpt_path: /mnt/local/iris-cache/electrai/checkpoints/gga_gga+u_w96
+ckpt_path: /uv/cache/electrai/checkpoints/gga_gga+u_w96
 
 # set HF as well
