@@ -59,14 +59,16 @@ def train(args):
 
     # Frequent resume checkpoint. An epoch here is tens of thousands of steps
     # and can crash mid-way (e.g. a large sample tripping the NCCL watchdog), so
-    # save `last.ckpt` on a wall-clock interval; a restart then resumes instead
-    # of redoing the epoch from scratch. `val_loss` only exists at epoch end, so
-    # this is a separate monitor-less callback (save_top_k=0 -> last.ckpt only).
+    # save `last.ckpt` periodically; a restart then resumes instead of redoing
+    # the epoch from scratch. `val_loss` only exists at epoch end, so this is a
+    # separate monitor-less callback (save_top_k=0 -> last.ckpt only).
+    # Step-based, NOT train_time_interval: the wall-clock trigger needs a DDP
+    # broadcast to align ranks and their clocks can disagree about when the
+    # interval fired, which deadlocked a 4-rank run mid-epoch (ranks in
+    # mismatched collectives; NCCL watchdog never fires). Step counts are
+    # identical on every rank, so no alignment collective is needed.
     last_ckpt_cb = ModelCheckpoint(
-        dirpath=ckpt_path,
-        train_time_interval=timedelta(minutes=20),
-        save_top_k=0,
-        save_last=True,
+        dirpath=ckpt_path, every_n_train_steps=2000, save_top_k=0, save_last=True
     )
 
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
