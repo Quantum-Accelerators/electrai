@@ -64,15 +64,25 @@ export RCLONE_CONFIG_CW_FORCE_PATH_STYLE=false
 
 bash scripts/coreweave/stage_data.sh
 
-# Restore for resume: only when this node has no local last.ckpt (a warm node's
-# local copy is never older than the bucket's).
+# Restore for resume. Lightning versions the save_last file (last-v1.ckpt,
+# last-v2.ckpt, ...) whenever an earlier run's last.ckpt already exists, but
+# resume always reads last.ckpt — so fetch all last*.ckpt and promote the
+# newest before launch (a warm node's local copies are never older than the
+# bucket's, so only fetch when the dir is empty of them).
 mkdir -p "$CKPT_DIR"
-if [[ ! -f "$CKPT_DIR/last.ckpt" ]]; then
-    if rclone copyto "$CKPT_REMOTE/last.ckpt" "$CKPT_DIR/last.ckpt" 2>/dev/null; then
-        echo "run_training: restored last.ckpt from $CKPT_S3"
-    else
-        echo "run_training: no remote last.ckpt, fresh start"
-    fi
+if ! compgen -G "$CKPT_DIR/last*.ckpt" >/dev/null; then
+    rclone copy "$CKPT_REMOTE" "$CKPT_DIR" --include 'last*.ckpt' --transfers 4 || true
+fi
+NEWEST=$(ls -t "$CKPT_DIR"/last*.ckpt 2>/dev/null | head -1 || true)
+if [[ -n "$NEWEST" && "$NEWEST" != "$CKPT_DIR/last.ckpt" ]]; then
+    cp -f "$NEWEST" "$CKPT_DIR/.last_promote_tmp"
+    mv -f "$CKPT_DIR/.last_promote_tmp" "$CKPT_DIR/last.ckpt"
+    echo "run_training: promoted $(basename "$NEWEST") -> last.ckpt"
+fi
+if [[ -f "$CKPT_DIR/last.ckpt" ]]; then
+    echo "run_training: resuming from last.ckpt"
+else
+    echo "run_training: fresh start"
 fi
 
 ckpt_sync() {
