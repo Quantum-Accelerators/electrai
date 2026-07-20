@@ -24,8 +24,13 @@ cd "$REPO_ROOT"
 
 CONFIG=${CONFIG:-src/electrai/configs/MP/config_gga_gga+u_w96.yaml}
 NPROC=${NPROC:-4}
-CKPT_DIR=${CKPT_DIR:-/uv/cache/electrai/checkpoints/gga_gga+u_w96}
-CKPT_S3=${CKPT_S3:-s3://rhoarnet-us-east-08a/checkpoints/gga_gga+u_w96}
+# Default checkpoint locations derive from the config filename stem so that a
+# different config (e.g. w128) can never accidentally resume another run's
+# incompatible last.ckpt.
+RUN_STEM=$(basename "$CONFIG" .yaml)
+RUN_STEM=${RUN_STEM#config_}
+CKPT_DIR=${CKPT_DIR:-/uv/cache/electrai/checkpoints/$RUN_STEM}
+CKPT_S3=${CKPT_S3:-s3://rhoarnet-us-east-08a/checkpoints/$RUN_STEM}
 CKPT_SYNC_S=${CKPT_SYNC_S:-600}
 STAGE_ENDPOINT=${STAGE_ENDPOINT:-http://cwlota.com}
 CKPT_REMOTE="cw:${CKPT_S3#s3://}"
