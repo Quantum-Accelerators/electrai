@@ -50,29 +50,36 @@ def check_data(cfg, n_batches):
     print(f"read {n_batches} train batches in {dt:.1f}s ({dt / n_batches:.2f}s/batch)")
 
 
-def check_memory(cfg):
+def check_memory(cfg, grids=(128, 180), iters=1):
     model = instantiate(cfg["model"]).cuda()
     n_params = sum(p.numel() for p in model.parameters())
     print(f"model params: {n_params / 1e6:.1f}M")
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     # 180^3 = 5,832,000 voxels: the exact cap from cap_filelists.py, i.e. the
-    # worst case any capped structure can present.
-    for shape in ((128, 128, 128), (180, 180, 180)):
+    # worst case any capped structure can present. With iters > 1 the first
+    # iteration absorbs cuDNN algorithm search (benchmark mode) and the last
+    # one is the steady state.
+    total = torch.cuda.get_device_properties(0).total_memory / 2**30
+    for n in grids:
+        shape = (n, n, n)
         torch.cuda.reset_peak_memory_stats()
         x = torch.randn(1, 1, *shape, device="cuda")
-        start = time.monotonic()
-        with torch.autocast("cuda", dtype=torch.bfloat16):
-            loss = model(x).float().square().mean()
-        loss.backward()
-        opt.step()
-        opt.zero_grad(set_to_none=True)
-        torch.cuda.synchronize()
+        times = []
+        for _ in range(iters):
+            start = time.monotonic()
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                loss = model(x).float().square().mean()
+            loss.backward()
+            opt.step()
+            opt.zero_grad(set_to_none=True)
+            torch.cuda.synchronize()
+            times.append(time.monotonic() - start)
         peak = torch.cuda.max_memory_allocated() / 2**30
-        total = torch.cuda.get_device_properties(0).total_memory / 2**30
         print(
-            f"grid {shape}: fwd+bwd+step {time.monotonic() - start:.2f}s, "
-            f"peak {peak:.1f} GiB / {total:.1f} GiB"
+            f"grid {shape}: fwd+bwd+step {' / '.join(f'{t:.2f}s' for t in times)}, "
+            f"peak {peak:.1f} GiB / {total:.1f} GiB",
+            flush=True,
         )
         del x, loss
 
@@ -81,6 +88,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--n-batches", type=int, default=10)
+    parser.add_argument("--grids", default="128,180", help="comma-separated cube edges")
+    parser.add_argument("--iters", type=int, default=1, help="timed steps per grid")
+    parser.add_argument("--cudnn-benchmark", action="store_true")
+    parser.add_argument(
+        "--skip-data", action="store_true", help="model/memory probe only"
+    )
     args = parser.parse_args()
 
     with Path(args.config).open() as f:
@@ -90,10 +103,14 @@ def main():
     print(
         torch.cuda.get_device_name(0), "capability", torch.cuda.get_device_capability(0)
     )
-    print("== data ==")
-    check_data(cfg, args.n_batches)
+    if args.cudnn_benchmark:
+        torch.backends.cudnn.benchmark = True
+        print("cudnn.benchmark = True")
+    if not args.skip_data:
+        print("== data ==")
+        check_data(cfg, args.n_batches)
     print("== memory envelope ==")
-    check_memory(cfg)
+    check_memory(cfg, grids=[int(g) for g in args.grids.split(",")], iters=args.iters)
     print("DRY RUN PASSED")
 
 
