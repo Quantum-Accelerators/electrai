@@ -94,10 +94,16 @@ def main():
     parser.add_argument(
         "--skip-data", action="store_true", help="model/memory probe only"
     )
+    parser.add_argument(
+        "--n-channels", type=int, help="override model.n_channels (width probes)"
+    )
     args = parser.parse_args()
 
     with Path(args.config).open() as f:
         cfg = yaml.safe_load(f)
+    if args.n_channels:
+        cfg["model"]["n_channels"] = args.n_channels
+        print(f"n_channels override: {args.n_channels}")
 
     print("== gpu ==")
     print(
