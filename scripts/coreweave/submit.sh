@@ -27,6 +27,7 @@ GPUS=${GPUS:-GB200x4}
 CPUS=${CPUS:-64}
 MEMORY=${MEMORY:-200GB}
 DISK=${DISK:-60GB}
+MAX_RETRIES=${MAX_RETRIES:-25}
 
 [[ -f $CONFIG ]] || {
     echo "submit: config not found in cwd bundle: $CONFIG" >&2
@@ -37,7 +38,7 @@ KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config-coreweave} \
     uv run --project "$MARIN_REPO" --package marin-iris \
     iris --cluster=cw-us-east-08a job run \
     --enable-extra-resources --gpu "$GPUS" --cpu "$CPUS" --memory "$MEMORY" --disk "$DISK" \
-    --priority batch --max-retries 3 --job-name "$JOB_NAME" --no-wait \
+    --priority batch --max-retries "$MAX_RETRIES" --job-name "$JOB_NAME" --no-wait \
     -e AWS_ACCESS_KEY_ID "$(aws configure get aws_access_key_id --profile coreweave)" \
     -e AWS_SECRET_ACCESS_KEY "$(aws configure get aws_secret_access_key --profile coreweave)" \
     -e WANDB_API_KEY "$(awk '/machine api.wandb.ai/{f=1} f && /password/{print $2; exit}' ~/.netrc)" \
