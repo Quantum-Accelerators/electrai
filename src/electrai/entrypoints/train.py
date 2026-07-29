@@ -42,8 +42,14 @@ def train(args):
     if wandb_mode != "disabled":
         from lightning.pytorch.loggers import WandbLogger
 
+        # Name the run from the config (encodes the model width) instead of
+        # letting wandb auto-generate — restart segments are otherwise
+        # indistinguishable in the project view.
         wandb_logger = WandbLogger(
-            project=cfg.wb_pname, entity=cfg.entity, config=vars(cfg)
+            project=cfg.wb_pname,
+            entity=cfg.entity,
+            name=getattr(cfg, "run_name", None),
+            config=vars(cfg),
         )
     else:
         wandb_logger = None
