@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,14 +42,15 @@ def train(args):
     if wandb_mode != "disabled":
         from lightning.pytorch.loggers import WandbLogger
 
-        # Name the run from the config (encodes the model width) instead of
-        # letting wandb auto-generate — restart segments are otherwise
-        # indistinguishable in the project view.
+        # Short width-first run name (w128_0729-1912): auto-generated names
+        # made restart segments of different-width runs indistinguishable,
+        # and full config-derived names were too long for the project view.
+        model_cfg = getattr(cfg, "model", None) or {}
+        n_ch = model_cfg.get("n_channels") if isinstance(model_cfg, dict) else None
+        stamp = datetime.now(UTC).strftime("%m%d-%H%M")
+        run_name = f"w{n_ch}_{stamp}" if n_ch else getattr(cfg, "run_name", None)
         wandb_logger = WandbLogger(
-            project=cfg.wb_pname,
-            entity=cfg.entity,
-            name=getattr(cfg, "run_name", None),
-            config=vars(cfg),
+            project=cfg.wb_pname, entity=cfg.entity, name=run_name, config=vars(cfg)
         )
     else:
         wandb_logger = None
