@@ -38,7 +38,7 @@ def main() -> None:
     api = wandb.Api()
     runs = api.runs(f"{ENTITY}/{PROJECT}")
 
-    trials: dict[tuple[int, float, float], dict[int, float]] = {}
+    trials: dict[tuple[int, float, float, str], dict[int, float]] = {}
     for run in runs:
         cfg = run.config
         model = cfg.get("model") or {}
@@ -48,7 +48,11 @@ def main() -> None:
         if width is None or lr is None:
             print(f"  (skipping run {run.name}: no width/lr in config)")
             continue
-        per_epoch = trials.setdefault((width, float(lr), float(wd)), {})
+        # The _rep2 noise-bar reruns share (width, lr, wd) with their stage-A
+        # twins; the config run_name (the config stem) keeps them apart while
+        # still merging preemption-restart segments, which share it.
+        rep = "rep2" if str(cfg.get("run_name", "")).endswith("_rep2") else ""
+        per_epoch = trials.setdefault((width, float(lr), float(wd), rep), {})
         for h in run.scan_history(keys=["epoch", "val_loss_epoch"]):
             ep, val = h.get("epoch"), h.get("val_loss_epoch")
             if ep is None or val is None:
@@ -57,21 +61,25 @@ def main() -> None:
             per_epoch[int(ep)] = min(val, per_epoch.get(int(ep), float("inf")))
 
     print(
-        f"{'width':>5} {'lr':>8} {'wd':>7} {'epochs':>6} {'best val':>9} "
+        f"{'width':>5} {'lr':>8} {'wd':>7} {'rep':>4} {'epochs':>6} {'best val':>9} "
         f"{'best%':>6} {'final val':>9} {'@ep':>3}"
     )
     best_by_width: dict[int, tuple[float, float]] = {}
-    for (width, lr, wd), per_epoch in sorted(trials.items()):
+    for (width, lr, wd, rep), per_epoch in sorted(trials.items()):
         if not per_epoch:
             continue
         best_ep = min(per_epoch, key=per_epoch.get)
         last_ep = max(per_epoch)
         best = per_epoch[best_ep]
         print(
-            f"{width:>5} {lr:>8g} {wd:>7g} {len(per_epoch):>6} {best:>9.6f} "
+            f"{width:>5} {lr:>8g} {wd:>7g} {rep:>4} {len(per_epoch):>6} {best:>9.6f} "
             f"{best * 100:>6.3f} {per_epoch[last_ep]:>9.6f} {best_ep:>3}"
         )
-        if wd == 0.0 and best < best_by_width.get(width, (float("inf"),))[0]:
+        if (
+            wd == 0.0
+            and not rep
+            and best < best_by_width.get(width, (float("inf"),))[0]
+        ):
             best_by_width[width] = (best, lr)
 
     if best_by_width:
