@@ -1,6 +1,51 @@
 # LR / weight-decay sweep across width (W32 / W64 / W96)
 
-Status: designed 2026-07-30, not yet launched.
+Status: stages A+B COMPLETE (launched 2026-07-30/31, finished 2026-07-31 —
+16 + 15 trials, all succeeded; results below). Stage C not launched.
+
+## Results (see W&B `mp-gga-ggau-lrwd`; aggregate with scripts/review_lrwd_sweep.py)
+
+Best val NMAE% on the 8-epoch/12K proxy. Noise bar from the three verbatim
+anchor reruns: **±0.04–0.07 points** (1.914→1.968, 1.592→1.665, 1.524→1.566).
+
+| lr | W32 | W64 | W96 |
+|---------|-------|-------|-------|
+| 2.5e-4 | 2.330 | 1.998 | 1.943 |
+| 5e-4 | 2.133 | 1.841 | 1.836 |
+| 1e-3 | 1.935 | 1.708 | 1.757 |
+| 2e-3 | **1.914** | 1.759 | **1.524** |
+| 4e-3 | 1.954 | **1.592** | 1.562 |
+| 8e-3 | — | 1.580 | — |
+
+| wd @ lr* (AdamW) | W32 | W64 | W96 |
+|---------|-------|-------|-------|
+| 0 (+rerun) | 1.914 / 1.968 | 1.592 / 1.665 | 1.524 / 1.566 |
+| 1e-4 | 1.968 | 1.631 | 1.535 |
+| 1e-3 | 1.995 | 1.610 | 1.640 |
+| 1e-2 | 1.970 | 1.654 | 1.549 |
+| cross (lr*/2, 1e-3) | 1.904 | 1.638 | 1.731 |
+
+Conclusions:
+
+1. **lr\* does not shrink with width** — every width sits in a flat 2–4e-3
+   basin (differences at/inside the noise bar). The production lr=1e-3 is
+   suboptimal at all widths, and the penalty grows with width: ~1% relative
+   at W32, ~7% at W64, ~13% at W96. Extrapolation to W128/W160: use 2e-3.
+2. **Weight decay is neutral across 1e-4–1e-2 at every width** — even on
+   this subset, where overfitting bites ~9× earlier than at full scale, so
+   at 111K it has even less room to help. Recommend keeping **wd=0**
+   (continuity with all incumbents); wd up to 1e-2 is demonstrably safe if
+   ever wanted for other reasons. (Only outlier: W96 @ 1e-3 = 1.640,
+   marginally past the bar; with 1e-2 neutral on both sides it reads as an
+   unlucky draw, not a trend.)
+3. W64's stage-A curiosities dissolved: the 8e-3 "win" (1.580 vs 1.592) and
+   the 2e-3 dip (1.759; cross term at same lr with wd landed 1.638) are
+   both within run-to-run noise.
+4. Width ordering at tuned recipes is unchanged: W96 1.524 < W64 1.592 <
+   W32 1.914.
+
+**Stage C recipes**: W32 (2e-3, 0), W64 (4e-3, 0), W96 (2e-3, 0) — with
+2e-3 defensible everywhere given the flat basin.
 
 ## Why
 
