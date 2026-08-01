@@ -72,12 +72,12 @@ bash scripts/coreweave/stage_data.sh
 # Restore for resume. Lightning versions the save_last file (last-v1.ckpt,
 # last-v2.ckpt, ...) whenever an earlier run's last.ckpt already exists, but
 # resume always reads last.ckpt — so fetch all last*.ckpt and promote the
-# newest before launch (a warm node's local copies are never older than the
-# bucket's, so only fetch when the dir is empty of them).
+# newest before launch. ALWAYS reconcile against the bucket with --update
+# (copy only when the bucket file is newer): after several preemption
+# bounces a retry can land on a node whose local last.ckpt is DAYS stale,
+# and trusting it rolled a run back six epochs (2026-08-01, W160).
 mkdir -p "$CKPT_DIR"
-if ! compgen -G "$CKPT_DIR/last*.ckpt" >/dev/null; then
-    rclone copy "$CKPT_REMOTE" "$CKPT_DIR" --include 'last*.ckpt' --transfers 4 || true
-fi
+rclone copy "$CKPT_REMOTE" "$CKPT_DIR" --include 'last*.ckpt' --update --transfers 4 || true
 NEWEST=$(ls -t "$CKPT_DIR"/last*.ckpt 2>/dev/null | head -1 || true)
 if [[ -n "$NEWEST" && "$NEWEST" != "$CKPT_DIR/last.ckpt" ]]; then
     cp -f "$NEWEST" "$CKPT_DIR/.last_promote_tmp"
