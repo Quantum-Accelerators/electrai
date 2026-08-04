@@ -40,4 +40,4 @@ wandb_mode: offline
 entity: PrinceOA
 wb_pname: mp-gga-ggau-width
 run_name: config_gga_gga+u_w96_lr2e-3
-ckpt_path: /uv/cache/electrai/checkpoints/config_gga_gga+u_w96_lr2e-3
+ckpt_path: /uv/cache/electrai/checkpoints/gga_gga+u_w96_lr2e-3
