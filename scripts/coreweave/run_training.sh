@@ -84,6 +84,20 @@ if [[ -n "$NEWEST" && "$NEWEST" != "$CKPT_DIR/last.ckpt" ]]; then
     mv -f "$CKPT_DIR/.last_promote_tmp" "$CKPT_DIR/last.ckpt"
     echo "run_training: promoted $(basename "$NEWEST") -> last.ckpt"
 fi
+
+# Guard: never resume from a checkpoint meaningfully older than the bucket's.
+# A transient fetch failure above (swallowed by || true) can otherwise let a
+# stale node copy win promotion — that silently rolled W128 back ~20 epochs
+# on 2026-08-05. Failing hard makes the Iris retry refetch instead.
+REMOTE_TS=$(rclone lsl "$CKPT_REMOTE" --include 'last.ckpt' 2>/dev/null | awk '{print $2" "$3}' | head -1)
+if [[ -n "$REMOTE_TS" && -f "$CKPT_DIR/last.ckpt" ]]; then
+    remote_s=$(date -d "$REMOTE_TS" +%s 2>/dev/null || echo 0)
+    local_s=$(stat -c %Y "$CKPT_DIR/last.ckpt" 2>/dev/null || echo 0)
+    if ((remote_s > 0 && local_s > 0 && remote_s - local_s > 600)); then
+        echo "run_training: local last.ckpt is $((remote_s - local_s))s staler than bucket — refusing stale resume" >&2
+        exit 1
+    fi
+fi
 if [[ -f "$CKPT_DIR/last.ckpt" ]]; then
     echo "run_training: resuming from last.ckpt"
 else
