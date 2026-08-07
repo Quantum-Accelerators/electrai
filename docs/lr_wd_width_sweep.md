@@ -196,3 +196,39 @@ reason.
   Stage B caveat); Stage C is the arbiter.
 - The scheduler steps per epoch, so an 8-epoch cosine has coarse resolution;
   all trials share it, so comparisons are fair.
+
+## W128 withheld-test-set evaluation (Aug 5–7, 2026)
+
+Checkpoint `w128_ckpt_epoch55_val0.005785.ckpt` (stage-C W128 at lr 2e-3,
+epoch 55) evaluated on the withheld `test` split of `split_capped.json` —
+never seen in training or validation. Della jobs 12057752 (GGA) + 12111587
+(GGA+U), fp32, single A100-80GB; config
+`src/electrai/configs/MP/config_gga_gga+u_w128_test_della.yaml`; per-sample
+CSVs in `/scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/results{,_padsu}/`.
+
+| Subset | n | mean NMAE | median | p90 | p99 | max | share <1% |
+|---|---|---|---|---|---|---|---|
+| GGA | 1700 | 0.480% | 0.373% | 0.900% | 1.842% | 2.95% | 92.0% |
+| GGA+U (PADS) | 524 | 0.483% | 0.397% | 0.857% | 1.794% | 3.36% | 94.5% |
+| **Combined** | **2224** | **0.481%** | 0.379% | 0.890% | 1.832% | 3.36% | 92.6% |
+
+**Combined test NMAE 0.481% is under the 0.5% ChargE3Net threshold** and
+consistent with the 0.579% val loss (val is bf16-on-GB200; test is fp32).
+
+Provenance notes uncovered during this eval:
+
+- The split files existed only in the buckets; they were staged from
+  `s3://oa-electrai` to `/scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/`
+  and their test/validation indices verified byte-identical to the
+  training-time splits (via `data/MP/sweep_splits/*_sweep12k.json`
+  pass-through).
+- **The training data's `gga+u` inputs are PADS, not SAD.** Della's
+  `functionals/gga+u_sad` and `gga+u_pads` share identical filelists and
+  labels; only inputs differ. Evaluating with SAD inputs gives ~10% NMAE
+  across the whole GGA+U test set (the model degrades SAD inputs below
+  their own 7–9% input error); PADS inputs give 0.48%. Probe: Della job
+  12111541. Any "GGA+U" result from the gga-ggau width campaign is a
+  PADS-input result.
+- bf16-mixed autocast OOMs this checkpoint on A100 (a ~75 GiB allocation
+  inside a decoder conv on a 108³ sample, Della job 12049722) — evaluate at
+  fp32 on Della, matching the throughput benchmark (job 12046200).

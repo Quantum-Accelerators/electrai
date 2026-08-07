@@ -1,0 +1,55 @@
+# Test-set eval of the W128 lr2e-3 checkpoint (epoch 55, val 0.005785) on Della.
+# Withheld test set = the `test` key of split_capped.json (GGA 1700 + GGA+U 524),
+# staged from s3://oa-electrai into bb9080 scratch and remapped onto the UNCAPPED
+# COMMON filelists (byte-identical to the bucket's) so the shared functionals
+# dirs are used read-only. gga+u on Della is named gga+u_sad (filelist verified
+# identical to the bucket's gga+u).
+data:
+  _target_: electrai.dataloader.dataset.RhoRead
+  datasets:
+  - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga/mp_filelist.txt
+    split_file: /scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/gga/split_capped_on_uncapped.json
+    dataset_id: 1
+  # gga+u_pads, NOT gga+u_sad: the trained model's gga+u inputs are PADS.
+  # Probe job 12111541 on 3 test samples: PADS 0.29-1.15% NMAE vs SAD
+  # 8.6-14.5% (worse than raw SAD input error) — the staged CoreWeave "gga+u"
+  # data was PADS content. Labels/filelists are identical between variants.
+  - root: /scratch/gpfs/ROSENGROUP/common/globus_share_OA/mp/chg_datasets/functionals/gga+u_pads/mp_filelist.txt
+    split_file: /scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/gga+u/split_capped_on_uncapped.json
+    dataset_id: 2
+  precision: f32
+  batch_size: 1
+  train_workers: 0
+  val_workers: 4
+  pin_memory: false
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+model:
+  _target_: electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 128
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+# fp32, matching the proven W128 throughput benchmark on this checkpoint/GPU
+# (job 12046200, peak 45.5 GB). bf16-mixed autocast OOM'd on A100: a single
+# ~75 GiB allocation inside a decoder conv on a 108^3 sample (job 12049722) —
+# pathological cuDNN algo/workspace for bf16 5^3 convs on A100 (training ran
+# bf16 fine on GB200, a different GPU/cuDNN).
+precision: 32
+epochs: 100
+lr: 0.002
+weight_decay: 0.0
+warmup_length: 4
+beta1: 0.9
+beta2: 0.99
+wandb_mode: disabled
+entity: PrinceOA
+wb_pname: mp-gga-ggau-w128-lr2e3
+run_name: w128_epoch55_test_eval
+ckpt_path: /scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/ckpt
+save_pred: false
+log_dir: /scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/results
+out_dir: /scratch/gpfs/ROSENGROUP/bb9080/w128_test_eval/results/preds
