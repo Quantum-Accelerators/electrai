@@ -22,6 +22,8 @@ class DatasetSpec:
     split_file: str | None = None
     val_frac: float | None = None
     dataset_id: int | None = None
+    input: str | None = None  # explicit input dir (elf mode); overrides root/data
+    label: str | None = None  # explicit label dir (elf mode); overrides root/label
 
 
 class AddDatasetID(Dataset):
@@ -91,6 +93,8 @@ class RhoRead(LightningDataModule):
                         s.val_frac if s.val_frac is not None else default_val_frac
                     ),
                     dataset_id=dataset_id,
+                    input=s.input,
+                    label=s.label,
                 )
             )
         self.specs = filled
@@ -115,7 +119,11 @@ class RhoRead(LightningDataModule):
                 continue
 
             ds = RhoData(
-                spec.root, precision=self.precision, augmentation=self.augmentation
+                spec.root,
+                precision=self.precision,
+                augmentation=self.augmentation,
+                input_dir=spec.input,
+                label_dir=spec.label,
             )
             dataset_id = int(spec.dataset_id)
 
@@ -184,46 +192,71 @@ class RhoRead(LightningDataModule):
 
 
 class RhoData(Dataset):
-    def __init__(self, datapath: str, precision: str, augmentation: bool, **kwargs):
+    def __init__(
+        self,
+        datapath: str,
+        precision: str,
+        augmentation: bool,
+        input_dir: str | None = None,
+        label_dir: str | None = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.aug = augmentation
         self.precision = precision
-        if isinstance(datapath, str) and Path(datapath).is_file():
-            with Path(datapath).open() as f:
-                lines = f.readlines()
-            member_list = [line.replace("\n", "") for line in lines]
-        else:
-            raise ValueError("No filename found.")
 
-        self.category = Path(datapath).name.split("_")[0]  # example: mp_filelist.txt
-        self.root = Path(datapath).parent
+        if not (isinstance(datapath, str) and Path(datapath).is_file()):
+            raise ValueError("No filename found.")
+        with Path(datapath).open() as f:
+            lines = f.readlines()
+        member_list = [line.replace("\n", "") for line in lines]
         if not member_list:
             raise ValueError(f"Filelist at {datapath} is empty.")
         self.member_list = member_list
-        # Detect zarr vs CHGCAR by checking which extension the first entry has
-        first = member_list[0]
-        if (self.root / "data" / f"{first}.zarr").exists():
-            self.fmt = "zarr"
-        elif (self.root / "data" / f"{first}.CHGCAR").exists():
-            self.fmt = "chgcar"
+
+        if input_dir is not None and label_dir is not None:
+            # ELF mode: explicit input/label directories supplied in config
+            self.input_dir = Path(input_dir)
+            self.label_dir = Path(label_dir)
+            self.fmt = "explicit"
         else:
-            raise ValueError(
-                f"No .zarr or .CHGCAR file found for '{first}' in {self.root / 'data'}"
-            )
+            # Rho mode: derive paths from root/data and root/label as before
+            self.input_dir = None
+            self.label_dir = None
+            self.category = Path(datapath).name.split("_")[0]  # e.g. mp_filelist.txt
+            self.root = Path(datapath).parent
+            first = member_list[0]
+            if (self.root / "data" / f"{first}.zarr").exists():
+                self.fmt = "zarr"
+            elif (self.root / "data" / f"{first}.CHGCAR").exists():
+                self.fmt = "chgcar"
+            else:
+                raise ValueError(
+                    f"No .zarr or .CHGCAR file found for '{first}' in {self.root / 'data'}"
+                )
 
     def __len__(self):
         return len(self.member_list)
 
     def __getitem__(self, index):
         index = self.member_list[index]
-        data, label = utils.load_numpy_rho(
-            root=self.root,
-            category=self.category,
-            index=index,
-            precision=self.precision,
-            augmentation=self.aug,
-            fmt=self.fmt,
-        )
+        if self.fmt == "explicit":
+            data, label = utils.load_elf_data(
+                input_dir=self.input_dir,
+                label_dir=self.label_dir,
+                index=index,
+                precision=self.precision,
+                augmentation=self.aug,
+            )
+        else:
+            data, label = utils.load_numpy_rho(
+                root=self.root,
+                category=self.category,
+                index=index,
+                precision=self.precision,
+                augmentation=self.aug,
+                fmt=self.fmt,
+            )
         data = data.unsqueeze(0)
         label = label.unsqueeze(0)
         return {"data": data, "label": label, "index": index}

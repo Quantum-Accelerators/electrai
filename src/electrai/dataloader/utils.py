@@ -39,6 +39,90 @@ def load_numpy_rho(
     return data, label
 
 
+def load_elf_data(
+    input_dir: str | bytes | os.PathLike,
+    label_dir: str | bytes | os.PathLike,
+    index: str,
+    precision: str,
+    augmentation: bool,
+):
+    """Load charge density (input) and ELF (label) from explicit directories.
+
+    Input is normalised by cell volume (e/Å³); label is kept raw since ELF is
+    already dimensionless and in [0, 1].
+    """
+    input_path = _resolve_path(Path(input_dir), index)
+    label_path = _resolve_path(Path(label_dir), index)
+
+    data = _read_chgcar_zarr(input_path, normalise_by_volume=True)
+    label = _read_chgcar_zarr(label_path, normalise_by_volume=False)
+
+    data = torch.tensor(data, dtype=dtype_map[precision])
+    label = torch.tensor(label, dtype=dtype_map[precision])
+    if augmentation:
+        data, label = rand_rotate([data, label])
+    return data, label
+
+
+def _is_zarr_store(path: Path) -> bool:
+    """True if `path` is a zarr store directory (v3 zarr.json or v2 .zgroup/.zarray)."""
+    return path.is_dir() and (
+        (path / "zarr.json").exists()
+        or (path / ".zgroup").exists()
+        or (path / ".zarray").exists()
+    )
+
+
+def _resolve_path(directory: Path, index: str) -> Path:
+    """Find the file for `index` in `directory`; supports zarr, CHGCAR, ELFCAR.
+
+    Zarr stores may be named ``{index}.zarr`` or, as in the r2scan datasets,
+    an extensionless directory ``{index}`` containing a zarr.json.
+    """
+    for ext in (".zarr", ".CHGCAR", ".ELFCAR"):
+        p = directory / f"{index}{ext}"
+        if p.exists():
+            return p
+    bare = directory / index
+    if _is_zarr_store(bare):
+        return bare
+    raise FileNotFoundError(
+        f"No .zarr, .CHGCAR or .ELFCAR file found for '{index}' in {directory}"
+    )
+
+
+def _read_chgcar_zarr(path: Path, normalise_by_volume: bool) -> np.ndarray:
+    """Read a charge/ELF grid from a zarr store or CHGCAR/ELFCAR file.
+
+    Zarr stores from r2scan datasets carry spin-up and spin-down channels
+    separately; charge density is their sum.  ELF channels are identical so
+    either suffices.
+    """
+    if path.suffix == ".zarr" or _is_zarr_store(path):
+        import zarr as zarr_lib
+
+        z = zarr_lib.open_group(str(path), mode="r")
+        if normalise_by_volume:
+            if "charge_density_total" in z:
+                arr = np.array(z["charge_density_total"])
+            else:
+                arr = np.array(z["charge_density_up"]) + np.array(
+                    z["charge_density_down"]
+                )
+            volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
+            arr = arr / volume
+        else:
+            # ELF: spin-up channel alone is in [0, 1]
+            arr = np.array(z["charge_density_up"])
+        return arr
+    else:
+        chg = Chgcar.from_file(path)
+        arr = chg.data["total"]
+        if normalise_by_volume:
+            arr = arr / chg.structure.lattice.volume
+        return arr
+
+
 def load_zarr(root: str | bytes | os.PathLike, index: str):
     import zarr
 
@@ -46,7 +130,10 @@ def load_zarr(root: str | bytes | os.PathLike, index: str):
         z = zarr.open_group(str(path), mode="r")
         if "structure" not in z.attrs:
             raise KeyError(f"'structure' attribute missing from zarr store at {path}")
-        arr = np.array(z["charge_density_total"])
+        if "charge_density_total" in z:
+            arr = np.array(z["charge_density_total"])
+        else:
+            arr = np.array(z["charge_density_up"]) + np.array(z["charge_density_down"])
         volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
         return arr / volume
 

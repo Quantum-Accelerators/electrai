@@ -9,7 +9,9 @@ import torch.distributed as dist
 from hydra.utils import instantiate
 from lightning.pytorch import LightningModule
 
-from electrai.model.loss.charge import NormMAE
+from electrai.model.loss.charge import MeanMAE, NormMAE
+
+_LOSS_BY_MODE = {"rho": NormMAE, "elf": MeanMAE}
 
 
 class LightningGenerator(LightningModule):
@@ -17,8 +19,17 @@ class LightningGenerator(LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.cfg = cfg
-        self.model = instantiate(cfg.model)
-        self.loss_fn = NormMAE()
+        property_mode = getattr(cfg, "property_mode", "rho")
+        self.property_mode = property_mode
+        model_cfg = dict(cfg.model)
+        model_cfg["property_mode"] = property_mode
+        self.model = instantiate(model_cfg)
+        loss_cls = _LOSS_BY_MODE.get(property_mode)
+        if loss_cls is None:
+            raise ValueError(
+                f"property_mode must be 'rho' or 'elf', got '{property_mode}'"
+            )
+        self.loss_fn = loss_cls()
 
     def forward(self, x):
         return self.model(x)
@@ -118,10 +129,11 @@ class LightningGenerator(LightningModule):
             if isinstance(y, list)
             else y.detach().cpu()
         )
+        metric_key = "mae" if getattr(self, "property_mode", "rho") == "elf" else "nmae"
         out = {
             "target": y_cpu,
             "index": indices,
-            "nmae": loss.detach().cpu(),
+            metric_key: loss.detach().cpu(),
             "duration": elapsed,
         }
         if self.save_pred:
@@ -130,7 +142,8 @@ class LightningGenerator(LightningModule):
 
     def on_test_batch_end(self, outputs, _batch, batch_idx):
         indices = outputs["index"]
-        nmae = outputs["nmae"]
+        metric_key = "mae" if getattr(self, "property_mode", "rho") == "elf" else "nmae"
+        nmae = outputs[metric_key]
 
         if self.save_pred:
             preds = outputs["pred"]
@@ -182,8 +195,9 @@ class LightningGenerator(LightningModule):
                     f"Expected {expected_total} CSV files but found {len(all_tmp_csvs)}."
                 )
 
+            metric_col = "mae" if self.property_mode == "elf" else "nmae"
             with final_csv.open("w") as f_out:
-                f_out.write("rank,index,nmae\n")
+                f_out.write(f"rank,index,{metric_col}\n")
                 for tmp_csv in all_tmp_csvs:
                     with tmp_csv.open() as f_in:
                         for line in f_in:

@@ -3,6 +3,17 @@ from __future__ import annotations
 import torch
 
 
+class MeanMAE(torch.nn.Module):
+    """MAE normalised by voxel count — used for unit-interval fields like ELF."""
+
+    def __init__(self):
+        super().__init__()
+        self.mae = torch.nn.L1Loss()
+
+    def forward(self, output, target):
+        return self.mae(output, target)
+
+
 class NormMAE(torch.nn.Module):
     def __init__(self):
         super().__init__()

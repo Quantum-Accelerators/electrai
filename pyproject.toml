@@ -49,6 +49,11 @@ docs = [
     "cairosvg>=2.7.1"
 ]
 hf = ["huggingface-hub>=0.20.0"]
+soap = [
+    # SOAP voxel descriptor (elf_prediction Phase 10); the ELF-Prediction SOAP path only.
+    "dscribe>=2.1.2",
+    "ase>=3.22.0",
+]
 zarr_conversion = [
     "fire>=0.5.0",
     "numcodecs>=0.16.3",
@@ -192,6 +197,16 @@ skip-magic-trailing-comma = true
     # Frozen YAML snapshots of training configs that produced the
     # benchmark checkpoints. Documentation, not code.
     "ALL",
+]
+"src/ELFNet/model.py" = [
+    # Vendored verbatim from the standalone ELFNet repo (network + composite
+    # loss). Kept close to upstream for easy re-vendoring; not subject to
+    # electrai's lint policy.
+    "ARG002",  # unused method argument (Lightning-fallback shim)
+    "B905",    # zip() without explicit strict=
+    "EXE001",  # shebang present but file not executable
+    "RUF005",  # prefer iterable unpacking over concatenation
+    "RUF046",  # unnecessary int() call
 ]
 "src/resenet_density/**" = [
     "E722",    # bare except

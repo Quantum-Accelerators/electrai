@@ -43,8 +43,14 @@ class ResUNet3D(nn.Module):
         n_residual_blocks,
         kernel_size,
         use_checkpoint=True,
+        property_mode: str = "rho",
     ):
         super().__init__()
+        if property_mode not in ("rho", "elf"):
+            raise ValueError(
+                f"property_mode must be 'rho' or 'elf', got '{property_mode}'"
+            )
+        self.property_mode = property_mode
         self.in_conv = ResBlock3D(
             in_channels, n_channels, kernel_size, use_checkpoint=use_checkpoint
         )
@@ -110,6 +116,9 @@ class ResUNet3D(nn.Module):
             out = torch.cat([out, skips.pop()], dim=1)
             out = dec(out)
         out = self.out_conv(out)
+        if self.property_mode == "elf":
+            return torch.sigmoid(out)
+        # rho: renormalise to conserve total charge
         out = out / torch.sum(out, axis=(-3, -2, -1))[..., None, None, None]
         return out * torch.sum(x, axis=(-3, -2, -1))[..., None, None, None]
 

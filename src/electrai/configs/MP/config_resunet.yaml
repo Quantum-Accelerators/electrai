@@ -14,6 +14,11 @@ data:
   augmentation: false
   random_seed: 42
 
+# Property mode: "rho" (charge density, default) or "elf" (electron localization function)
+# rho: output is renormalised to conserve total charge; loss is NormMAE (normalised by n_electrons)
+# elf: output is sigmoid-bounded to [0,1]; loss is MeanMAE (plain voxel-averaged MAE)
+property_mode: rho
+
 # Model
 model:
   _target_: electrai.model.resunet.ResUNet3D

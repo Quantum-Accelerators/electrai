@@ -61,6 +61,7 @@ def test(args):
         devices="auto",
         num_nodes=num_nodes,
         precision=cfg.precision,
+        strategy="ddp",
     )
 
     lit_model.test_cfg = SimpleNamespace(
@@ -70,7 +71,9 @@ def test(args):
     # -----------------------------
     # Train
     # -----------------------------
-    ckpt = ckpt_path / "last.ckpt"
+    # If ckpt_path points to a specific checkpoint file, use it directly;
+    # otherwise treat it as a directory and fall back to last.ckpt.
+    ckpt = ckpt_path if ckpt_path.is_file() else ckpt_path / "last.ckpt"
     if not ckpt.exists():
         raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
 
