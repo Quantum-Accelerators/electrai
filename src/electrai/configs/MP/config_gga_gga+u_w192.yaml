@@ -1,0 +1,58 @@
+# Width-192 point of the width ablation. Same recipe as W96/W128 (capped
+# GGA + GGA+U, bf16-mixed, lr 0.001, warmup 4) with n_channels: 192 (~435M
+# params). Motivated by the W256 kernel cliff: cuDNN heuristics select
+# pathological conv kernels for 256-channel convs on grids >~150^3 (1495s/step
+# at 180^3), and benchmark-mode search is unusable with this dataset's
+# variable shapes — W192 is the next rung IF it stays on the fast side of the
+# cliff. Validate with scripts/coreweave/dry_run.py --grids 128,160,180
+# --iters 2 in heuristic mode before any launch. Do NOT re-cap the filelists.
+# Dataset / loader parameters
+data:
+  _target_: electrai.dataloader.dataset.RhoRead
+  datasets:
+    - root: /uv/cache/electrai/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
+      split_file: /uv/cache/electrai/mp/chg_datasets/functionals/gga/split_capped.json
+      dataset_id: 1
+    - root: /uv/cache/electrai/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
+      split_file: /uv/cache/electrai/mp/chg_datasets/functionals/gga+u/split_capped.json
+      dataset_id: 2
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+
+# Model
+model:
+  _target_: electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 192
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+
+# Training parameters
+precision: bf16-mixed
+epochs: 100
+lr: 0.001
+weight_decay: 0.0
+warmup_length: 4
+beta1: 0.9
+beta2: 0.99
+
+# Weights and biases — OFFLINE + sidecar sync: online wandb.init crashes with
+# the viewer flags=null TypeError and a rank-0 death silently deadlocks DDP.
+# run_training.sh re-syncs the offline run dirs every CKPT_SYNC_S seconds.
+wandb_mode: offline
+entity: PrinceOA
+wb_pname: mp-gga-ggau-width
+run_name: gga_gga+u_w192
+
+# checkpoints: node-local NVMe (survives same-node pod restarts); synced to and
+# restored from the CAIOS bucket by run_training.sh (path derived from this
+# config's filename stem — keep them consistent)
+ckpt_path: /uv/cache/electrai/checkpoints/gga_gga+u_w192

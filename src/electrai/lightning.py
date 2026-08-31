@@ -59,7 +59,14 @@ class LightningGenerator(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        # "adam" applies weight_decay as coupled L2 (rescaled by the adaptive
+        # denominator); "adamw" decays weights directly. At weight_decay=0 the
+        # two are identical, so existing configs are unaffected.
+        opt_name = (getattr(self.cfg, "optimizer", None) or "adam").lower()
+        if opt_name not in ("adam", "adamw"):
+            raise ValueError(f"Unknown optimizer '{opt_name}': use 'adam' or 'adamw'")
+        opt_cls = torch.optim.AdamW if opt_name == "adamw" else torch.optim.Adam
+        optimizer = opt_cls(
             self.model.parameters(),
             lr=float(self.cfg.lr),
             weight_decay=float(self.cfg.weight_decay),

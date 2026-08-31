@@ -1,0 +1,72 @@
+# Width-96 point of the width ablation. IDENTICAL to config_gga_gga+u_w64.yaml
+# (same capped GGA + GGA+U dataset/splits, bf16-mixed, lr 0.001, warmup 4) with
+# a SINGLE delta so the only variable vs W64 is width:
+#   - model.n_channels: 64 -> 96
+# Compare against the W64 result on this exact dataset: val NMAE 0.84%
+# (ckpt_epoch=16_val_loss=0.008398), W&B mp-gga-ggau-width run zz3oecp7.
+#
+# Memory: W96 activations ~1.5x W64 (~115 GB), which OOMs an 80 GB A100/H100.
+# This run targets a GB200 (185 GiB visible/GPU), so it fits WITHOUT activation
+# checkpointing -> `use_checkpoint` stays off, matching W64 exactly. If ever run
+# on 80 GB GPUs, set model.use_checkpoint: True (costs ~30% compute).
+# Reuses the same *_capped filelists/splits as W64 (validated 111,257 ids);
+# do NOT re-cap, or the W64 comparison breaks.
+#
+# Paths target the CoreWeave marin-us-east-08a cluster: the dataset is staged
+# from the rhoarnet-us-east-08a CAIOS bucket to node-local NVMe by
+# scripts/coreweave/stage_data.sh, which also creates the functionals/<f>/
+# {data,label} symlinks RhoRead needs. Run stage_data.sh before training.
+# Tracked in W&B project `mp-gga-ggau-width`.
+
+# Dataset / loader parameters
+data:
+  _target_: electrai.dataloader.dataset.RhoRead
+  datasets:
+    - root: /uv/cache/electrai/mp/chg_datasets/functionals/gga/mp_filelist_capped.txt
+      split_file: /uv/cache/electrai/mp/chg_datasets/functionals/gga/split_capped.json
+      dataset_id: 1
+    - root: /uv/cache/electrai/mp/chg_datasets/functionals/gga+u/mp_filelist_capped.txt
+      split_file: /uv/cache/electrai/mp/chg_datasets/functionals/gga+u/split_capped.json
+      dataset_id: 2
+  precision: f32
+  batch_size: 1
+  train_workers: 8
+  val_workers: 2
+  pin_memory: false
+  drop_last: false
+  augmentation: false
+  random_seed: 42
+
+# Model
+model:
+  _target_: electrai.model.resunet.ResUNet3D
+  in_channels: 1
+  out_channels: 1
+  n_channels: 96
+  n_residual_blocks: 1
+  kernel_size: 5
+  depth: 2
+
+# Training parameters
+precision: bf16-mixed
+epochs: 100
+lr: 0.001
+weight_decay: 0.0
+warmup_length: 4
+beta1: 0.9
+beta2: 0.99
+
+# Weights and biases — OFFLINE + sidecar sync: online wandb.init crashes with
+# the viewer flags=null TypeError (same wandb bug as lambda2; confirmed on
+# GB200 2026-07-18) and the rank-0 death silently deadlocks DDP.
+# run_training.sh re-syncs the offline run dirs every CKPT_SYNC_S seconds.
+wandb_mode: offline
+entity: PrinceOA
+wb_pname: mp-gga-ggau-width
+run_name: gga_gga+u_w96
+
+# checkpoints: node-local NVMe (survives same-node pod restarts); synced to and
+# restored from the CAIOS bucket by the CoreWeave run wrapper
+ckpt_path: /uv/cache/electrai/checkpoints/gga_gga+u_w96
+
+# set HF as well
