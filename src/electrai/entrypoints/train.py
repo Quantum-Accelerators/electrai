@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -16,6 +17,8 @@ from lightning.pytorch import Callback, Trainer, seed_everything
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 
 from electrai.lightning import LightningGenerator
+
+logger = logging.getLogger(__name__)
 
 
 class BestCheckpointMirror(Callback):
@@ -109,6 +112,25 @@ def train(args):
     # -----------------------------
     lit_model = LightningGenerator(cfg)
 
+    # Weights-only fine-tune start. Distinct from the `ckpt_path / "last.ckpt"` resume below,
+    # which restores optimizer, LR schedule and epoch counters -- with that, cfg.lr and
+    # cfg.epochs would be interpreted against the pretraining run's progress. warm_start_path
+    # loads just the weights and trains as a fresh run. A same-run resume still wins: if this
+    # run's own last.ckpt exists, fit() restores over these weights, which is correct.
+    warm_start = getattr(cfg, "warm_start_path", None) or None
+    if warm_start:
+        import torch as _torch
+
+        _ckpt = _torch.load(warm_start, map_location="cpu", weights_only=False)
+        _state = _ckpt.get("state_dict", _ckpt)
+        _missing, _unexpected = lit_model.load_state_dict(_state, strict=False)
+        if _missing or _unexpected:
+            raise RuntimeError(
+                f"warm start {warm_start}: {len(_missing)} missing / "
+                f"{len(_unexpected)} unexpected keys -- architecture mismatch"
+            )
+        logger.info("warm start (weights only) from %s", warm_start)
+
     # -----------------------------
     # Logging and callbacks
     # -----------------------------
@@ -165,6 +187,9 @@ def train(args):
         strategy="ddp",
         log_every_n_steps=1,
         gradient_clip_val=getattr(cfg, "gradient_clip_value", 1.0),
+        # validate every N epochs (default 1 = every epoch, as before). For fine-tunes with a few training
+        # structures, where an epoch is a few steps and validation over many structures would dominate.
+        check_val_every_n_epoch=int(getattr(cfg, "check_val_every_n_epoch", 1)),
     )
 
     # -----------------------------
