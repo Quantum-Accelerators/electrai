@@ -226,13 +226,17 @@ class RhoData(Dataset):
             self.category = Path(datapath).name.split("_")[0]  # e.g. mp_filelist.txt
             self.root = Path(datapath).parent
             first = member_list[0]
-            if (self.root / "data" / f"{first}.zarr").exists():
+            data_dir = self.root / "data"
+            if (data_dir / f"{first}.zarr").exists() or utils._is_zarr_store(
+                data_dir / first
+            ):
                 self.fmt = "zarr"
-            elif (self.root / "data" / f"{first}.CHGCAR").exists():
+            elif (data_dir / f"{first}.CHGCAR").exists():
                 self.fmt = "chgcar"
             else:
                 raise ValueError(
-                    f"No .zarr or .CHGCAR file found for '{first}' in {self.root / 'data'}"
+                    f"No .zarr, bare zarr store, or .CHGCAR file found for "
+                    f"'{first}' in {data_dir}"
                 )
 
     def __len__(self):

@@ -137,8 +137,9 @@ def load_zarr(root: str | bytes | os.PathLike, index: str):
         volume = json.loads(z.attrs["structure"])["lattice"]["volume"]
         return arr / volume
 
-    data = _read(Path(root) / "data" / f"{index}.zarr")
-    label = _read(Path(root) / "label" / f"{index}.zarr")
+    root = Path(root)
+    data = _read(_resolve_path(root / "data", index))
+    label = _read(_resolve_path(root / "label", index))
     return data, label
 
 
