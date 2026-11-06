@@ -7,10 +7,14 @@ from typing import Any
 
 import torch
 from lightning.pytorch import LightningDataModule
-from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, DistributedSampler
 
 from electrai.dataloader import utils
 from electrai.dataloader.collate import collate_fn
+from electrai.dataloader.size_balanced_sampler import (
+    SizeBalancedDistributedSampler,
+    grid_sizes,
+)
 from electrai.dataloader.split import split_data
 
 dtype_map = {"f32": torch.float32, "f16": torch.float16, "bf16": torch.bfloat16}
@@ -47,6 +51,12 @@ class RhoRead(LightningDataModule):
     """
     Works based on these keys for one or more datasets:
     `root`, `split_file`, `val_frac` (if `split_file` is null) and dataset_id
+
+    `train_sampler` chooses how training samples are distributed over DDP ranks:
+    "random" (default, Lightning's shuffled DistributedSampler) or "size_balanced"
+    (SizeBalancedDistributedSampler: each step holds samples of similar voxel count,
+    so ranks wait less for the largest grid). "size_balanced" requires the Trainer
+    to be built with ``use_distributed_sampler=False``; train.py does this.
     """
 
     def __init__(
@@ -62,6 +72,10 @@ class RhoRead(LightningDataModule):
         drop_last: bool = False,
         augmentation: bool = False,
         random_seed: int = 42,
+        correct_elf_scale: bool = False,
+        train_sampler: str = "random",
+        balance_window_steps: int = 64,
+        size_cache: str | None = None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -73,6 +87,14 @@ class RhoRead(LightningDataModule):
         self.precision = precision
         self.augmentation = augmentation
         self.random_seed = random_seed
+        self.correct_elf_scale = correct_elf_scale
+        if train_sampler not in ("random", "size_balanced"):
+            raise ValueError(
+                f"train_sampler must be 'random' or 'size_balanced', got {train_sampler!r}"
+            )
+        self.train_sampler = train_sampler
+        self.balance_window_steps = balance_window_steps
+        self.size_cache = size_cache
 
         if datasets is None or len(datasets) == 0:
             raise ValueError("`datasets` must contain at least one dataset spec.")
@@ -124,6 +146,7 @@ class RhoRead(LightningDataModule):
                 augmentation=self.augmentation,
                 input_dir=spec.input,
                 label_dir=spec.label,
+                correct_elf_scale=self.correct_elf_scale,
             )
             dataset_id = int(spec.dataset_id)
 
@@ -158,23 +181,50 @@ class RhoRead(LightningDataModule):
                 test_parts[0] if len(test_parts) == 1 else ConcatDataset(test_parts)
             )
 
+    def _world(self) -> tuple[int, int]:
+        trainer = getattr(self, "trainer", None)
+        if trainer is None:
+            return 1, 0
+        return trainer.world_size, trainer.global_rank
+
     def train_dataloader(self):
+        sampler = None
+        if self.train_sampler == "size_balanced":
+            world_size, rank = self._world()
+            sampler = SizeBalancedDistributedSampler(
+                grid_sizes(self.train_set, cache=self.size_cache),
+                num_replicas=world_size,
+                rank=rank,
+                batch_size=self.batch_size,
+                window_steps=self.balance_window_steps,
+                seed=self.random_seed,
+            )
         return DataLoader(
             self.train_set,
             self.batch_size,
             num_workers=self.train_workers,
-            shuffle=True,
+            shuffle=sampler is None,
+            sampler=sampler,
             collate_fn=collate_fn,
             pin_memory=self.pin_memory,
             drop_last=self.drop_last,
         )
 
     def val_dataloader(self):
+        sampler = None
+        if self.train_sampler == "size_balanced":
+            # Lightning's sampler injection is off in this mode; shard validation the
+            # way it would have (unshuffled DistributedSampler) so val_loss is unchanged.
+            world_size, rank = self._world()
+            sampler = DistributedSampler(
+                self.val_set, num_replicas=world_size, rank=rank, shuffle=False
+            )
         return DataLoader(
             self.val_set,
             self.batch_size,
             num_workers=self.val_workers,
             shuffle=False,
+            sampler=sampler,
             collate_fn=collate_fn,
             pin_memory=self.pin_memory,
             drop_last=self.drop_last,
@@ -199,11 +249,13 @@ class RhoData(Dataset):
         augmentation: bool,
         input_dir: str | None = None,
         label_dir: str | None = None,
+        correct_elf_scale: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.aug = augmentation
         self.precision = precision
+        self.correct_elf_scale = correct_elf_scale
 
         if not (isinstance(datapath, str) and Path(datapath).is_file()):
             raise ValueError("No filename found.")
@@ -220,6 +272,11 @@ class RhoData(Dataset):
             self.label_dir = Path(label_dir)
             self.fmt = "explicit"
         else:
+            if correct_elf_scale:
+                raise ValueError(
+                    "correct_elf_scale applies to ELF labels, which need explicit "
+                    "input/label directories in the dataset spec"
+                )
             # Rho mode: derive paths from root/data and root/label as before
             self.input_dir = None
             self.label_dir = None
@@ -251,6 +308,7 @@ class RhoData(Dataset):
                 index=index,
                 precision=self.precision,
                 augmentation=self.aug,
+                correct_elf_scale=self.correct_elf_scale,
             )
         else:
             data, label = utils.load_numpy_rho(

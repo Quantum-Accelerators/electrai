@@ -39,23 +39,51 @@ def load_numpy_rho(
     return data, label
 
 
+ELF_SCALE_FIX = 2.0 ** (4.0 / 3.0)
+
+
+def elf_buggy_to_correct(elf):
+    """Map ELF from the buggy VASP spin-polarized scale onto the corrected one.
+
+    Copied from elfe3net src/charge3net/data/dataset.py::elf_buggy_to_correct (behind its
+    ``correct_elf_scale: true``), so electrai trains on the same labels. The MP r2SCAN
+    labels were produced with VASP 6.1.1, whose src/elf.F computes the
+    homogeneous-electron-gas reference D_h with the spin-degenerate formula applied to a
+    *spin* density. The correct single-channel reference is larger by 2^(2/3), so the
+    stored ELF is systematically underpredicted:
+
+        chi_buggy = 2^(2/3) * chi_correct,   ELF = 1 / (1 + chi^2)
+        ELF_correct = 1 / (1 + (1/ELF_buggy - 1) / 2^(4/3))
+
+    Exactly invertible and monotonic, so basins/maxima locations are unchanged; only
+    values and absolute thresholds move (label ELF 0.5 -> corrected 0.716).
+    """
+    elf = np.clip(np.asarray(elf, dtype=np.float64), 1e-12, 1.0 - 1e-12)
+    return 1.0 / (1.0 + (1.0 / elf - 1.0) / ELF_SCALE_FIX)
+
+
 def load_elf_data(
     input_dir: str | bytes | os.PathLike,
     label_dir: str | bytes | os.PathLike,
     index: str,
     precision: str,
     augmentation: bool,
+    correct_elf_scale: bool = False,
 ):
     """Load charge density (input) and ELF (label) from explicit directories.
 
     Input is normalised by cell volume (e/Å³); label is kept raw since ELF is
-    already dimensionless and in [0, 1].
+    already dimensionless and in [0, 1]. With `correct_elf_scale` the label is
+    mapped from the buggy VASP 6.1.1 scale to the corrected one
+    (`elf_buggy_to_correct`).
     """
     input_path = _resolve_path(Path(input_dir), index)
     label_path = _resolve_path(Path(label_dir), index)
 
     data = _read_chgcar_zarr(input_path, normalise_by_volume=True)
     label = _read_chgcar_zarr(label_path, normalise_by_volume=False)
+    if correct_elf_scale:
+        label = elf_buggy_to_correct(label)
 
     data = torch.tensor(data, dtype=dtype_map[precision])
     label = torch.tensor(label, dtype=dtype_map[precision])

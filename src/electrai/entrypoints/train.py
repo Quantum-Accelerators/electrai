@@ -190,6 +190,9 @@ def train(args):
         # validate every N epochs (default 1 = every epoch, as before). For fine-tunes with a few training
         # structures, where an epoch is a few steps and validation over many structures would dominate.
         check_val_every_n_epoch=int(getattr(cfg, "check_val_every_n_epoch", 1)),
+        # size_balanced shards the data itself; Lightning must not wrap its sampler
+        use_distributed_sampler=getattr(datamodule, "train_sampler", "random")
+        == "random",
     )
 
     # -----------------------------
