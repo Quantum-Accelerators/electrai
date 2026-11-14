@@ -72,7 +72,6 @@ class RhoRead(LightningDataModule):
         drop_last: bool = False,
         augmentation: bool = False,
         random_seed: int = 42,
-        correct_elf_scale: bool = False,
         train_sampler: str = "random",
         balance_window_steps: int = 64,
         size_cache: str | None = None,
@@ -87,7 +86,6 @@ class RhoRead(LightningDataModule):
         self.precision = precision
         self.augmentation = augmentation
         self.random_seed = random_seed
-        self.correct_elf_scale = correct_elf_scale
         if train_sampler not in ("random", "size_balanced"):
             raise ValueError(
                 f"train_sampler must be 'random' or 'size_balanced', got {train_sampler!r}"
@@ -146,7 +144,6 @@ class RhoRead(LightningDataModule):
                 augmentation=self.augmentation,
                 input_dir=spec.input,
                 label_dir=spec.label,
-                correct_elf_scale=self.correct_elf_scale,
             )
             dataset_id = int(spec.dataset_id)
 
@@ -249,13 +246,11 @@ class RhoData(Dataset):
         augmentation: bool,
         input_dir: str | None = None,
         label_dir: str | None = None,
-        correct_elf_scale: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.aug = augmentation
         self.precision = precision
-        self.correct_elf_scale = correct_elf_scale
 
         if not (isinstance(datapath, str) and Path(datapath).is_file()):
             raise ValueError("No filename found.")
@@ -272,11 +267,6 @@ class RhoData(Dataset):
             self.label_dir = Path(label_dir)
             self.fmt = "explicit"
         else:
-            if correct_elf_scale:
-                raise ValueError(
-                    "correct_elf_scale applies to ELF labels, which need explicit "
-                    "input/label directories in the dataset spec"
-                )
             # Rho mode: derive paths from root/data and root/label as before
             self.input_dir = None
             self.label_dir = None
@@ -308,7 +298,6 @@ class RhoData(Dataset):
                 index=index,
                 precision=self.precision,
                 augmentation=self.aug,
-                correct_elf_scale=self.correct_elf_scale,
             )
         else:
             data, label = utils.load_numpy_rho(
